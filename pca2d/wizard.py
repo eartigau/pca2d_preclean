@@ -19,6 +19,7 @@ import os
 
 import numpy as np
 
+from .config import spectra_dir
 from .logger import log
 
 PLACEHOLDER = "REPLACE_ME"
@@ -39,10 +40,11 @@ def _is_placeholder(value):
 
 
 def _files(config):
-    directory = config["input"].get("directory")
+    root = config["input"].get("directory")
     pattern = config["input"].get("pattern") or "*.fits"
-    if not directory or _is_placeholder(directory):
+    if not root or _is_placeholder(root):
         return None, None
+    directory = spectra_dir(config)
     return directory, sorted(glob.glob(os.path.join(directory, pattern)))
 
 
@@ -118,7 +120,11 @@ def validate(config, probe=True):
                 % (lo, hi, info["wave_min"], info["wave_max"]))
 
     dv = dom.get("dv")
-    if not isinstance(dv, (int, float)) or not (SANE["dv_kms"][0] <= dv <= SANE["dv_kms"][1]):
+    if dom.get("smart_dv"):
+        # measured from the first spectrum at load time, so whatever is in
+        # domain.dv is not read and is not this function's business
+        pass
+    elif not isinstance(dv, (int, float)) or not (SANE["dv_kms"][0] <= dv <= SANE["dv_kms"][1]):
         bad("domain.dv", "%r is not a sane sampling in km/s (%g-%g)"
             % (dv, *SANE["dv_kms"]))
 
@@ -213,17 +219,23 @@ def run_wizard(config, path):
     log("it in and writes %s; press Ctrl-C to stop." % path)
     print()
 
+    obj = config["input"].get("object")
+
     def dir_check(value):
-        if not os.path.isdir(value):
-            return "%r is not a directory" % value
+        # the answer is the input ROOT; what has to exist is the object's
+        # folder under it, which is what every stage will read
+        probe = spectra_dir({"input": dict(config["input"], directory=value)})
+        if not os.path.isdir(probe):
+            return "%r is not a directory" % probe
         return None
 
+    question = ("input root, holding %s/ with the t.fits files in it" % obj
+                if obj else "directory holding the t.fits files")
     config["input"]["directory"] = _ask(
-        "directory holding the t.fits files", config["input"].get("directory"),
-        str, dir_check)
+        question, config["input"].get("directory"), str, dir_check)
 
     def pattern_check(value):
-        hits = glob.glob(os.path.join(config["input"]["directory"], value))
+        hits = glob.glob(os.path.join(spectra_dir(config), value))
         if not hits:
             return "matches no file"
         log("     %d files match, e.g. %s" % (len(hits), os.path.basename(sorted(hits)[0])))
@@ -269,8 +281,13 @@ def run_wizard(config, path):
             return "outside %g-%g km/s" % SANE["dv_kms"]
         return None
 
-    config["domain"]["dv"] = _ask("grid sampling, km/s", config["domain"].get("dv", 0.5),
-                                  float, dv_check)
+    if config["domain"].get("smart_dv"):
+        log("     grid sampling: measured from the data, domain.smart_dv is on."
+            " Nothing to ask and nothing in domain.dv would be read.")
+    else:
+        config["domain"]["dv"] = _ask("grid sampling, km/s",
+                                      config["domain"].get("dv", 0.5),
+                                      float, dv_check)
 
     n_files = info.get("n_files", 0)
 

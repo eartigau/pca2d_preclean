@@ -84,18 +84,16 @@
         1667 to 1672&nbsp;nm of TOI-2120, 321 SPIRou exposures, drawn in the
         star's rest frame with the rows ordered by barycentric velocity.
         Vertical structure belongs to the star; anything slanted does not. The
-        OH airglow runs diagonally through the first four panels and is gone
-        from the fifth.
+        OH airglow runs diagonally through the first two panels and is gone
+        from the third.
       </p>
       <figure class="wide">
         <img src="figures/sequence_1667nm.png" alt="The six stages from the delivered flux to the corrected spectrum, 1667 to 1672 nm" />
         <figcaption>
-          1 the flux as delivered &middot; 2 its log minus a Savitzky-Golay of
-          its log &middot; 3 minus the instrumental offset, what the fit is
-          given &middot; 4 the reconstruction &middot; <strong>5 minus the
-          observer block, which is what a corrected file holds</strong> &middot;
-          6 minus everything. Underneath, five of those exposures in flux,
-          before in red and after in green.
+          1 the high pass &middot; 2 the reconstruction &middot; <strong>3 minus
+          the observer block, which is what a corrected file holds</strong>
+          &middot; 4 minus everything. Underneath, five of those exposures in
+          flux, before in red and after in green.
         </figcaption>
       </figure>
     </section>
@@ -149,11 +147,16 @@ pip install -e .</code></pre>
       <p>
         That pulls numpy, scipy, astropy, matplotlib, pyyaml, pypdf and tqdm,
         and puts one command on your path. Check the install with
-        <code>./check.sh</code>: 57 tests, under a second, no file and no
+        <code>./check.sh</code>: 69 tests, under a second, no file and no
         network access.
       </p>
       <h3>Running it</h3>
-      <p>Spectra go in <code>data/&lt;object&gt;/</code>. Then:</p>
+      <p>
+        Spectra go in <code>data/&lt;object&gt;/</code> under the input root and
+        everything a run writes goes under the output root, so the archive it
+        reads is never the folder it writes to. Both are named in
+        <code>config.yaml</code>. Then:
+      </p>
       <pre><code>pca2d-preclean --object TOI-2120</code></pre>
       <p>
         That is the whole interface. The instrument is read from the
@@ -201,7 +204,7 @@ pip install -e .</code></pre>
             <code>twoframe_components.fits</code>, the coefficients as CSV, and
             <code>resolved_config.yaml</code>: exactly what ran, sitting next to
             what it produced.</li>
-        <li><strong>data/&lt;object&gt;/corrected_&lt;M&gt;-&lt;N&gt;/</strong>
+        <li><strong>outputs/&lt;object&gt;/&lt;M&gt;-&lt;N&gt;/corrected/</strong>
             &mdash; the corrected spectra, one per input file.</li>
       </ul>
       <p>

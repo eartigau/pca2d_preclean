@@ -2,10 +2,15 @@
 
     pca2d-preclean --object TOI-2120
 
-That is the whole interface. The object names a directory under `data/`, the
-instrument is read from the INSTRUME keyword of the files there, and
+That is the whole interface. The object names a folder under the input root,
+the instrument is read from the INSTRUME keyword of the files there, and
 `config.yaml` supplies everything else in three layers: what is general, what
 belongs to that spectrograph, and what belongs to that target.
+
+Two roots, both in the config and both overridable for one run:
+
+    input.directory    read from <root>/<object>/, never written to
+    output.directory   written to <root>/<object>/<M>-<N>/, never read from
 
 Four stages, in order, each skippable and each announcing how long it took:
 
@@ -26,7 +31,7 @@ import os
 import sys
 import time
 
-from .config import cache_key, load_config
+from .config import cache_key, load_config, spectra_dir
 from .logger import log
 from .progress import human, stage
 
@@ -43,8 +48,13 @@ def parse_args(argv=None):
                         " up under `objects:` in the config")
     p.add_argument("--config", default="config.yaml",
                    help="default: config.yaml beside the repository root")
-    p.add_argument("--data-dir", default="data",
-                   help="spectra live in <data-dir>/<object>/ (default: data)")
+    p.add_argument("--data-dir", default=None, metavar="DIR",
+                   help="override input.directory from the config. It is the"
+                        " input ROOT: spectra are read from <DIR>/<object>/")
+    p.add_argument("--out-dir", default=None, metavar="DIR",
+                   help="override output.directory from the config. It is the"
+                        " output ROOT: everything a run writes lands in"
+                        " <DIR>/<object>/<M>-<N>/")
     p.add_argument("--stages", default=",".join(STAGES),
                    help="comma-separated subset of %s, in this order"
                         % ",".join(STAGES))
@@ -65,13 +75,16 @@ def parse_args(argv=None):
 
 def resolve(args):
     """The config for this object, and where its pieces will land."""
-    directory = os.path.join(args.data_dir, args.object)
-    if not os.path.isdir(directory):
-        log("no directory %s. The object names a folder under --data-dir."
-            % directory, "error")
-        raise SystemExit(2)
     config = load_config(args.config, object_name=args.object,
-                         data_dir=args.data_dir, instrument=args.instrument)
+                         data_dir=args.data_dir, out_dir=args.out_dir,
+                         instrument=args.instrument)
+    directory = spectra_dir(config)
+    if not os.path.isdir(directory):
+        log("no directory %s. The object names a folder under the input root,"
+            " which is input.directory in %s (%s) unless --data-dir overrides"
+            " it." % (directory, args.config, config["input"]["directory"]),
+            "error")
+        raise SystemExit(2)
     if args.n_star is not None:
         config["twoframe"]["n_star"] = args.n_star
     if args.n_earth is not None:
@@ -82,6 +95,11 @@ def resolve(args):
         config["output"]["use_cache"] = False
 
     tag = "%d-%d" % (config["twoframe"]["n_star"], config["twoframe"]["n_earth"])
+    # Everything this run writes hangs off one root, the corrected spectra
+    # included: they used to land in a subfolder of the input directory, which
+    # made the input tree both read and written and meant a shared or
+    # read-only archive of spectra could not be used as it stands.
+    outdir = os.path.join(config["output"]["directory"], args.object, tag)
     plan = {
         "config": config,
         "directory": directory,
@@ -89,8 +107,8 @@ def resolve(args):
             directory, config["input"].get("pattern", "*t.fits")))),
         "key": cache_key(config),
         "tag": tag,
-        "outdir": os.path.join(config["output"]["directory"], args.object, tag),
-        "corrdir": os.path.join(args.data_dir, args.object, "corrected_" + tag),
+        "outdir": outdir,
+        "corrdir": os.path.join(outdir, "corrected"),
     }
     plan["cube"] = os.path.join(config["output"]["cache_directory"],
                                 "cube_%s_%s" % (config["input"]["format"],
@@ -106,9 +124,14 @@ def announce(args, plan):
         % cfg["input"].get("instrument", "?"), "value")
     log("spectra     %d files in %s" % (len(plan["files"]), plan["directory"]),
         "value")
-    log("domain      %.1f to %.1f nm at %.2f km/s per sample"
+    source = ("measured, %.0f%% of the %.2f km/s finest pixel; domain.dv in the"
+              " config is not used" % (100 * cfg["domain"]["dv"]
+                                       / cfg["domain"]["pixel_dv"],
+                                       cfg["domain"]["pixel_dv"])
+              if cfg["domain"].get("pixel_dv") else "domain.dv")
+    log("domain      %.1f to %.1f nm at %.2f km/s per sample   (%s)"
         % (cfg["domain"]["wave_min"], cfg["domain"]["wave_max"],
-           cfg["domain"]["dv"]), "value")
+           cfg["domain"]["dv"], source), "value")
     log("components  %d in the star's frame, %d in the observer's"
         % (cfg["twoframe"]["n_star"], cfg["twoframe"]["n_earth"]), "value")
     log("cube        %s" % plan["cube"], "value")

@@ -39,7 +39,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 
-from pca2d.config import cache_key, load_config          # noqa: E402
+from pca2d.config import cache_key, load_config, spectra_dir  # noqa: E402
 
 #: default windows, the ones this campaign looks at
 WINDOWS = ["1200.3:2", "1220:4", "1267:2", "1593.6:2", "1669.5:5", "1700.5:3",
@@ -111,7 +111,7 @@ def object_name(config, args):
     stem = os.path.splitext(os.path.basename(args.config))[0]
     if stem and stem != "config":
         return stem
-    return os.path.basename(os.path.normpath(config["input"]["directory"]))
+    return os.path.basename(os.path.normpath(spectra_dir(config)))
 
 
 def summary(config, args, fit):
@@ -119,7 +119,7 @@ def summary(config, args, fit):
     tw = config["twoframe"]
     rows = []
     rows.append(("object", object_name(config, args)))
-    rows.append(("source", config["input"]["directory"]))
+    rows.append(("source", spectra_dir(config)))
     key = cache_key(config)
     here = os.path.basename(os.path.normpath(args.cube))
     rows.append(("cube", here))
@@ -188,14 +188,14 @@ def main(argv=None):
     log("  building the figures")
     run([py, d("sequence.py"), "--cube", args.cube, "--fit", fit_path,
          "--windows", *args.windows, "--source-dir",
-         args.source_dir or config["input"]["directory"],
+         args.source_dir or spectra_dir(config),
          "--out", os.path.join(tmp, "sequence.pdf")], failures)
     run([py, d("sample_before_after.py"), "--cube", args.cube, "--fit", fit_path,
          "--windows", *args.windows, "--out",
          os.path.join(tmp, "before_after.pdf")], failures)
     run([py, d("weight_spectrum.py"), "--cube", args.cube, "--fit", fit_path,
          "--out", os.path.join(tmp, "weights.pdf")], failures)
-    src = args.source_dir or config["input"]["directory"]
+    src = args.source_dir or spectra_dir(config)
     run([py, d("oh_residual.py"), "--cube", args.cube, "--fit", fit_path,
          "--source-dir", src, "--out", os.path.join(tmp, "oh.pdf")], failures)
     run([py, d("coeff_periodogram.py"), "--fit", fit_path,

@@ -24,11 +24,19 @@ from . import io as spio
 from . import nights as spnights
 from . import preprocess as prep
 from . import tfits as sptf
-from .config import cache_key
+from .config import cache_key, spectra_dir
 from .logger import log
 from .progress import bar as _bar
 
 C_KMS = 299792.458
+
+# Storage dtype of the cube, and not a knob. float64 doubles four arrays of
+# (rows x samples) for nothing the fit can use: the data are photon counts
+# carrying five or six significant digits, every weighted sum accumulates in
+# float64 whatever this says, and on a few hundred exposures the difference is
+# gigabytes and whether the fit holds in memory at all. It was in the config
+# long enough to be asked for; nobody has a reason to change it.
+CUBE_DTYPE = np.dtype("float32")
 
 
 # --------------------------------------------------------------------------
@@ -102,6 +110,13 @@ def destination_grid(config: dict, files: list[str]):
         grid = spio.magic_grid(files[0], dom["wave_min"], dom["wave_max"])
         log("recycling the native s1d_v grid from %s" % os.path.basename(files[0]))
     else:
+        if dom.get("dv") is None:
+            raise ValueError(
+                "domain.dv is null and nothing has measured it. It is measured"
+                " from the data only when domain.smart_dv is on AND the run"
+                " names an object, as `pca2d-preclean --object NAME` does;"
+                " reading a config straight into this stage does not. Put a"
+                " number in domain.dv or go through the one command.")
         grid = grids.magic_grid(dom["wave0"], dom["dv"], dom["wave_min"], dom["wave_max"])
         log("magic grid: anchor %.3f nm, step %.4f km/s"
             % (float(dom["wave0"]), float(dom["dv"])))
@@ -164,10 +179,9 @@ def _check_memory(config, n_rows, n_pixels, n_arrays=4):
     done in place, but the band-restricted block handed to the decomposition is
     an extra copy of a fraction of it in pca.fit_dtype.
     """
-    dtype = np.dtype(config["output"]["cube_dtype"])
-    gigabytes = n_rows * n_pixels * dtype.itemsize * n_arrays / 1e9
+    gigabytes = n_rows * n_pixels * CUBE_DTYPE.itemsize * n_arrays / 1e9
     log("cube footprint: %d rows x %d pixels x %d arrays (%s) = %.2f GB"
-        % (n_rows, n_pixels, n_arrays, dtype.name, gigabytes), "value")
+        % (n_rows, n_pixels, n_arrays, CUBE_DTYPE.name, gigabytes), "value")
     limit = config["output"].get("max_memory_gb")
     if limit and gigabytes > float(limit):
         raise MemoryError(
@@ -313,10 +327,11 @@ def build_cube(config: dict):
             return cached
 
     inp = config["input"]
-    files = spio.find_spectra(inp["directory"], inp["pattern"], inp["max_files"])
+    source = spectra_dir(config)
+    files = spio.find_spectra(source, inp["pattern"], inp["max_files"])
     if len(files) == 0:
-        raise RuntimeError("no files matched %s/%s" % (inp["directory"], inp["pattern"]))
-    log("found %d files in %s" % (len(files), inp["directory"]), "value")
+        raise RuntimeError("no files matched %s/%s" % (source, inp["pattern"]))
+    log("found %d files in %s" % (len(files), source), "value")
 
     grid, _ = destination_grid(config, files)
     fmt = inp.get("format", "tfits")
@@ -339,7 +354,6 @@ def build_cube(config: dict):
 def _build_tfits(config: dict, files: list[str], grid: np.ndarray):
     dom = config["domain"]
     inp = config["input"]
-    dtype = np.dtype(config["output"]["cube_dtype"])
     n_pixels = grid.size
 
     stack, why = resolve_stacking(config, len(files), n_pixels)
@@ -349,7 +363,7 @@ def _build_tfits(config: dict, files: list[str], grid: np.ndarray):
     _check_memory(config, 2 * n_groups, n_pixels)
 
     use_recon = config["weights"].get("telluric_mode") == "recon"
-    coadd = _Coadder(n_groups, 2, n_pixels, dtype, use_recon)
+    coadd = _Coadder(n_groups, 2, n_pixels, CUBE_DTYPE, use_recon)
 
     n_rejected = 0
     n_used = 0
@@ -452,9 +466,8 @@ def _build_s1d(config: dict, files: list[str], grid: np.ndarray):
     n_pixels = grid.size
     _check_memory(config, n_groups, n_pixels)
 
-    dtype = np.dtype(config["output"]["cube_dtype"])
     use_recon = wcf.get("telluric_mode") == "recon"
-    coadd = _Coadder(n_groups, 1, n_pixels, dtype, use_recon)
+    coadd = _Coadder(n_groups, 1, n_pixels, CUBE_DTYPE, use_recon)
 
     n_missing_recon = 0
     n_used = 0

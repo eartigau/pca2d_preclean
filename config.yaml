@@ -13,8 +13,12 @@
 general:
 
   input:
+    directory: data         # the input ROOT. One run reads
+                            # <directory>/<object>/ and writes nothing there,
+                            # so this can be a shared or read-only archive.
+                            # --data-dir overrides it for one run.
     format: tfits           # APERO telluric-corrected 2D spectra
-    pattern: "*t.fits"      # data/<object>/ is searched with this
+    pattern: "*t.fits"      # <directory>/<object>/ is searched with this
     max_files: null         # a small number here makes a fast dry run
     min_order_finite_fraction: 0.05
     blaze_min_frac: 0.05    # reject a pixel where the blaze has fallen below
@@ -28,13 +32,53 @@ general:
                             # against output.max_memory_gb and coadds only if it
                             # would not otherwise fit.
 
+  output:
+    directory: outputs      # the output ROOT. Everything a run produces lands
+                            # in <directory>/<object>/<n_star>-<n_earth>/: the
+                            # resolved config, the bases, the PDF, and the
+                            # corrected spectra under `corrected/`.
+                            # --out-dir overrides it for one run.
+    cache_directory: cache  # rebuildable intermediates, and deliberately not
+                            # under the output root: a cube costs twenty
+                            # minutes and does not depend on where a run's
+                            # products are asked to go, so pointing --out-dir
+                            # somewhere new must not orphan it.
+    use_cache: true
+    max_memory_gb: 16.0
+    windows:                # centre:width in nm, the regions each run draws
+      - 1200.3:2
+      - 1220:4
+      - 1267:2
+      - 1593.6:2
+      - 1669.5:5
+      - 1700.5:3
+      - 2196.2:2
+      - 2450:5
+
   domain:
     grid_source: magic      # lambda_i = wave0 * exp(i * dv / c). On a
                             # log-uniform grid a Doppler shift is a pure
                             # translation, which is what lets the star basis be
                             # carried into each exposure's frame by an exact
                             # operator instead of an interpolation.
-    dv: 0.5                 # km/s per sample
+    smart_dv: false         # WHERE dv COMES FROM. false: the number below.
+                            # true: the data, and THE NUMBER BELOW IS NOT USED,
+                            # whatever it says. It is measured as the finest
+                            # pixel step in the first spectrum sampled at 70% of
+                            # its own width, which is all a resampling has to
+                            # guarantee, and a number in place of `true` is that
+                            # fraction. SPIRou pixels are about 2.27 km/s, so
+                            # this gives dv = 1.58 against the 0.5 below: three
+                            # times fewer samples, three times less memory, and
+                            # a fit faster by about as much. The measured step
+                            # is written back as domain.pixel_dv, and dv is
+                            # rounded DOWN to 10 m/s so that a wavelength
+                            # solution which moved by a hair between two
+                            # reductions does not re-key the cube.
+    dv: 0.5                 # km/s per sample. Read ONLY when smart_dv is false.
+                            # With smart_dv true this line is dead, and the run
+                            # says so rather than leaving it to be believed;
+                            # `dv: null` is the honest way to write it then.
     # wave_min, wave_max and wave0 are per instrument, below.
 
   registration:
@@ -135,22 +179,6 @@ general:
                             # measure. Only what is fixed in the observer's
                             # frame comes off.
     n_earth: null           # null means every observer component the fit has
-
-  output:
-    cube_dtype: float32
-    directory: outputs
-    cache_directory: cache
-    use_cache: true
-    max_memory_gb: 16.0
-    windows:                # centre:width in nm, the regions each run draws
-      - 1200.3:2
-      - 1220:4
-      - 1267:2
-      - 1593.6:2
-      - 1669.5:5
-      - 1700.5:3
-      - 2196.2:2
-      - 2450:5
 
 # ---------------------------------------------------------------------------
 # One block per spectrograph. The instrument is read from the INSTRUME keyword

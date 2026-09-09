@@ -49,16 +49,26 @@ nothing.
 
 ## Running it
 
-Spectra go in `data/<object>/`. The instrument is read from the `INSTRUME`
-keyword of the files themselves, never chosen on a command line, because
-reading the wrong extension raises no error: it returns different photons.
+Two roots, and a run reads from one and writes to the other. Spectra go under
+the input root, one folder per target, and nothing is ever written there, so it
+can be a shared or read-only archive. The instrument is read from the
+`INSTRUME` keyword of the files themselves, never chosen on a command line,
+because reading the wrong extension raises no error: it returns different
+photons.
 
 ```
-data/
+data/                      <- general.input.directory, the input root
   TOI-2120/
     2811170t.fits
     2811171t.fits
     ...
+outputs/                   <- general.output.directory, the output root
+  TOI-2120/
+    2-7/
+      resolved_config.yaml
+      fit.npz, twoframe_components.fits
+      TOI-2120_2-7.pdf
+      corrected/
 ```
 
 Then
@@ -74,7 +84,13 @@ runs four stages, each announcing how long it took:
 | `cube` | every spectrum on one log-uniform grid, in `cache/` |
 | `fit` | the two bases and their coefficients, in `outputs/<object>/<M>-<N>/` |
 | `figures` | **one** multipage PDF: the resolved parameters, then every plot |
-| `correct` | the observer block divided out, as t.fits, in `data/<object>/corrected_<M>-<N>/` |
+| `correct` | the observer block divided out, as t.fits, in `outputs/<object>/<M>-<N>/corrected/` |
+
+Both roots live in `config.yaml`, since a run is a config and an object and
+nothing else. `--data-dir` and `--out-dir` override them for one run, which is
+what a scratch disk or a second machine needs. `cache/` is neither: it holds
+rebuildable intermediates, and it stays put so that changing where a run's
+products go does not orphan a cube that took twenty minutes.
 
 Useful flags: `--dry-run` resolves everything and touches nothing, `--stages
 cube,fit` runs part of it, `--n-star`/`--n-earth` override the component
@@ -113,6 +129,21 @@ samples. That is what lets the star basis be carried into each exposure's frame
 by an exact Lanczos operator instead of an interpolation that would smear
 whatever it touched.
 
+The step is `domain.dv`, and `domain.smart_dv: true` measures it from the data
+instead of taking it on faith: the finest pixel step in the first spectrum,
+sampled at 70% of its own width, which is all a resampling has to guarantee.
+SPIRou pixels are about 2.27 km/s, so that is a grid of about 1.58 km/s against
+the 0.5 the config asks for otherwise: three times fewer samples, three times
+less memory, and a fit that is faster by about as much.
+
+**With `smart_dv` on, `dv` is not read at all.** It is overwritten and not
+combined with anything, so `dv: 0.5`, `dv: 4.0` and `dv: null` beside a true
+`smart_dv` are the same run down to the cube's cache key. The run says so on
+the line where it announces the domain, and `dv: null` is the honest way to
+write it. What smart_dv does not do is rescale the windows that are counted in
+samples, `highpass.window` and `weights.empirical_noise_box`; the run says what
+each of them now covers in km/s and leaves that decision where it belongs.
+
 Echelle orders are split by parity into two rows per exposure. Consecutive
 orders overlap, and at a given wavelength one parity samples near an order
 centre and the other near an edge, where the resolution is not the same; a
@@ -125,12 +156,13 @@ large. It is the one thing taken out before the fit.
 ./check.sh
 ```
 
-57 tests, under a second, no file and no network access. They pin the things
+69 tests, under a second, no file and no network access. They pin the things
 that have gone wrong here: the adjoint identity the block solve depends on, the
 parity tie producing bit-identical coefficients, the rejection threshold being
 in robust sigmas rather than MADs, the isolated-sample rule, the memory
-decision behind nightly coadding, and that neither command-line tool returns a
-value to `sys.exit`.
+decision behind nightly coadding, the object name being joined to the input
+root exactly once, and that neither command-line tool returns a value to
+`sys.exit`.
 
 ## Access
 

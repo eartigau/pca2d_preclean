@@ -205,11 +205,11 @@ def raw_log_flux_block(cube_dir, source_dir, names, parities, grid, cols):
     import numpy as np
 
     from . import tfits as sptf
-    from .config import load_config
+    from .config import load_config, spectra_dir
 
     config = load_config(os.path.join(cube_dir, "cube_config.yaml"))
     config["highpass"] = dict(config["highpass"], method="none")
-    directory = source_dir or config["input"]["directory"]
+    directory = source_dir or spectra_dir(config)
     out = np.full((len(names), cols.size), np.nan)
     by_name = {}
     for i, name in enumerate(names):

@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import math
 import os
 
 import yaml
@@ -15,7 +16,10 @@ DEFAULTS = {
         "format": "tfits",           # 'tfits' = APERO order-by-order spectra
                                      #           (the nominal input)
                                      # 's1d'   = the resampled s1d_v products
-        "directory": "data/tfiles",
+        # The input ROOT, and not the folder of spectra: one run reads
+        # <directory>/<object>/, so the same config serves every target on the
+        # disk and a run needs nothing but a name. See spectra_dir().
+        "directory": "data",
         "pattern": "*t.fits",
         "max_files": None,           # None = all; small int for quick tests
         "object": None,              # keep only this OBJECT (None = no filter)
@@ -50,7 +54,14 @@ DEFAULTS = {
                                      # 'native' = recycle the grid stored in the
                                      #            first s1d_v file
         "wave0": 965.0,              # nm, anchor of the magic grid
-        "dv": 0.5,                   # km/s per pixel (500 m/s)
+        # Where dv comes from. False: the number below. True: the finest pixel
+        # step in the first spectrum, times SMART_DV_FRACTION, and THE NUMBER
+        # BELOW IS NOT READ AT ALL. A float here is that fraction. The measured
+        # step is kept as domain.pixel_dv for the record.
+        "smart_dv": False,
+        # km/s per pixel (500 m/s). Read only when smart_dv is false, and may
+        # be null when it is true, since nothing would look at it.
+        "dv": 0.5,
         # Nominal photometric bands (MKO half-power points, nm). The PCA is
         # fitted on these and only these; see pca.fit_bands.
         "bands": {
@@ -130,12 +141,17 @@ DEFAULTS = {
         "min_good_fraction": 0.2,    # drop grid columns with fewer good spectra
     },
     "output": {
-        # storage dtype of the cached cube. Lives here and not under the fit:
-        # it is a property of the cube, and float64 doubles the memory for
-        # nothing the fit can use.
-        "cube_dtype": "float32",
+        # The cube's storage dtype is NOT here: it is cube.CUBE_DTYPE, hard
+        # float32, for the reasons written beside it.
+        # The output ROOT: every product of a run lands in
+        # <directory>/<object>/<M>-<N>/, corrected spectra included, so that
+        # nothing is ever written beside the input files.
         "directory": "outputs",
         "tag": "run",
+        # Rebuildable intermediates, deliberately NOT under the output root:
+        # a cube costs twenty minutes and does not depend on where the products
+        # of a run are asked to go, so pointing --out-dir somewhere new must
+        # not orphan it.
         "cache_directory": "cache",
         "use_cache": True,
         "max_memory_gb": 12.0,       # refuse to allocate a cube larger than this
@@ -206,6 +222,163 @@ def _deep_update(base: dict, new: dict) -> dict:
     return out
 
 
+# What `domain.smart_dv: true` means: sample the finest pixel on the detector
+# at this fraction of its own step. Below 1 the grid is finer than the data,
+# which is the only thing resampling has to guarantee.
+SMART_DV_FRACTION = 0.7
+
+
+def measure_pixel_dv(directory: str, pattern: str = "*t.fits") -> float:
+    """The smallest step between adjacent pixels, in km/s, from the first file.
+
+    Read from the wavelength EXTENSION, order by order, and never from header
+    polynomials. The minimum is taken over every order, since it is the finest
+    pixel anywhere in the domain that decides how finely the common grid has to
+    be sampled for no part of the spectrum to be smoothed by the resampling.
+
+    One file, the first that opens, and not a median over many: the answer has
+    to be a pure function of the configuration and the data, because it becomes
+    `domain.dv` and `domain.dv` is hashed into the cube cache key.
+    """
+    import glob
+
+    import numpy as np
+
+    from .io import robust_open
+    from .tfits import C_KMS, extensions_for
+
+    paths = sorted(glob.glob(os.path.join(directory, pattern)))
+    if not paths:
+        raise SystemExit("no file matching %s in %s" % (pattern, directory))
+    for path in paths[:20]:
+        try:
+            with robust_open(path) as hdulist:
+                _, e_wave, _, _ = extensions_for(hdulist)
+                wave = np.asarray(hdulist[e_wave].data, dtype=np.float64)
+        except Exception:                                     # noqa: BLE001
+            continue
+        wave = np.atleast_2d(wave)
+        step = np.diff(wave, axis=-1) / wave[:, :-1] * C_KMS
+        # a NaN, a repeated wavelength or a decreasing one is not a pixel step
+        step = step[np.isfinite(step) & (step > 0)]
+        if step.size:
+            finest, typical = float(step.min()), float(np.median(step))
+            if finest < 0.5 * typical:
+                from .logger import log
+                log("the finest pixel step in %s is %.4f km/s against a median"
+                    " of %.4f: that looks like a glitch in the wavelength"
+                    " solution rather than a pixel, and it is about to set the"
+                    " grid for the whole run"
+                    % (os.path.basename(path), finest, typical), "warn")
+            return finest
+    raise SystemExit("none of the first files in %s carries a usable wavelength"
+                     " grid, so domain.smart_dv has nothing to measure"
+                     % directory)
+
+
+def smart_dv_from_step(step: float, value=True) -> float:
+    """The grid step for a measured pixel step: a fraction of it, rounded down.
+
+    Down to the nearest 10 m/s, and down rather than to the nearest so that the
+    grid stays at or below the requested fraction of a pixel. Rounding at all
+    is what keeps a wavelength solution that moved by a hair between two
+    reductions from re-keying the cube and orphaning twenty minutes of work.
+    """
+    fraction = SMART_DV_FRACTION if value is True else float(value)
+    if not 0 < fraction < 1:
+        raise ValueError("domain.smart_dv must be true or a fraction in (0, 1),"
+                         " got %r" % (value,))
+    dv = math.floor(fraction * float(step) * 100.0) / 100.0
+    if dv <= 0:
+        raise ValueError("smart dv resolves to %g km/s from a pixel step of %g:"
+                         " below 10 m/s there is nothing left to round to"
+                         % (dv, step))
+    return dv
+
+
+def resolve_smart_dv(cfg: dict) -> dict:
+    """`domain.dv` measured from the data instead of chosen.
+
+    A magic grid is uniform in velocity and a spectrograph is not, so one dv
+    has to serve the finest pixel in the domain; anything below that is paid
+    for on every sample of every exposure and buys nothing. On SPIRou the step
+    is around 2.27 km/s, which a fixed dv of 0.5 oversamples more than fourfold
+    in every array the run allocates and every sweep the fit makes over them.
+
+    `domain.dv` in the config is then DEAD: it is overwritten here, not
+    combined with anything, and the run says so out loud rather than leaving a
+    number in the file to be believed. It may also simply be null.
+
+    Resolved here, at load, and written into `domain.dv` as a plain number, so
+    that the cube cache key hashes the step that was actually used and the
+    saved config says what it was. `smart_dv` may also be a number, the
+    fraction to use in place of the default 0.7.
+    """
+    from .logger import log
+
+    value = cfg["domain"].get("smart_dv")
+    if not value:
+        return cfg
+    if cfg["domain"].get("grid_source", "magic") == "native":
+        log("domain.smart_dv is ignored with grid_source 'native': the grid"
+            " comes from the file and brings its own step", "warn")
+        return cfg
+    step = measure_pixel_dv(spectra_dir(cfg),
+                            cfg["input"].get("pattern", "*t.fits"))
+    dv = smart_dv_from_step(step, value)
+    fraction = SMART_DV_FRACTION if value is True else float(value)
+    was = cfg["domain"].get("dv")
+    log("smart dv: finest pixel is %.4f km/s, so dv = %.2f km/s, %.0f%% of it"
+        % (step, dv, 100 * fraction), "value")
+    if isinstance(was, (int, float)):
+        log("domain.dv: the %.2f km/s in the config is NOT used, smart_dv"
+            " measured the step above instead" % float(was), "warn")
+    cfg["domain"]["dv"] = float(dv)
+    cfg["domain"]["pixel_dv"] = float(step)
+
+    # Every window below is counted in SAMPLES, so a coarser grid widens all of
+    # them in velocity without a line of the config changing. Said out loud
+    # rather than rescaled: what these should cover is a modelling decision,
+    # and one this function has no business making on its own.
+    for key, section in (("window", "highpass"),
+                         ("empirical_noise_box", "weights")):
+        n = cfg[section].get(key)
+        if n:
+            log("  %s.%s is %d samples, so %.0f km/s at this step"
+                % (section, key, n, n * dv), "warn")
+    return cfg
+
+
+def spectra_dir(config: dict) -> str:
+    """The folder holding one object's spectra: input.directory/input.object.
+
+    Resolved on every call rather than stored back into `input.directory`.
+    Storing it would give that one key two meanings, the root in a config a
+    person writes and the object's folder in a config a run saved, and loading
+    a saved config would then append the object a second time.
+    """
+    inp = config.get("input") or {}
+    root = inp.get("directory") or "data"
+    obj = inp.get("object")
+    if not obj:
+        return root
+    # a config written before the root/object split already ends in the object
+    if os.path.basename(os.path.normpath(root)) == str(obj):
+        return root
+    return os.path.join(root, str(obj))
+
+
+def _apply_run_overrides(cfg: dict, object_name, data_dir, out_dir) -> dict:
+    """What the command line said, on top of whichever layer merged last."""
+    if object_name:
+        cfg["input"]["object"] = object_name
+    if data_dir:
+        cfg["input"]["directory"] = data_dir
+    if out_dir:
+        cfg["output"]["directory"] = out_dir
+    return cfg
+
+
 def detect_instrument(directory: str, pattern: str = "*t.fits") -> str:
     """Read INSTRUME from the first file that opens, and refuse to guess.
 
@@ -235,7 +408,8 @@ def detect_instrument(directory: str, pattern: str = "*t.fits") -> str:
 
 
 def load_config(path: str | None, object_name: str | None = None,
-                data_dir: str = "data", instrument: str | None = None) -> dict:
+                data_dir: str | None = None, out_dir: str | None = None,
+                instrument: str | None = None) -> dict:
     """The three layers of config.yaml, merged, with the instrument resolved.
 
     `general`, then `instruments.<INSTRUME>`, then `objects.<object_name>`,
@@ -260,9 +434,7 @@ def load_config(path: str | None, object_name: str | None = None,
         cfg = _deep_update(cfg, {k: v for k, v in user.items()
                                  if k not in ("general", "instruments", "objects")})
 
-    if object_name:
-        cfg["input"]["object"] = object_name
-        cfg["input"]["directory"] = os.path.join(data_dir, object_name)
+    cfg = _apply_run_overrides(cfg, object_name, data_dir, out_dir)
 
     table = (user.get("instruments") or {}) if layered else {}
     if table:
@@ -270,10 +442,21 @@ def load_config(path: str | None, object_name: str | None = None,
         _tfits.register_instruments(
             {name: dict(block.get("extensions") or {})
              for name, block in table.items() if block.get("extensions")})
+    # Everything below this point reads a spectrum, so say plainly here what a
+    # missing folder means rather than letting a glob come back empty inside
+    # the instrument detection or the dv measurement.
+    if object_name and (table or cfg["domain"].get("smart_dv")):
+        directory = spectra_dir(cfg)
+        if not os.path.isdir(directory):
+            raise SystemExit(
+                "no directory %s. The object names a folder under the input"
+                " root, which is input.directory (%s) unless --data-dir"
+                " overrides it." % (directory, cfg["input"]["directory"]))
+
     # only look at the data when an object was named: loading the file to read
     # it, which the tests and the docs do, must not need a telescope
     if instrument is None and table and object_name:
-        instrument = detect_instrument(cfg["input"]["directory"],
+        instrument = detect_instrument(spectra_dir(cfg),
                                        cfg["input"].get("pattern", "*t.fits"))
     if instrument:
         block = dict(table.get(instrument.upper()) or {})
@@ -288,8 +471,24 @@ def load_config(path: str | None, object_name: str | None = None,
 
     if object_name and layered:
         cfg = _deep_update(cfg, (user.get("objects") or {}).get(object_name, {}))
-        cfg["input"]["object"] = object_name
-        cfg["input"]["directory"] = os.path.join(data_dir, object_name)
+    # last word to the command line: an object block may move the roots, a flag
+    # passed to this run overrules it
+    cfg = _apply_run_overrides(cfg, object_name, data_dir, out_dir)
+
+    # dv from the data, once the instrument's domain and the object's folder
+    # are both known. Only when an object was named, for the same reason the
+    # instrument is only detected then: loading the file to read it must not
+    # need the data to be on this disk. A run saves the resolved number, so
+    # every stage after this one reads a plain dv.
+    if object_name and cfg["domain"].get("smart_dv"):
+        cfg = resolve_smart_dv(cfg)
+
+    # A knob that used to exist. Removing it silently would mean a config
+    # asking for float64 got float32 and no word about it.
+    if cfg["output"].pop("cube_dtype", None) is not None:
+        from .logger import log
+        log("output.cube_dtype is no longer a setting and was dropped from this"
+            " configuration: the cube is float32, in cube.CUBE_DTYPE", "warn")
 
     # max_sigma is the correct name for the cut; max_mad is what it was called
     # first. Both drive the same key so a config written either way behaves
