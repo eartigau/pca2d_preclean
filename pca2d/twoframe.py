@@ -29,6 +29,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from .logger import log
+from .progress import bar as _bar
 import numpy as np
 from astropy.io import fits
 from astropy.table import Table
@@ -1644,6 +1645,11 @@ def main(argv=None):
     rng = np.random.default_rng(0)
     P = np.linalg.qr(rng.normal(size=(n_pixels, args.n_star)))[0].T.copy()
     Q = np.linalg.qr(rng.normal(size=(n_pixels, args.n_earth)))[0].T.copy()
+    log("starting from a random orthonormal basis, seed fixed so a rerun on the"
+        " same cube reproduces it")
+    log("each sweep solves the coefficients of both blocks jointly, then"
+        " updates each basis; on %d rows x %d samples that is minutes, and one"
+        " line is printed at the end of each" % (n_spectra, n_pixels))
 
     # This alternation is NOT guaranteed to decrease chi2, and on this dataset it
     # does not: it peaks around iteration 6 and then degrades while the condition
@@ -1658,7 +1664,13 @@ def main(argv=None):
         worse = 0
         hit = 0.0
         a_prev = b_prev = None      # carried between iterations, see the clip step
+        # A sweep on a few hundred exposures takes minutes and used to print
+        # nothing until it finished. Each phase now says it has started, so a
+        # slow sweep and a wedged one no longer look the same.
+        sweeps = _bar(total=args.iters, desc="fitting", unit="sweep")
         for iteration in range(args.iters):
+            if hasattr(sweeps, "set_postfix_str"):
+                sweeps.set_postfix_str("re-weighting")
             # Re-weight before fitting, using the model as it stands. Iteration 0 has
             # no model yet, so the residual is the data itself, which is the right
             # thing: it catches cosmics and flares against the template before the
@@ -1684,10 +1696,14 @@ def main(argv=None):
             # basis and the fixed Earth basis, and it is exactly what lets the
             # fit attribute a feature to one frame rather than the other. Solve
             # the blocks separately and each one claims whatever it can reach.
+            if hasattr(sweeps, "set_postfix_str"):
+                sweeps.set_postfix_str("coefficients")
             tick = time.time()
             a, b, cond = joint_coeffs(data, w, P, Q, shifter, delta, chunk=chunk,
                                  exposure=tie)
             t_coeff = time.time() - tick
+            if hasattr(sweeps, "set_postfix_str"):
+                sweeps.set_postfix_str("bases")
 
             # ---- M-step: one basis, then re-solve, then the other -----------
             # The re-solve in the middle is not optional. update_earth needs the
@@ -1728,9 +1744,13 @@ def main(argv=None):
                   "  cond(A) med/max %.1f/%.1f  [%.1fs coeff, %.1fs bases]%s"
                   % (iteration, 1 - chi2 / chi2_null, chi2 / chi2_raw, 100 * hit,
                      np.median(cond), cond.max(), t_coeff, t_basis, flag))
+            if hasattr(sweeps, "update"):
+                sweeps.update(1)
             if worse >= 2:
                 log("  chi2 has turned over; stopping and keeping iteration %d" % best[3])
                 break
+        if hasattr(sweeps, "close"):
+            sweeps.close()
 
         chi2, P, Q, best_iter = best
         log("  best iterate: %d, R2 = %.6f, %.4f of the raw weighted variance"

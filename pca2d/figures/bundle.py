@@ -100,9 +100,18 @@ def object_name(config, args):
     named = config["input"].get("object")
     if named:
         return str(named)
+    # outputs/<object>/<tag> is where this is being written, so the parent of
+    # the output directory names the object. Tried before the config file's
+    # stem, which is "config" whenever the generic config.yaml is used
+    # directly, and before the source directory's basename, which is "tfiles"
+    # for every target.
+    parent = os.path.basename(os.path.dirname(os.path.normpath(args.outdir)))
+    if parent and parent not in ("", ".", "outputs"):
+        return parent
     stem = os.path.splitext(os.path.basename(args.config))[0]
-    return stem or os.path.basename(os.path.normpath(
-        config["input"]["directory"]))
+    if stem and stem != "config":
+        return stem
+    return os.path.basename(os.path.normpath(config["input"]["directory"]))
 
 
 def summary(config, args, fit):
