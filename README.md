@@ -31,6 +31,14 @@ detector. Both are solved for together, by block coordinate descent, under
 weights that come from the noise you can measure rather than the noise a photon
 model claims.
 
+That last part is not fastidiousness. Past about 2200 nm on SPIRou the thermal
+background dominates the detector, the pipeline subtracts it, and its shot
+noise stays behind in the data. A photon sigma computed from the flux that is
+left describes a spectrum nobody recorded, and it declares the noisiest part of
+the array the quietest, by a factor of fifty. The sample-to-sample scatter is
+measured from what is actually there and cannot make that mistake, so the
+weights use whichever of the two is larger.
+
 Nothing is subtracted before the fit except one instrumental offset. There is
 no median template and no mean spectrum taken out in front, because whatever
 comes out before the fit is outside the model, and the correction removes

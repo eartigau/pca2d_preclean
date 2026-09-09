@@ -57,9 +57,15 @@
         barycentric velocity, <code>P</code> is the basis that follows the star
         and <code>Q</code> the one that stays put on the detector. Both are
         solved for together, under weights taken from the noise you can
-        <em>measure</em> rather than the noise a photon model claims: on the red
-        end of a SPIRou spectrum those two disagree by a factor of fifty, and
-        the photon model calls the noisiest region the quietest.
+        <em>measure</em> rather than the noise a photon model claims. The two
+        disagree by a factor of fifty at the red end of a SPIRou spectrum, and
+        for a reason worth stating: past about 2200&nbsp;nm the thermal
+        background dominates, the pipeline subtracts it, and its shot noise
+        does not go with it. A photon model computed from what is left is
+        describing a spectrum that was never recorded, and it reports the
+        noisiest part of the detector as the quietest. Measuring the
+        sample-to-sample scatter instead costs nothing and cannot make that
+        mistake.
       </p>
       <p>
         Nothing is taken out before the fit except one instrumental offset. No

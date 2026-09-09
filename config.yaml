@@ -79,9 +79,17 @@ general:
     telluric_min_transmission: null
     empirical_noise_box: 201  # samples. Measures the noise from the
                               # sample-to-sample scatter and keeps the LARGER of
-                              # that and the photon estimate. Without it the
-                              # photon model calls the noisiest part of a SPIRou
-                              # spectrum its quietest, by a factor of fifty.
+                              # that and the photon estimate.
+                              #
+                              # Not a refinement. Past about 2200 nm on SPIRou
+                              # the THERMAL background dominates, the pipeline
+                              # subtracts it, and its shot noise stays behind.
+                              # A photon sigma computed from what is left
+                              # describes a spectrum that was never recorded,
+                              # and it calls the noisiest part of the detector
+                              # the quietest, by a factor of fifty. The
+                              # sample-to-sample scatter cannot make that
+                              # mistake: it measures what is there.
     min_good_fraction: 0.2
 
   twoframe:
