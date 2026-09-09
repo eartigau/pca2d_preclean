@@ -357,8 +357,6 @@ def _build_tfits(config: dict, files: list[str], grid: np.ndarray):
 
     for i, (path, label) in enumerate(_bar(zip(files, labels), total=len(files),
                                           desc="reading spectra", unit="file")):
-        if i % 50 == 0:
-            log("reading exposure %d / %d" % (i, len(files)))
         try:
             payload = sptf.read_tfits(path)
         except Exception as exc:                        # noqa: BLE001
@@ -466,8 +464,6 @@ def _build_s1d(config: dict, files: list[str], grid: np.ndarray):
 
     for i, (path, label) in enumerate(_bar(zip(files, labels), total=len(files),
                                           desc="reading spectra", unit="file")):
-        if i % 50 == 0:
-            log("reading spectrum %d / %d" % (i, len(files)))
         try:
             wave, flux, s1d_w, meta = spio.read_spectrum(
                 path, dom["wave_min"], dom["wave_max"], pad_kms=pad,
