@@ -176,14 +176,11 @@ def main(argv=None):
     # ---- the figures ---------------------------------------------------
     py = sys.executable
     d = lambda name: os.path.join(HERE, name)                 # noqa: E731
-    os.makedirs(os.path.join(tmp, "stacks"), exist_ok=True)
     print("  building the figures")
     run([py, d("sequence.py"), "--cube", args.cube, "--fit", fit_path,
          "--windows", *args.windows, "--source-dir",
          args.source_dir or config["input"]["directory"],
          "--out", os.path.join(tmp, "sequence.pdf")], failures)
-    run([py, d("star_frame_stack.py"), "--cube", args.cube, "--fit", fit_path,
-         "--windows", *args.windows, "--out", os.path.join(tmp, "stacks")], failures)
     run([py, d("sample_before_after.py"), "--cube", args.cube, "--fit", fit_path,
          "--windows", *args.windows, "--out",
          os.path.join(tmp, "before_after.pdf")], failures)
@@ -226,7 +223,9 @@ def main(argv=None):
     # other figure is a detail of
     order.append(("The sequence, step by step", os.path.join(tmp, "sequence.pdf")))
     order.append(("Variance", os.path.join(args.outdir, "variance.pdf")))
-    order.append(("Components", os.path.join(args.outdir, "components.pdf")))
+    # not the basis vectors: nine curves over half a million samples is a page
+    # nobody can read, and what each component DOES is on the two pages that
+    # follow, the coefficients against time and against everything measurable
     order.append(("Coefficients against time",
                   os.path.join(args.outdir, "coefficients_vs_time.pdf")))
     order.append(("Correlations", os.path.join(args.outdir, "correlations.pdf")))
@@ -235,12 +234,6 @@ def main(argv=None):
     order.append(("OH residual", os.path.join(tmp, "oh.pdf")))
     order.append(("One exposure, before and after",
                   os.path.join(tmp, "before_after.pdf")))
-    for spec in args.windows:
-        c, _, w = spec.partition(":")
-        c, w = float(c), float(w or 2.0)
-        name = "%.0f-%.0fnm" % (c - 0.5 * w, c + 0.5 * w)
-        order.append(("Stack %s" % name,
-                      os.path.join(tmp, "stacks", "stack_%s.pdf" % name)))
     order.extend(per_window)
 
     writer = PdfWriter()
@@ -273,6 +266,25 @@ def main(argv=None):
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
     with open(out, "wb") as fh:
         writer.write(fh)
+
+    # A run leaves ONE document. The figures the fit itself wrote into the
+    # output directory are now pages of it, and leaving them beside it is how
+    # a directory fills with forty files that disagree about which run they
+    # came from. The CSVs stay: they are data, not pages.
+    if not args.keep:
+        removed = 0
+        for _title, path in order:
+            if (path.startswith(os.path.abspath(args.outdir))
+                    or os.path.dirname(os.path.abspath(path))
+                    == os.path.abspath(args.outdir)) and path != out:
+                try:
+                    os.remove(path)
+                    removed += 1
+                except OSError:
+                    pass
+        if removed:
+            print("  folded %d loose figures into the bundle and removed them"
+                  % removed)
     if args.keep:
         keep = os.path.join(args.outdir, "figures")
         shutil.rmtree(keep, ignore_errors=True)

@@ -9,14 +9,12 @@ pipeline applies it, on the same rows and the same wavelength axis, so that
 what each stage removed is the difference between two panels the eye can put
 side by side.
 
-    1  the flux as delivered, each row over its own median
-    2  its log minus a Savitzky-Golay of its log, and nothing else
-    3  minus the even/odd instrumental offset: what the fit is given
-    4  the reconstruction, M star + N observer components
-    5  minus the OBSERVER block: what a corrected file holds
-    6  minus everything: what nobody explained
+    1  the high pass: ln(f) minus a Savitzky-Golay of ln(f), and nothing else
+    2  the reconstruction, M star + N observer components
+    3  minus the OBSERVER block: what a corrected file holds
+    4  minus everything: what nobody explained
 
-Panel 5 is the product. The correction removes the observer block and nothing
+Panel 3 is the product. The correction removes the observer block and nothing
 else, because with no stellar template the first star component IS the star and
 dividing it out would flatten the spectrum LBL is about to measure.
 
@@ -102,17 +100,19 @@ def main(argv=None):
     star = star_model(fit["P"], fit["a"], shifter, delta, n, m)
     earth = fit["b"] @ fit["Q"]
 
+    # The flux as delivered and the fit's own input are both gone from the
+    # page. The first answered a question once, that the log of it lands on the
+    # panel below and the filter eats nothing; the second differs from that
+    # panel by an instrumental offset the eye cannot see.
     steps = [
-        ("highpass", data,
-         "2. its log minus a Savitzky-Golay of its log, and nothing else"),
         ("given", data - offset,
-         "3. minus the even/odd instrumental offset: what the fit is given"),
+         "1. the high pass: $\\ln(f)$ minus a Savitzky-Golay of $\\ln(f)$"),
         ("model", star + earth,
-         "4. the reconstruction, %d star + %d observer" % (n_star, n_earth)),
+         "2. the reconstruction, %d star + %d observer" % (n_star, n_earth)),
         ("corrected", data - offset - earth,
-         "5. minus the OBSERVER block: what a corrected file holds"),
+         "3. minus the OBSERVER block: what a corrected file holds"),
         ("resid", data - offset - star - earth,
-         "6. minus everything: what nobody explained"),
+         "4. minus everything: what nobody explained"),
     ]
 
     home = {}
@@ -156,14 +156,14 @@ def main(argv=None):
             keep = cover > 0.5 * max(cover.max(), 1e-9)
             own, off, ncov = (window_parity(centre, sample_path) if sample_path
                               else (None, float("nan"), 0))
-            chosen = ""
+            # Where two orders reach this window, keep the one whose middle it
+            # sits nearest: the other measures the same wavelengths at an order
+            # edge, where the blaze has fallen away. Done silently. It is not a
+            # caveat, it is simply the right order to draw.
             if own is not None and ncov > 1 and (keep & (parity == own)).sum() >= 6:
-                dropped = int((keep & (parity != own)).sum())
                 keep &= parity == own
-                chosen = ("two orders reach this window; the %d rows of the"
-                          "\\nother parity are dropped, this one sits %.2f of a"
-                          "\\nhalf-width from the centre of its order"
-                          % (dropped, off))
+                print("  %.1f-%.1f nm: two orders reach it, drawing the one"
+                      " %.2f of a half-width from its centre" % (lo, hi, off))
             rows = np.where(keep)[0][np.argsort(berv[keep])]
             if rows.size < 6:
                 print("  %.1f-%.1f nm: too few rows, skipped" % (lo, hi))
@@ -173,58 +173,23 @@ def main(argv=None):
             finite = block["given"][np.isfinite(block["given"])]
             scale = float(np.percentile(np.abs(finite), 98)) if finite.size else 1.0
 
-            # step 1, the flux itself
-            raw_img = None
-            if centre in blocks:
-                a0, b0 = blocks[centre]
-                blk = raw[:, np.searchsorted(cols, np.arange(a0, b0))]
-                ok = np.isfinite(blk)
-                sub = LanczosShifter(blk.shape[1], a=8, max_shift=margin)
-                # fill the gaps with each row's own median ln flux, never with
-                # zero: zero is a flux of 1 where the real one is 0.02, and the
-                # Lanczos kernel spreads that over sixteen samples either side
-                star_blk = sub.rows(_filled(blk, ok), -delta)
-                star_blk[~live_mask(sub.rows(ok.astype(float), -delta))] = np.nan
-                raw_img = np.exp(star_blk[np.ix_(rows, jw - a0)])
-                with np.errstate(invalid="ignore"):
-                    raw_img /= np.nanmedian(raw_img, axis=1)[:, None]
-
-            n_img = len(steps) + (raw_img is not None)
+            n_img = len(steps)
             fig, axes = plt.subplots(n_img + 1, 1,
                                      figsize=(9.4, 1.85 * n_img + 3.0),
                                      sharex=True,
                                      gridspec_kw={"height_ratios":
                                                   [1.0] * n_img + [1.7]})
-            first = 0
-            if raw_img is not None:
-                good = raw_img[np.isfinite(raw_img)]
-                span = (float(np.percentile(np.abs(good - 1.0), 98))
-                        if good.size else 0.5)
-                im_raw = axes[0].imshow(
-                    raw_img, aspect="auto", cmap=nan_cmap("RdBu_r"),
-                    vmin=1.0 - span, vmax=1.0 + span, origin="upper",
-                    extent=[x[0], x[-1], raw_img.shape[0] - 0.5, -0.5])
-                axes[0].set_title("1. the flux as delivered, each row over its"
-                                  " own median", fontsize=8.5)
-                axes[0].set_ylabel("ordered by BERV", fontsize=8)
-                axes[0].tick_params(labelsize=7)
-                first = 1
             for r, (name, _, title) in enumerate(steps):
-                extra = ("" if name in ("highpass", "given", "model")
+                extra = ("" if name in ("given", "model")
                          else "   scatter %.4f" % np.nanstd(block[name]))
-                im = panel(axes[first + r], block[name], x, scale, title + extra)
-            if chosen:
-                axes[first].text(0.988, 0.94, chosen.replace("\\n", "\n"),
-                                 fontsize=6.0, color="0.25", ha="right",
-                                 va="top", transform=axes[first].transAxes,
-                                 bbox=dict(fc="white", ec="0.85", lw=0.5, pad=2))
+                im = panel(axes[r], block[name], x, scale, title + extra)
 
             # the same rows in flux, before and after
             ax = axes[-1]
             pick = min(args.n_overplot, rows.size)
             spread = rows[np.linspace(0, rows.size - 1, pick).astype(int)]
             drawn = 0
-            if raw_img is not None:
+            if centre in blocks:
                 a0, b0 = blocks[centre]
                 sub = LanczosShifter(b0 - a0, a=8, max_shift=margin)
                 for cube_row in spread:
@@ -261,7 +226,11 @@ def main(argv=None):
                         ha="center", va="center", fontsize=8,
                         transform=ax.transAxes)
             axes[-1].set_xlabel("wavelength (nm), star frame", fontsize=9)
-            fig.colorbar(im, ax=list(axes[first:-1]), fraction=0.022, pad=0.015,
+            # attached to EVERY axes, the trace panel included. A colourbar
+            # steals width from the axes it is given, so leaving one out makes
+            # it wider than the rest and the wavelength axes stop lining up
+            # down the page, which is the whole point of the figure.
+            fig.colorbar(im, ax=list(axes), fraction=0.022, pad=0.015,
                          label=r"$\ln(f/\mathrm{savgol}\,f)$")
             fig.suptitle("%.2f-%.2f nm: every step, in order, in the STAR'S REST"
                          " FRAME\nvertical structure belongs to the star;"

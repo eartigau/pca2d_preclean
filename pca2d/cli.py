@@ -120,10 +120,17 @@ def run_cube(plan):
     from .build import main as build_main
 
     if os.path.isdir(plan["cube"]) and plan["config"]["output"]["use_cache"]:
-        log("cube already built for this configuration, reusing it", "warn")
+        log("a cube for this exact configuration is already on disk, reusing"
+            " it: %s" % plan["cube"], "warn")
+        log("--rebuild-cube forces it to be built again", "warn")
         return
+    cfg = plan["config"]
+    log("building the cube: %d spectra onto %.0f-%.0f nm at %.2f km/s"
+        % (len(plan["files"]), cfg["domain"]["wave_min"],
+           cfg["domain"]["wave_max"], cfg["domain"]["dv"]), "info")
+    log("this reads every file once and takes a few minutes", "info")
     argv = [plan["written_config"]]
-    if not plan["config"]["output"]["use_cache"]:
+    if not cfg["output"]["use_cache"]:
         argv.append("--no-cache")
     build_main(argv)
 
@@ -131,6 +138,13 @@ def run_cube(plan):
 def run_fit(plan):
     from .twoframe import main as fit_main
 
+    cfg = plan["config"]
+    log("fitting %d star and %d observer components by block coordinate"
+        " descent, at most %d sweeps"
+        % (cfg["twoframe"]["n_star"], cfg["twoframe"]["n_earth"],
+           cfg["twoframe"]["iters"]), "info")
+    log("this is the long one: it prints an R2 after every sweep, and stops"
+        " when chi2 has clearly turned over", "info")
     fit_main(["--config", plan["written_config"], "--cube", plan["cube"],
               "--outdir", plan["outdir"]])
 
@@ -138,6 +152,9 @@ def run_fit(plan):
 def run_figures(plan):
     from .figures.bundle import main as bundle_main
 
+    log("drawing %d windows and binding everything into one PDF"
+        % len(plan["config"]["output"]["windows"]), "info")
+    log("each figure script reads the cube once; expect a few minutes", "info")
     bundle_main(["--config", plan["written_config"], "--cube", plan["cube"],
                  "--outdir", plan["outdir"],
                  "--windows", *[str(w) for w in
@@ -152,9 +169,11 @@ def run_correct(plan):
     n_earth = cfg["correct"]["n_earth"]
     if n_earth is None:
         n_earth = cfg["twoframe"]["n_earth"]
+    log("writing %d corrected spectra to %s"
+        % (len(plan["files"]), plan["corrdir"]), "info")
     if n_star == 0:
-        log("dividing out the observer block only: with no template the first"
-            " star component IS the star", "info")
+        log("dividing out the observer block only, %d components: with no"
+            " template the first star component IS the star" % n_earth, "info")
     apply_main([
         "--correct", "--all",
         "--fits", os.path.join(plan["outdir"], "twoframe_components.fits"),
@@ -200,6 +219,11 @@ def main(argv=None):
 
     runners = {"cube": run_cube, "fit": run_fit, "figures": run_figures,
                "correct": run_correct}
+    log("%d stages to run: %s" % (len([s for s in STAGES if s in wanted]),
+                                  ", ".join(s for s in STAGES if s in wanted)),
+        "info")
+    log("on a few hundred exposures the whole thing takes tens of minutes,"
+        " most of it in the fit", "info")
     for name in STAGES:
         if name not in wanted:
             log("stage %s: skipped" % name, "warn")
