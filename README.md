@@ -76,7 +76,7 @@ the GUI toolkits would be installed to be never loaded.
 bounds, for anyone installing it on its own.
 
 After that, `pca2d-preclean`, `lbl_find`, `lbl_setup`, `lbl_demo` and
-`lbl_reset` are all on the path, and `./check.sh` is 69 tests in under a
+`lbl_reset` are all on the path, and `./check.sh` is 83 tests in under a
 second.
 
 ## Running it
@@ -117,6 +117,7 @@ runs four stages, each announcing how long it took:
 | `fit` | the two bases and their coefficients, in `outputs/<object>/<M>-<N>/` |
 | `figures` | **one** multipage PDF: the resolved parameters, then every plot |
 | `correct` | the observer block divided out, as t.fits, in `outputs/<object>/<M>-<N>/corrected/` |
+| `lbl` | both sets of spectra set up for LBL, delivered and corrected, and the two files that run it |
 
 Both roots live in `config.yaml`, since a run is a config and an object and
 nothing else. `--data-dir` and `--out-dir` override them for one run, which is
@@ -127,6 +128,41 @@ products go does not orphan a cube that took twenty minutes.
 Useful flags: `--dry-run` resolves everything and touches nothing, `--stages
 cube,fit` runs part of it, `--n-star`/`--n-earth` override the component
 counts, `--rebuild-cube` ignores the cache.
+
+## Measuring it
+
+Correcting a spectrum is worth what the velocity is worth, and the only honest
+way to know whether it helped is to measure both. So the `lbl` stage never sets
+LBL up on the corrected files alone: it puts **two objects** side by side in one
+LBL tree, from the same instrument profile, each building its own template.
+
+```
+lbl/science/TOI-2120/               -> symlinks to the spectra as delivered
+lbl/science/TOI-2120_PCA2D_2-7/     -> symlinks to what this run corrected
+```
+
+Symlinks, not copies: the spectra already exist twice and a third copy buys
+nothing. The name carries the component counts because LBL globs a science
+folder, so a 2-7 and a 3-5 correction landing in one folder would be measured
+as a single series with nothing said about it.
+
+Beside the run's other outputs it leaves the two files LBL needs, and they are
+both meant to be read and edited:
+
+| file | what it is |
+| --- | --- |
+| `lbl_config.yaml` | LBL's configuration in LBL's own keys, which `lbl_compute --config` reads. Every key is one LBL knows; it refuses any other, which is a good reason to have it written rather than typed |
+| `run_lbl.py` | an ordinary LBL wrap script, with both objects in the `rparams` dict LBL users already know |
+
+Running LBL is hours, so the stage prepares and stops there, and says what to
+run. `lbl.run: true` in the config, or `--run-lbl`, has it run instead.
+
+Which LBL instrument a spectrograph is comes from its block in `config.yaml`,
+not from the header: LBL calls NIRPS `NIRPS_HA` or `NIRPS_HE` by the mode it
+was observed in, and picking the wrong one raises no error, it returns
+velocities from another instrument's profile. `lbl.teff` is worth filling in,
+since LBL chooses the stellar model its mask comes from by effective
+temperature.
 
 ## Configuring it
 
@@ -188,13 +224,14 @@ large. It is the one thing taken out before the fit.
 ./check.sh
 ```
 
-69 tests, under a second, no file and no network access. They pin the things
+83 tests, under a second, no file and no network access. They pin the things
 that have gone wrong here: the adjoint identity the block solve depends on, the
 parity tie producing bit-identical coefficients, the rejection threshold being
 in robust sigmas rather than MADs, the isolated-sample rule, the memory
 decision behind nightly coadding, the object name being joined to the input
-root exactly once, and that neither command-line tool returns a value to
-`sys.exit`.
+root exactly once, that the corrected object carries the component counts
+that made it so two runs cannot be measured as one, and that neither
+command-line tool returns a value to `sys.exit`.
 
 ## Access
 

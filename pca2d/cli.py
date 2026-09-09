@@ -18,6 +18,8 @@ Four stages, in order, each skippable and each announcing how long it took:
     fit       the two-frame decomposition, star frame and observer frame
     figures   one multipage PDF, parameters first, then every plot
     correct   the observer block divided out, written as t.fits
+    lbl       both sets of spectra handed to LBL, delivered and corrected, as
+              two objects in one tree. Prepared by default and run when asked.
 
 Nothing is silent. A run takes tens of minutes and the difference between a
 working one and a wedged one has to be visible from across the room.
@@ -35,7 +37,7 @@ from .config import cache_key, load_config, spectra_dir
 from .logger import log
 from .progress import human, stage
 
-STAGES = ("cube", "fit", "figures", "correct")
+STAGES = ("cube", "fit", "figures", "correct", "lbl")
 
 
 def parse_args(argv=None):
@@ -68,6 +70,9 @@ def parse_args(argv=None):
                    help="centre:width in nm; default is the list in the config")
     p.add_argument("--rebuild-cube", action="store_true",
                    help="ignore any cached cube for this configuration")
+    p.add_argument("--run-lbl", action="store_true",
+                   help="have the lbl stage run LBL, not only prepare it."
+                        " Hours. Same as lbl.run: true in the config")
     p.add_argument("--dry-run", action="store_true",
                    help="resolve everything, print the plan, touch nothing")
     return p.parse_args(argv)
@@ -93,6 +98,8 @@ def resolve(args):
         config["output"]["windows"] = list(args.windows)
     if args.rebuild_cube:
         config["output"]["use_cache"] = False
+    if args.run_lbl:
+        config.setdefault("lbl", {})["run"] = True
 
     tag = "%d-%d" % (config["twoframe"]["n_star"], config["twoframe"]["n_earth"])
     # Everything this run writes hangs off one root, the corrected spectra
@@ -206,6 +213,31 @@ def run_correct(plan):
         "--corrected-dir", plan["corrdir"], "--overwrite"])
 
 
+def run_lbl(plan):
+    from . import lbl as splbl
+
+    cfg = plan["config"]
+    block = cfg.get("lbl") or {}
+    if not block.get("prepare", True) and not block.get("run", False):
+        log("lbl.prepare and lbl.run are both off, so nothing to do here",
+            "warn")
+        return
+    ok, detail = splbl.available()
+    log("LBL %s" % ("is installed: %s" % detail if ok
+                    else "cannot be imported here (%s). The files below are"
+                         " still written; `conda env update -f"
+                         " environment.yml` puts LBL in this environment."
+                         % detail), "value" if ok else "warn")
+    prepared = splbl.prepare(plan)
+    if block.get("run", False):
+        splbl.run(prepared["script"])
+        return
+    log("LBL is not run by this stage unless asked. Both objects are staged"
+        " and everything it needs is written; to run it:", "info")
+    log("    python %s" % prepared["script"], "value")
+    log("or set lbl.run: true in the config, or pass --run-lbl", "info")
+
+
 def main(argv=None):
     args = parse_args(argv)
     wanted = [s.strip() for s in args.stages.split(",") if s.strip()]
@@ -241,7 +273,7 @@ def main(argv=None):
     log("resolved configuration written to %s" % plan["written_config"], "info")
 
     runners = {"cube": run_cube, "fit": run_fit, "figures": run_figures,
-               "correct": run_correct}
+               "correct": run_correct, "lbl": run_lbl}
     log("%d stages to run: %s" % (len([s for s in STAGES if s in wanted]),
                                   ", ".join(s for s in STAGES if s in wanted)),
         "info")

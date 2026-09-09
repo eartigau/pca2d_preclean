@@ -161,7 +161,7 @@ conda activate pca2d-preclean</code></pre>
         satisfied. Only <code>lbl</code> itself, which is not on PyPI, this
         package in place, and one PyPI-only dependency come through pip, so the
         two package managers never fight over numpy. Check the install with
-        <code>./check.sh</code>: 69 tests, under a second, no file and no
+        <code>./check.sh</code>: 83 tests, under a second, no file and no
         network access.
       </p>
       <h3>Running it</h3>
@@ -230,6 +230,9 @@ conda activate pca2d-preclean</code></pre>
             what it produced.</li>
         <li><strong>outputs/&lt;object&gt;/&lt;M&gt;-&lt;N&gt;/corrected/</strong>
             &mdash; the corrected spectra, one per input file.</li>
+        <li><strong>outputs/&lt;object&gt;/&lt;M&gt;-&lt;N&gt;/run_lbl.py</strong>
+            and <strong>lbl_config.yaml</strong> &mdash; LBL set up on
+            <em>both</em> sets of spectra, ready to run.</li>
       </ul>
       <p>
         <strong>Those corrected files are meant to be fed to
@@ -241,6 +244,24 @@ conda activate pca2d-preclean</code></pre>
         same instrument class, so the comparison that matters is one command
         apart: the velocities before, the velocities after, and it is one
         command apart in the same environment, since LBL is installed in it.
+      </p>
+      <p>
+        The <code>lbl</code> stage makes that command. It never sets LBL up on
+        the corrected files alone: it puts <strong>two objects</strong> side by
+        side in one LBL tree, <code>TOI-2120</code> symlinked to the spectra as
+        delivered and <code>TOI-2120_PCA2D_2-7</code> to what the run
+        corrected, each building its own template, and writes the two files
+        that run them &mdash; <code>lbl_config.yaml</code> in LBL's own keys and
+        <code>run_lbl.py</code>, an ordinary wrap script with both objects in
+        its <code>rparams</code>. The corrected name carries the component
+        counts because LBL globs a science folder, so two corrections in one
+        folder would be measured as one series without a word. Running LBL is
+        hours, so the stage prepares and says what to run;
+        <code>lbl.run: true</code> or <code>--run-lbl</code> has it run.
+        Which LBL instrument a spectrograph is comes from its block in
+        <code>config.yaml</code>: LBL calls NIRPS <code>NIRPS_HA</code> or
+        <code>NIRPS_HE</code> by the mode it was observed in, and the wrong one
+        raises no error, it returns another instrument's velocities.
       </p>
       <p>
         Only the observer block is divided out. The star components stay in,

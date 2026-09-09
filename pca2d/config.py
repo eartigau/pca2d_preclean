@@ -209,6 +209,28 @@ DEFAULTS = {
         "chunk": None,
         "order": "star_first",
     },
+    # ---------------------------------------------------------------- lbl ---
+    # Handing both sets of spectra to LBL, the delivered ones and the corrected
+    # ones, as two objects in one LBL tree. See pca2d/lbl.py.
+    "lbl": {
+        "prepare": True,             # write LBL's config and its run script
+        "run": False,                # and run it. Hours, so it is asked for.
+        "directory": "lbl",          # LBL's DATA_DIR, its own tree
+        # The corrected object's name. {tag} becomes the run's <M>-<N>, and
+        # it is in the default because without it two runs at different
+        # component counts write their corrected spectra into ONE LBL science
+        # folder, where LBL's glob takes the mixture and says nothing.
+        "suffix": "_PCA2D_{tag}",
+        "before": True,              # the delivered spectra as their own object
+        "after": True,               # and the corrected ones as another
+        "teff": None,                # LBL picks the mask's stellar model by it
+        "template": None,            # OBJECT_COMPARISON; None = each its own
+        "steps": ["template", "mask", "compute", "compile"],
+        "link": "symlink",           # 'symlink' or 'copy' into LBL's tree
+        "input_file": None,          # LBL's glob inside a science folder
+        "instrument": None,          # LBL's name for this spectrograph, which
+        "data_source": None,         # with the source selects its reader
+    },
 }
 
 
