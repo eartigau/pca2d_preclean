@@ -4,11 +4,18 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>pca2d-preclean</title>
-<meta name="description" content="Two-frame weighted PCA of echelle spectra: one basis in the star's rest frame, one in the observer's, fitted jointly, with only the atmosphere divided back out." />
+<meta name="description" content="Two-frame weighted PCA of echelle spectra: one basis in the star's rest frame, one in the observer's, fitted jointly, with only the atmosphere divided back out. Output is t.fits ready for LBL." />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css" />
+<style>
+  /* figures on this page are the point, not decoration: give them the width */
+  figure.wide { margin: 0; }
+  figure.wide img { width: 100%; border-radius: 8px; background: #fff; }
+  figure.wide figcaption { margin-top: .6rem; color: var(--muted); font-size: .92rem; }
+  .runbox { font-family: "IBM Plex Mono", monospace; }
+</style>
 </head>
 <body>
   <div class="bg-orb orb-a"></div>
@@ -25,13 +32,13 @@
   </div>
 
   <header class="hero">
-    <p class="eyebrow">Spectroscopy &middot; telluric and airglow precleaning</p>
+    <p class="eyebrow">Spectroscopy &middot; telluric and airglow precleaning &middot; input for LBL</p>
     <h1>Two frames, one fit</h1>
     <p class="subtitle">
       A spectrum holds two things that move differently. The star's lines shift
       with the barycentric velocity; the sky's do not. Give the decomposition
       one basis that travels and one that stands still, fit them together, and
-      only the one that stands still needs to come off.
+      divide out only the one that stands still.
     </p>
   </header>
 
@@ -66,82 +73,93 @@
     <section class="card span-3">
       <h2>Every step, on one page</h2>
       <p>
-        A window of 1266 to 1268&nbsp;nm, drawn in the star's rest frame with
-        the rows ordered by barycentric velocity. Vertical structure belongs to
-        the star; anything slanted does not. The oxygen airglow band at
-        1267.44&nbsp;nm runs diagonally through the first four panels and is
-        simply gone from the fifth.
+        1667 to 1672&nbsp;nm of TOI-2120, 321 SPIRou exposures, drawn in the
+        star's rest frame with the rows ordered by barycentric velocity.
+        Vertical structure belongs to the star; anything slanted does not. The
+        OH airglow runs diagonally through the first four panels and is gone
+        from the fifth.
       </p>
-      <figure>
-        <img src="figures/sequence.png" alt="The six stages from the delivered flux to the corrected spectrum" />
+      <figure class="wide">
+        <img src="figures/sequence_1667nm.png" alt="The six stages from the delivered flux to the corrected spectrum, 1667 to 1672 nm" />
         <figcaption>
           1 the flux as delivered &middot; 2 its log minus a Savitzky-Golay of
           its log &middot; 3 minus the instrumental offset, what the fit is
-          given &middot; 4 the reconstruction &middot; 5 minus the observer
-          block, what a corrected file holds &middot; 6 minus everything.
-          Scatter falls from 0.0695 to 0.0365, a 48&nbsp;per&nbsp;cent cut,
-          entirely in the airglow.
+          given &middot; 4 the reconstruction &middot; <strong>5 minus the
+          observer block, which is what a corrected file holds</strong> &middot;
+          6 minus everything. Underneath, five of those exposures in flux,
+          before in red and after in green.
         </figcaption>
       </figure>
     </section>
 
-    <section class="card">
-      <h2>Vertical or slanted</h2>
-      <figure>
-        <img src="figures/stack.png" alt="Every spectrum in the star's rest frame, before and after" />
+    <section class="card span-3">
+      <h2>What the coefficients do in time</h2>
+      <p>
+        Two components in the star's rest frame, seven in the observer's, one
+        point per exposure over 452 days.
+      </p>
+      <figure class="wide">
+        <img src="figures/coefficients_vs_time.png" alt="Coefficients of every component against time" />
         <figcaption>
-          The same spectra before and after the two blocks. One glance
-          separates what belongs to the star from what belongs to the sky.
+          The observer coefficients move on the timescale the atmosphere moves
+          on, night to night and within a night. The star coefficients do not
+          have to, and mostly do not.
         </figcaption>
       </figure>
     </section>
 
-    <section class="card">
-      <h2>What each component carries</h2>
-      <figure>
-        <img src="figures/variance.png" alt="Weighted variance share per component" />
+    <section class="card span-3">
+      <h2>And what they follow</h2>
+      <p>
+        A component carries no label. That one varies is a result; that it
+        varies <em>with the precipitable water column</em> says plainly what it
+        is describing. Every run writes this matrix without being asked,
+        because it is the diagnostic that catches a "stellar" component quietly
+        modelling the sky.
+      </p>
+      <figure class="wide">
+        <img src="figures/correlations.png" alt="Spearman rank correlation of every coefficient against ancillary quantities" />
         <figcaption>
-          The observer block's first component takes the static atmosphere; the
-          rest describe how it varies from night to night.
-        </figcaption>
-      </figure>
-    </section>
-
-    <section class="card">
-      <h2>The bases themselves</h2>
-      <figure>
-        <img src="figures/components.png" alt="The star-frame and observer-frame basis vectors" />
-        <figcaption>
-          Two components in the star's frame, seven in the observer's. The
-          counts are a configuration value, not a law.
+          Spearman rank correlation, |rho| printed above 0.30. The first
+          observer component follows the water column at +0.54 and the median
+          flux at &minus;0.52: it is the atmosphere, and it is the one the
+          correction removes. Above the line, the star coefficients follow
+          nothing strongly &mdash; which is the point, and which was not true
+          when nightly means were fitted instead of individual exposures.
         </figcaption>
       </figure>
     </section>
 
     <section class="card span-2">
-      <h2>Running it</h2>
+      <h2>Installing it</h2>
+      <p>Python 3.10 or newer.</p>
+      <pre><code>git clone https://github.com/eartigau/pca2d_preclean.git
+cd pca2d_preclean
+python -m venv venv
+source venv/bin/activate
+pip install -e .</code></pre>
+      <p>
+        That pulls numpy, scipy, astropy, matplotlib, pyyaml, pypdf and tqdm,
+        and puts one command on your path. Check the install with
+        <code>./check.sh</code>: 57 tests, under a second, no file and no
+        network access.
+      </p>
+      <h3>Running it</h3>
       <p>Spectra go in <code>data/&lt;object&gt;/</code>. Then:</p>
       <pre><code>pca2d-preclean --object TOI-2120</code></pre>
       <p>
         That is the whole interface. The instrument is read from the
         <code>INSTRUME</code> keyword of the files, never chosen on a command
         line, because reading the wrong extension raises no error: it returns
-        different photons.
+        different photons. Four stages, each announcing how long it took, with
+        a progress bar while it works. On 321 SPIRou exposures the whole run
+        takes about forty minutes, two thirds of it in the fit.
       </p>
-      <p>Four stages, each announcing how long it took:</p>
-      <ul>
-        <li><strong>cube</strong> &mdash; every spectrum on one log-uniform grid</li>
-        <li><strong>fit</strong> &mdash; the two bases and their coefficients</li>
-        <li><strong>figures</strong> &mdash; one multipage PDF, parameters first, then every plot</li>
-        <li><strong>correct</strong> &mdash; the observer block divided out, written as t.fits</li>
-      </ul>
     </section>
 
     <section class="card">
       <h2>Adding a spectrograph</h2>
-      <p>
-        A block in <code>config.yaml</code>, not a line of code:
-      </p>
+      <p>A block in <code>config.yaml</code>, not a line of code:</p>
       <pre><code>instruments:
   YOURS:
     extensions:
@@ -157,6 +175,44 @@
       <p>
         The wavelength solution comes from the extension, never from header
         polynomials, and the blaze from the blaze extension of the same file.
+      </p>
+    </section>
+
+    <section class="card span-3">
+      <h2>What comes out, and what it is for</h2>
+      <p>
+        A run leaves three things, and the third is the deliverable.
+      </p>
+      <ul class="runbox">
+        <li><strong>outputs/&lt;object&gt;/&lt;M&gt;-&lt;N&gt;/&lt;object&gt;_&lt;M&gt;-&lt;N&gt;.pdf</strong>
+            &mdash; one multipage document, the resolved parameters as
+            selectable text first, then every figure, with bookmarks. On
+            TOI-2120 that is 35 pages.</li>
+        <li><strong>outputs/&lt;object&gt;/&lt;M&gt;-&lt;N&gt;/</strong> &mdash;
+            the bases and coefficients as <code>fit.npz</code> and
+            <code>twoframe_components.fits</code>, the coefficients as CSV, and
+            <code>resolved_config.yaml</code>: exactly what ran, sitting next to
+            what it produced.</li>
+        <li><strong>data/&lt;object&gt;/corrected_&lt;M&gt;-&lt;N&gt;/</strong>
+            &mdash; the corrected spectra, one per input file.</li>
+      </ul>
+      <p>
+        <strong>Those corrected files are meant to be fed to
+        <a href="https://github.com/njcuk9999/lbl" target="_blank">LBL</a></strong>,
+        the line-by-line radial velocity code. They are still t.fits: the flux
+        has been divided by the observer-frame model and every other extension,
+        including the wavelength solution and the blaze, is copied through
+        untouched. LBL reads them exactly as it reads the originals, with the
+        same instrument class, so the comparison that matters is one command
+        apart: the velocities before, the velocities after.
+      </p>
+      <p>
+        Only the observer block is divided out. The star components stay in,
+        deliberately: with no median template the first star component
+        <em>is</em> the star, and dividing it out would flatten the very
+        spectrum LBL is about to measure. Samples the airglow drowned are set
+        to NaN rather than left in, so LBL is never handed data the model never
+        saw.
       </p>
     </section>
 
