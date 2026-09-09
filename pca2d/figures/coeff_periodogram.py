@@ -93,7 +93,7 @@ def main(argv=None):
     n = len(comps)
     fig, axes = plt.subplots(n, 1, figsize=(8.6, 1.15 * n + 1.2), sharex=True,
                              squeeze=False)
-    print("  %-4s %10s %10s %10s" % ("comp", "peak (d)", "power", "> FAP 1%"))
+    log("  %-4s %10s %10s %10s" % ("comp", "peak (d)", "power", "> FAP 1%"))
     for ax, (name, values) in zip(axes[:, 0], comps):
         _, y = nightly(bjd, values)
         power = LombScargle(t, y).power(freq)
@@ -121,7 +121,7 @@ def main(argv=None):
         ax.text(0.995, 0.86, "peak %.3f d%s" % (peak, flag), fontsize=6.5,
                 ha="right", va="top", transform=ax.transAxes,
                 color="#b3261e" if flag else "0.3")
-        print("  %-4s %10.3f %10.4f %10s%s"
+        log("  %-4s %10.3f %10.4f %10s%s"
               % (name, peak, power.max(),
                  "yes" if np.isfinite(level) and power.max() > level else "no", flag))
 
@@ -139,7 +139,7 @@ def main(argv=None):
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
     fig.savefig(out)
     plt.close(fig)
-    print("wrote %s" % out)
+    log("wrote %s" % out)
 
 
 if __name__ == "__main__":

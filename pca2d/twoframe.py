@@ -28,6 +28,7 @@ import warnings
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from .logger import log
 import numpy as np
 from astropy.io import fits
 from astropy.table import Table
@@ -150,7 +151,7 @@ def _resolve(args):
     section = dict(DEFAULTS["twoframe"])
     if args.config:
         section.update(load_config(args.config).get("twoframe", {}) or {})
-        print("options from %s: %s" % (args.config, ", ".join(
+        log("options from %s: %s" % (args.config, ", ".join(
             "%s=%s" % (k, section[k]) for k in ("n_star", "n_earth", "iters",
                                                 "tie_parities", "max_mad"))))
     for name in CONFIGURABLE:
@@ -475,11 +476,11 @@ def gap_guard(w, delta, a, verbose=True):
 
     if verbose:
         edges = int(np.count_nonzero(np.diff(live.astype(np.int8)) != 0))
-        print("gap guard: %d holes in the basis support (%.1f%% of the grid),"
+        log("gap guard: %d holes in the basis support (%.1f%% of the grid),"
               " %d distinct integer shifts" % (edges // 2 + 1,
                                                100 * np.mean(~live),
                                                np.unique(base).size))
-        print("  dropped %d of %d weighted samples (%.3f%%) within %d of a hole"
+        log("  dropped %d of %d weighted samples (%.3f%%) within %d of a hole"
               % (before - after, before, 100 * (before - after) / max(before, 1), a))
     return w
 
@@ -733,7 +734,7 @@ def load_cube(path, ln_clip_low=-0.5, ramp_zero=0.5, min_snr_frac=0.5,
         threshold = float(min_snr_frac * np.nanmedian(snr))
         keep = np.isfinite(snr) & (snr >= threshold)
         if not keep.all():
-            print("dropping %d / %d spectra with band SNR < %.0f%% of the median"
+            log("dropping %d / %d spectra with band SNR < %.0f%% of the median"
                   " (%.1f)" % ((~keep).sum(), keep.size, 100 * min_snr_frac,
                                threshold))
             data, sigma, meta = data[keep], sigma[keep], meta[keep]
@@ -893,7 +894,7 @@ def plot_coeffs(bjd, a, b, pa, pb, chi2_null, path, err_a=None, err_b=None):
     fig.tight_layout()
     fig.savefig(path)
     plt.close(fig)
-    print("  wrote %s" % path)
+    log("  wrote %s" % path)
 
 
 def plot_variance(power_star, power_earth, chi2_null, chi2_best, path):
@@ -965,7 +966,7 @@ def plot_variance(power_star, power_earth, chi2_null, chi2_best, path):
     fig.tight_layout()
     fig.savefig(path)
     plt.close(fig)
-    print("  wrote %s" % path)
+    log("  wrote %s" % path)
 
 
 def write_components_fits(path, grid, P, Q, template, means, power_star,
@@ -1064,7 +1065,7 @@ def write_components_fits(path, grid, P, Q, template, means, power_star,
     variance = fits.BinTableHDU(var, name="VARIANCE")
 
     fits.HDUList([primary, basis, coeffs, variance]).writeto(path, overwrite=True)
-    print("  wrote %s" % path)
+    log("  wrote %s" % path)
 
 
 def plot_components(grid, P, Q, power_star, power_earth, chi2_null, path):
@@ -1107,7 +1108,7 @@ def plot_components(grid, P, Q, power_star, power_earth, chi2_null, path):
     fig.tight_layout()
     fig.savefig(path)
     plt.close(fig)
-    print("  wrote %s" % path)
+    log("  wrote %s" % path)
 
 
 def write_variance_table(power_star, power_earth, chi2_null, chi2_best, path):
@@ -1124,7 +1125,7 @@ def write_variance_table(power_star, power_earth, chi2_null, chi2_best, path):
     table["cumulative_percent"] = np.cumsum(share)
     table.meta["residual_rms_ratio"] = float(np.sqrt(max(chi2_best / chi2_null, 0.0)))
     table.write(path, format="csv", overwrite=True)
-    print("  wrote %s" % path)
+    log("  wrote %s" % path)
 
 
 
@@ -1428,7 +1429,7 @@ def correlate_and_plot(outdir, a, b, labels, values, title=""):
     comps = [("a%d" % (k + 1), a[:, k]) for k in range(a.shape[1])]
     comps += [("b%d" % (j + 1), b[:, j]) for j in range(b.shape[1])]
     if not labels:
-        print("  no ancillary quantity available, skipping correlations.pdf")
+        log("  no ancillary quantity available, skipping correlations.pdf")
         return
     rho = rank_correlations(comps, np.asarray(values, dtype=float))
     plot_correlations(rho, comps, list(labels),
@@ -1450,7 +1451,7 @@ def replot(outdir, cube=None):
     path = os.path.join(outdir, "fit.npz")
     fit = np.load(path)
     n_star = fit["a"].shape[1]
-    print("re-plotting %s: %d star + %d Earth components, %d spectra, iterate %d"
+    log("re-plotting %s: %d star + %d Earth components, %d spectra, iterate %d"
           % (path, n_star, fit["b"].shape[1], fit["bjd"].size, fit["best_iter"]))
     sigma = fit["sigma_scaled"]
     chi2_null = float(fit["chi2_null"])
@@ -1458,7 +1459,7 @@ def replot(outdir, cube=None):
     keep = ~fit["rejected"] if "rejected" in fit.files else np.ones(
         fit["bjd"].size, dtype=bool)
     if not keep.all():
-        print("  %d of %d spectra were rejected by the MAD cut and are not"
+        log("  %d of %d spectra were rejected by the MAD cut and are not"
               " plotted" % (int((~keep).sum()), keep.size))
     plot_coeffs(fit["bjd"][keep], fit["a"][keep], fit["b"][keep],
                 fit["power_star"], fit["power_earth"], chi2_null,
@@ -1473,7 +1474,7 @@ def replot(outdir, cube=None):
                         fit["power_earth"], chi2_null,
                         os.path.join(outdir, "components.pdf"))
     else:
-        print("  no grid in the archive, skipping components.pdf")
+        log("  no grid in the archive, skipping components.pdf")
     # the ancillary quantities are stored in the archive, so the correlation
     # matrix redraws without the cube or the source spectra being present
     if "anc_values" in fit.files and fit["anc_values"].size:
@@ -1489,7 +1490,7 @@ def replot(outdir, cube=None):
         from .plotting import ancillary_table, source_directory
         meta_path = os.path.join(cube, "meta.fits")
         if not os.path.exists(meta_path):
-            print("  no %s, skipping correlations.pdf" % meta_path)
+            log("  no %s, skipping correlations.pdf" % meta_path)
             return
         names = [os.path.basename(str(v)) for v in fit["filename"]]
         labels, values = ancillary_table(Table.read(meta_path), names,
@@ -1498,7 +1499,7 @@ def replot(outdir, cube=None):
                            values[:, keep] if len(labels) else values,
                            title="%d exposures" % int(keep.sum()))
     else:
-        print("  no ancillary quantities in the archive and no --cube given,"
+        log("  no ancillary quantities in the archive and no --cube given,"
               " skipping correlations.pdf")
 
 
@@ -1515,19 +1516,19 @@ def main(argv=None):
     # loses the low bits of the very totals the fit is judged by.
     grid, data, w, meta = load_cube(args.cube, min_snr_frac=args.min_snr_frac,
                                     dtype=np.dtype(args.dtype))
-    print("fit arrays in %s: %.1f GB for the data and the weights together"
+    log("fit arrays in %s: %.1f GB for the data and the weights together"
           % (data.dtype.name, 2 * data.nbytes / 1e9))
     n_spectra, n_pixels = data.shape
     parity = row_parity(meta, n_spectra)
     n_parities = np.unique(parity).size
     if n_parities > 1:
-        print("t.fits cube: %d rows = %d exposures x %d order parities, two"
+        log("t.fits cube: %d rows = %d exposures x %d order parities, two"
               " measurements of the same photons at two places on the detector,"
               " carrying the same BERV." % (n_spectra, n_spectra // n_parities,
                                             n_parities))
     tie = row_exposure(meta, n_spectra) if args.tie_parities else None
     if tie is not None and n_parities > 1:
-        print("tying the %d parity rows of each exposure to one set of"
+        log("tying the %d parity rows of each exposure to one set of"
               " coefficients (--no-tie-parities to undo)" % n_parities)
     dv = float(np.median(np.diff(np.log(grid))) * C_KMS)
     # delta is the STAR -> OBSERVER shift in samples, i.e. what S_n applies.
@@ -1551,7 +1552,7 @@ def main(argv=None):
         gap_guard(w, delta, args.kernel_halfwidth)
         data = np.where(w > 0, data, 0.0)
     elif args.gap_guard:
-        print("gap guard skipped: it is defined for a compactly supported"
+        log("gap guard skipped: it is defined for a compactly supported"
               " kernel, and %s is not one" % args.shift)
     n_max = max(args.n_star, args.n_earth)
     # The carried basis is (chunk, K, n_pixels) float64 and is the single largest
@@ -1561,12 +1562,12 @@ def main(argv=None):
     # also why threading carry() helps and why the tap loop was rewritten as a
     # single contraction over a sliding-window view.
     chunk = args.chunk or max(4, int(128e6 / (8 * n_max * n_pixels)))
-    print("carry chunk %d spectra -> %.0f MB per (chunk, K, M) buffer"
+    log("carry chunk %d spectra -> %.0f MB per (chunk, K, M) buffer"
           % (chunk, 8 * chunk * n_max * n_pixels / 1e6))
-    print("cube %s: N=%d M=%d dv=%.3f km/s  shifts %.1f..%.1f pix"
+    log("cube %s: N=%d M=%d dv=%.3f km/s  shifts %.1f..%.1f pix"
           % (os.path.basename(args.cube), n_spectra, n_pixels, dv,
              delta.min(), delta.max()))
-    print("shift operator: %s%s"
+    log("shift operator: %s%s"
           % (args.shift, " (a=%d)" % args.kernel_halfwidth
              if args.shift == "lanczos" else ""))
 
@@ -1585,7 +1586,7 @@ def main(argv=None):
         template_model = carry_template(template, shifter, delta)
         data = data - template_model
         data[w <= 0] = 0.0
-        print("subtracted the star-frame median template: %.4f of the raw"
+        log("subtracted the star-frame median template: %.4f of the raw"
               " weighted variance left" % (float(np.sum(w * data ** 2, dtype=np.float64)) / chi2_raw))
     else:
         template = np.zeros(n_pixels)
@@ -1617,22 +1618,22 @@ def main(argv=None):
     data[w <= 0] = 0.0
     if args.mean == "offset":
         live_any = w.sum(axis=0) > 0
-        print("left the shared part of the observer-frame mean IN the data,"
+        log("left the shared part of the observer-frame mean IN the data,"
               " %.4g rms, for the Earth block to describe"
               % float(np.std(common[live_any])))
     if means.shape[0] > 1:
         both = np.ones(n_pixels, dtype=bool)
         for i, value in enumerate(parity_groups):
             both &= w[parity == value].sum(axis=0) > 0
-        print("subtracted one mean per parity; the even/odd offset it removed is"
+        log("subtracted one mean per parity; the even/odd offset it removed is"
               " %.4g rms over the %d columns both cover"
               % (float(np.std((means[0] - means[1])[both])) if both.any() else np.nan,
                  int(both.sum())))
     chi2_null = float(np.sum(w * data ** 2, dtype=np.float64))
-    print("after the observer-frame mean as well:      %.4f of the raw"
+    log("after the observer-frame mean as well:      %.4f of the raw"
           " weighted variance left" % (chi2_null / chi2_raw))
     if args.clip > 0:
-        print("soft clip at %.1f sigma, local per wavelength column" % args.clip)
+        log("soft clip at %.1f sigma, local per wavelength column" % args.clip)
 
     # Random orthonormal start. Orthonormal because the update steps
     # re-orthonormalise anyway and starting inside the constraint set avoids a
@@ -1723,16 +1724,16 @@ def main(argv=None):
                 flag = "   <- worse than iter %d" % best[3]
             # `data` here is already template- and mean-subtracted, so this chi2 is
             # the residual of the *full* model and can be quoted against chi2_raw.
-            print("  iter %d  R2=%.6f  left/raw=%.4f  clipped=%.3f%%"
+            log("  iter %d  R2=%.6f  left/raw=%.4f  clipped=%.3f%%"
                   "  cond(A) med/max %.1f/%.1f  [%.1fs coeff, %.1fs bases]%s"
                   % (iteration, 1 - chi2 / chi2_null, chi2 / chi2_raw, 100 * hit,
                      np.median(cond), cond.max(), t_coeff, t_basis, flag))
             if worse >= 2:
-                print("  chi2 has turned over; stopping and keeping iteration %d" % best[3])
+                log("  chi2 has turned over; stopping and keeping iteration %d" % best[3])
                 break
 
         chi2, P, Q, best_iter = best
-        print("  best iterate: %d, R2 = %.6f, %.4f of the raw weighted variance"
+        log("  best iterate: %d, R2 = %.6f, %.4f of the raw weighted variance"
               " left" % (best_iter, 1 - chi2 / chi2_null, chi2 / chi2_raw))
 
         # ---- MAD cut: retire a spectrum the components disagree about ------
@@ -1748,10 +1749,10 @@ def main(argv=None):
         fresh = mad_outliers(np.hstack([a_now, b_now]), parity, args.max_mad,
                              rejected)
         if not fresh.any():
-            print("  MAD cut at %.1f sigma: nothing left to reject" % args.max_mad)
+            log("  MAD cut at %.1f sigma: nothing left to reject" % args.max_mad)
             break
         rejected |= fresh
-        print("  MAD cut at %.1f sigma: rejecting %d spectra this round, %d of %d"
+        log("  MAD cut at %.1f sigma: rejecting %d spectra this round, %d of %d"
               " in total (%.1f%%); refitting"
               % (args.max_mad, int(fresh.sum()), int(rejected.sum()), n_spectra,
                  100 * rejected.mean()))
@@ -1772,14 +1773,16 @@ def main(argv=None):
 
     chi2, P, Q, best_iter = best
     if rejected.any():
-        print("  MAD cut kept %d of %d spectra (%d rejected at %.1f sigma)"
+        log("  MAD cut kept %d of %d spectra (%d rejected at %.1f sigma)"
               % (n_spectra - int(rejected.sum()), n_spectra,
                  int(rejected.sum()), args.max_mad))
 
     if args.leakage:
         to_earth, to_star = leakage(data, w, P, Q, shifter, delta, chunk)
-        print("  leakage star -> Earth block:", np.round(to_earth, 4))
-        print("  leakage Earth -> star block:", np.round(to_star, 4))
+        log("  leakage star -> Earth block: %s"
+            % np.array2string(np.round(to_earth, 4)), "value")
+        log("  leakage Earth -> star block: %s"
+            % np.array2string(np.round(to_star, 4)), "value")
 
     # ------------------------------------------------------- outputs -------
     a, b, _ = joint_coeffs(data, w, P, Q, shifter, delta, chunk=chunk,
@@ -1793,16 +1796,16 @@ def main(argv=None):
     sig_formal, sig_scaled, chi2_red = coefficient_errors(
         data, w0, P, Q, shifter, delta, a, b, chunk, exposure=tie)
     n_star = a.shape[1]
-    print("  median reduced chi2 per spectrum: %.3f   (1.0 would mean the noise"
+    log("  median reduced chi2 per spectrum: %.3f   (1.0 would mean the noise"
           " model of 2.2 is exactly right)" % np.nanmedian(chi2_red))
-    print("  median error scaling sqrt(chi2_red): %.3f"
+    log("  median error scaling sqrt(chi2_red): %.3f"
           % np.nanmedian(np.sqrt(chi2_red)))
     with np.errstate(invalid="ignore", divide="ignore"):
         snr_a = np.nanmedian(np.abs(a) / sig_scaled[:, :n_star], axis=0)
         snr_b = np.nanmedian(np.abs(b) / sig_scaled[:, n_star:], axis=0)
-    print("  median |coefficient| / sigma, star block : %s"
+    log("  median |coefficient| / sigma, star block : %s"
           % np.array2string(snr_a, precision=1))
-    print("  median |coefficient| / sigma, Earth block: %s"
+    log("  median |coefficient| / sigma, Earth block: %s"
           % np.array2string(snr_b, precision=1))
 
     os.makedirs(args.outdir, exist_ok=True)
@@ -1823,11 +1826,11 @@ def main(argv=None):
         table["eb%d" % (j + 1)] = sig_scaled[:, n_star + j]
     csv_path = os.path.join(args.outdir, "coefficients.csv")
     table.write(csv_path, format="csv", overwrite=True)
-    print("  wrote %s" % csv_path)
+    log("  wrote %s" % csv_path)
 
-    print("  star  block weighted variance share: %s"
+    log("  star  block weighted variance share: %s"
           % np.array2string(100 * power_star / chi2_null, precision=2))
-    print("  Earth block weighted variance share: %s"
+    log("  Earth block weighted variance share: %s"
           % np.array2string(100 * power_earth / chi2_null, precision=2))
     # the ancillary quantities, gathered once and stored in the archive so that
     # --replot can redraw the correlation matrix on its own
@@ -1851,7 +1854,7 @@ def main(argv=None):
                         tied=bool(args.tie_parities), dv=dv,
                         filename=np.asarray(meta["filename"], dtype="U64"),
                         berv=np.asarray(meta["berv"], dtype=float))
-    print("  wrote %s (re-plot without refitting)" % npz_path)
+    log("  wrote %s (re-plot without refitting)" % npz_path)
 
     # the rejected rows carry zero weight, so their coefficients are zeros and
     # plotting them would draw a spurious line on the axis

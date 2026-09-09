@@ -37,6 +37,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from pca2d.logger import log  # noqa: E402
 from pca2d.plotting import (live_mask, nan_cmap, raw_log_flux_block,  # noqa: E402
                                  sample_source_file, window_parity)
 from pca2d.twoframe import (LanczosShifter, fit_means, load_cube,  # noqa: E402
@@ -149,7 +150,7 @@ def main(argv=None):
             lo, hi = centre - 0.5 * width, centre + 0.5 * width
             win = (grid >= lo) & (grid <= hi)
             if win.sum() < 10:
-                print("  %.1f-%.1f nm: too few columns, skipped" % (lo, hi))
+                log("  %.1f-%.1f nm: too few columns, skipped" % (lo, hi))
                 continue
             x = grid[win]
             cover = np.isfinite(home["given"][:, win]).sum(axis=1) / win.sum()
@@ -162,11 +163,11 @@ def main(argv=None):
             # caveat, it is simply the right order to draw.
             if own is not None and ncov > 1 and (keep & (parity == own)).sum() >= 6:
                 keep &= parity == own
-                print("  %.1f-%.1f nm: two orders reach it, drawing the one"
+                log("  %.1f-%.1f nm: two orders reach it, drawing the one"
                       " %.2f of a half-width from its centre" % (lo, hi, off))
             rows = np.where(keep)[0][np.argsort(berv[keep])]
             if rows.size < 6:
-                print("  %.1f-%.1f nm: too few rows, skipped" % (lo, hi))
+                log("  %.1f-%.1f nm: too few rows, skipped" % (lo, hi))
                 continue
             jw = np.where(win)[0]
             block = {k: home[k][np.ix_(rows, jw)] for k in home}
@@ -237,14 +238,14 @@ def main(argv=None):
                          " anything slanted does not" % (lo, hi), fontsize=10)
             pdf.savefig(fig)
             plt.close(fig)
-            print("  %.1f-%.1f nm: given %.4f | corrected %.4f (%+.0f%%) |"
+            log("  %.1f-%.1f nm: given %.4f | corrected %.4f (%+.0f%%) |"
                   " residual %.4f"
                   % (lo, hi, np.nanstd(block["given"]),
                      np.nanstd(block["corrected"]),
                      100 * (np.nanstd(block["corrected"]) /
                             max(np.nanstd(block["given"]), 1e-30) - 1),
                      np.nanstd(block["resid"])))
-    print("wrote %s" % args.out)
+    log("wrote %s" % args.out)
     return None
 
 

@@ -113,7 +113,7 @@ def band_snr(header, wave_min: float, wave_max: float) -> float:
     global _POLY_WARNED
     if not _POLY_WARNED:
         _POLY_WARNED = True
-        print("io.band_snr: the s1d path would need the header wavelength"
+        log("io.band_snr: the s1d path would need the header wavelength"
               " polynomials, which are forbidden; returning NaN. See the"
               " docstring.")
     return np.nan

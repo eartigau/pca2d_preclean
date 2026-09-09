@@ -15,6 +15,7 @@ measurement.
 from __future__ import annotations
 
 import matplotlib
+from .logger import log
 import numpy as np
 
 NAN_COLOUR = "#ffd400"      # banana
@@ -225,7 +226,7 @@ def raw_log_flux_block(cube_dir, source_dir, names, parities, grid, cols):
             p = int(parities[i])
             out[i] = np.where(good[p][cols], values[p][cols], np.nan)
         read += 1
-    print("  re-read %d of %d exposures without the high-pass, %d columns"
+    log("  re-read %d of %d exposures without the high-pass, %d columns"
           % (read, len(by_name), cols.size))
     return out
 
@@ -377,7 +378,7 @@ def plot_correlations(rho, comps, labels, path, title="", flag=0.3):
     import matplotlib.pyplot as plt
 
     if rho.size == 0:
-        print("  no ancillary quantity varies; skipping %s" % path)
+        log("  no ancillary quantity varies; skipping %s" % path)
         return
     plt.rcParams.update({"font.size": 9, "axes.grid": False})
     fig, ax = plt.subplots(figsize=(1.2 + 0.62 * len(labels), 1.4 + 0.34 * len(comps)))
@@ -400,7 +401,7 @@ def plot_correlations(rho, comps, labels, path, title="", flag=0.3):
     fig.tight_layout()
     fig.savefig(path)
     plt.close(fig)
-    print("  wrote %s" % path)
+    log("  wrote %s" % path)
 
 
 def write_correlation_table(rho, comps, labels, path):
@@ -415,7 +416,7 @@ def write_correlation_table(rho, comps, labels, path):
                 value = rho[i, j]
                 writer.writerow([name, label,
                                  "" if not np.isfinite(value) else "%.4f" % value])
-    print("  wrote %s" % path)
+    log("  wrote %s" % path)
 
 
 def report_correlations(rho, comps, labels, flag=0.7):
@@ -426,9 +427,9 @@ def report_correlations(rho, comps, labels, flag=0.7):
               for i in range(rho.shape[0]) for j in range(rho.shape[1])
               if np.isfinite(rho[i, j]) and abs(rho[i, j]) >= flag]
     if not strong:
-        print("  no |rho| above %.2f: no component tracks an ancillary quantity"
+        log("  no |rho| above %.2f: no component tracks an ancillary quantity"
               % flag)
         return
-    print("  |rho| >= %.2f, i.e. a component that follows something known:" % flag)
+    log("  |rho| >= %.2f, i.e. a component that follows something known:" % flag)
     for _, name, label, value in sorted(strong, reverse=True):
-        print("    %-4s %-22s %+.2f" % (name, label, value))
+        log("    %-4s %-22s %+.2f" % (name, label, value))

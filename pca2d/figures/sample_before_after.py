@@ -29,6 +29,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 
+from pca2d.logger import log  # noqa: E402
 from pca2d.plotting import live_mask, sample_source_file, window_parity
 from pca2d.twoframe import (LanczosShifter, load_cube, row_parity,
                                  star_model)
@@ -78,7 +79,7 @@ def main(argv=None):
         amplitude = np.array([np.nanstd(np.where(live[i], model[i], np.nan))
                               for i in range(n)])
     names = [str(v) for v in fit["filename"]] if "filename" in fit.files else []
-    print("  median correction rms over rows: %.4f" % np.nanmedian(amplitude))
+    log("  median correction rms over rows: %.4f" % np.nanmedian(amplitude))
 
     pages = []
     for spec in args.windows:
@@ -101,7 +102,7 @@ def main(argv=None):
                                else (None, float("nan"), 0))
             if own is not None and n_cov > 1 and (covers & (parity == own)).any():
                 covers = covers & (parity == own)
-                print("  %.1f-%.1f nm: two orders reach it, drawing parity %d"
+                log("  %.1f-%.1f nm: two orders reach it, drawing parity %d"
                       " (%.2f of a half-width from the order centre)"
                       % (lo, hi, own, off))
             if args.row is not None:
@@ -111,13 +112,13 @@ def main(argv=None):
                 order = candidates[np.argsort(amplitude[candidates])]
                 row = int(order[order.size // 2])
             else:
-                print("  %.1f-%.1f nm: no row covers this window, skipped"
+                log("  %.1f-%.1f nm: no row covers this window, skipped"
                       % (lo, hi))
                 continue
             label = names[row] if row < len(names) else "row %d" % row
             win = band & live[row]
             if win.sum() < 10:
-                print("  %.1f-%.1f nm: only %d live columns, skipped"
+                log("  %.1f-%.1f nm: only %d live columns, skipped"
                       % (lo, hi, win.sum()))
                 continue
             x = grid[win]
@@ -153,11 +154,11 @@ def main(argv=None):
             fig.tight_layout()
             pdf.savefig(fig)
             plt.close(fig)
-            print("  %.2f-%.2f nm: scatter %.4f -> %.4f (%+.1f%%), removed rms %.4f"
+            log("  %.2f-%.2f nm: scatter %.4f -> %.4f (%+.1f%%), removed rms %.4f"
                   % (lo, hi, np.std(before), np.std(after),
                      100 * (np.std(after) / max(np.std(before), 1e-30) - 1),
                      np.std(corr)))
-    print("wrote %s" % args.out)
+    log("wrote %s" % args.out)
 
 
 if __name__ == "__main__":

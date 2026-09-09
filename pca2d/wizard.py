@@ -194,12 +194,12 @@ def _ask(question, default, cast, check=None):
         try:
             value = cast(raw)
         except Exception:                                     # noqa: BLE001
-            print("     not a %s, try again" % cast.__name__)
+            log("     not a %s, try again" % cast.__name__)
             continue
         if check is not None:
             problem = check(value)
             if problem:
-                print("     %s" % problem)
+                log("     %s" % problem)
                 continue
         return value
 
@@ -209,8 +209,8 @@ def run_wizard(config, path):
     import yaml
 
     print()
-    print("This configuration is not ready. Answering the questions below fills")
-    print("it in and writes %s; press Ctrl-C to stop." % path)
+    log("This configuration is not ready. Answering the questions below fills")
+    log("it in and writes %s; press Ctrl-C to stop." % path)
     print()
 
     def dir_check(value):
@@ -226,7 +226,7 @@ def run_wizard(config, path):
         hits = glob.glob(os.path.join(config["input"]["directory"], value))
         if not hits:
             return "matches no file"
-        print("     %d files match, e.g. %s" % (len(hits), os.path.basename(sorted(hits)[0])))
+        log("     %d files match, e.g. %s" % (len(hits), os.path.basename(sorted(hits)[0])))
         return None
 
     config["input"]["pattern"] = _ask(
@@ -237,9 +237,9 @@ def run_wizard(config, path):
     if info.get("error"):
         raise SystemExit("the first matching file does not open: %s" % info["error"])
     if info.get("object"):
-        print("     OBJECT in the first file: %s" % info["object"])
+        log("     OBJECT in the first file: %s" % info["object"])
     if "wave_min" in info:
-        print("     the data covers %.1f to %.1f nm over %d orders"
+        log("     the data covers %.1f to %.1f nm over %d orders"
               % (info["wave_min"], info["wave_max"], info.get("n_orders", 0)))
 
     lo_default = round(info.get("wave_min", config["domain"]["wave_min"]))
@@ -282,7 +282,7 @@ def run_wizard(config, path):
         return None
 
     print()
-    print("  Two component counts, one per reference frame. They need not be equal.")
+    log("  Two component counts, one per reference frame. They need not be equal.")
     config["twoframe"]["n_star"] = _ask(
         "M, components in the STELLAR rest frame", config["twoframe"].get("n_star", 5),
         int, comp_check)

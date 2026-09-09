@@ -45,6 +45,7 @@ from astropy.io import fits
 from astropy.table import Table
 from scipy.interpolate import CubicSpline
 
+from .logger import log
 from . import tfits as sptf
 from . import twoframe as _bcd
 from .progress import bar as _bar
@@ -154,7 +155,7 @@ def exposure_row(coeffs, filename):
                          % (want, ("; nearest: %s" % ", ".join(near)) if near else ""))
     row = coeffs[names.index(want)]
     if bool(row["rejected"]):
-        print("WARNING: this exposure was rejected by the MAD cut. Its"
+        log("WARNING: this exposure was rejected by the MAD cut. Its"
               " coefficients are zeros and the model below is the template"
               " plus the mean, nothing else.")
     return row
@@ -370,7 +371,7 @@ def write_fits(path, wave, recon, parity, row, model, source):
             fits.ImageHDU(wave, name="WAVE"),
             fits.ImageHDU(parity.astype(np.int16), name="PARITY")]
     fits.HDUList(hdus).writeto(path, overwrite=True)
-    print("wrote %s" % path)
+    log("wrote %s" % path)
 
 
 def plot(path, wave, recon, row, source):
@@ -379,7 +380,7 @@ def plot(path, wave, recon, row, source):
     import matplotlib.pyplot as plt
     finite = np.isfinite(recon)
     if not finite.any():
-        print("nothing to plot: the model covers none of this file")
+        log("nothing to plot: the model covers none of this file")
         return
     plt.rcParams.update({"font.size": 9, "axes.grid": True, "grid.alpha": 0.25})
     fig, axes = plt.subplots(2, 1, figsize=(12, 6))
@@ -398,7 +399,7 @@ def plot(path, wave, recon, row, source):
     fig.tight_layout()
     fig.savefig(path)
     plt.close(fig)
-    print("wrote %s" % path)
+    log("wrote %s" % path)
 
 
 def night_index(coeffs):
@@ -521,7 +522,7 @@ def correct_many(model, args):
     """--correct over one file or over every exposure in the fit."""
     if args.by_night:
         pairs, missing = rows_by_night(model, args)
-        print("  %d exposures matched to a fitted night, %d skipped"
+        log("  %d exposures matched to a fitted night, %d skipped"
               % (len(pairs), missing))
     elif args.all:
         names = [os.path.basename(str(v)) for v in model["coeffs"]["filename"]]
@@ -542,9 +543,9 @@ def correct_many(model, args):
                                             dtype=float)).max()
                           / model["dv"])) + 2
         shifter = _bcd.LanczosShifter(m, a=8, max_shift=top)
-        print("  refitting coefficients per exposure against the fixed basis")
+        log("  refitting coefficients per exposure against the fixed basis")
     elif args.by_night:
-        print("  WARNING: every exposure of a night gets that night's"
+        log("  WARNING: every exposure of a night gets that night's"
               " coefficients. The sky is not constant over a night; --refit"
               " solves for each exposure's own amplitudes")
 
@@ -552,14 +553,14 @@ def correct_many(model, args):
     progress = _bar(pairs, desc="correcting", unit="file")
     for path, preset in progress:
         if not os.path.exists(path):
-            print("  missing, skipped: %s" % path)
+            log("  missing, skipped: %s" % path)
             skipped += 1
             continue
         row = preset if preset is not None else exposure_row(model["coeffs"], path)
         if args.refit:
             fresh = refit_row(model, path, config, shifter, row)
             if fresh is None:
-                print("  could not resample, skipped: %s" % os.path.basename(path))
+                log("  could not resample, skipped: %s" % os.path.basename(path))
                 skipped += 1
                 continue
             row = fresh
@@ -576,9 +577,9 @@ def correct_many(model, args):
                                      % (os.path.basename(new), covered[-1]))
     if covered:
         import numpy as _np
-        print("  samples corrected per file: median %.1f%%, worst %.1f%%"
+        log("  samples corrected per file: median %.1f%%, worst %.1f%%"
               % (float(_np.median(covered)), float(_np.min(covered))))
-    print("wrote %d file%s to %s%s%s"
+    log("wrote %d file%s to %s%s%s"
           % (written, "" if written == 1 else "s", args.corrected_dir,
              ", %d missing" % skipped if skipped else "",
              ", %d refitted individually" % refitted if refitted else ""))
@@ -588,13 +589,13 @@ def correct_many(model, args):
 def main(argv=None):
     args = parse_args(argv)
     model = load_model(args.fits)
-    print("%s: %d star + %d earth components, dv = %.4f km/s, content = %s"
+    log("%s: %d star + %d earth components, dv = %.4f km/s, content = %s"
           % (os.path.basename(args.fits), model["n_star"], model["n_earth"],
              model["dv"], model["content"]))
     if args.correct:
         k = model["n_star"] if args.n_star is None else args.n_star
         j = model["n_earth"] if args.n_earth is None else args.n_earth
-        print("correcting: removing %d star + %d Earth components -> t_%d-%d.fits"
+        log("correcting: removing %d star + %d Earth components -> t_%d-%d.fits"
               % (k, j, k, j))
         # not `return correct_many(...)`: this is a console_script entry
         # point, so the count of files written would become the exit status.
@@ -602,13 +603,13 @@ def main(argv=None):
         correct_many(model, args)
         return None
     row = exposure_row(model["coeffs"], args.file)
-    print("  BJD %.5f   BERV %+.4f km/s   star shift %+.2f samples"
+    log("  BJD %.5f   BERV %+.4f km/s   star shift %+.2f samples"
           % (row["bjd"], row["berv"], -row["berv"] / model["dv"]))
     wave, recon, parity = reconstruct(model, row, args.kernel_halfwidth, args.file)
     good = np.isfinite(recon)
-    print("  rebuilt %d of %d samples (%.1f%%) over %d orders"
+    log("  rebuilt %d of %d samples (%.1f%%) over %d orders"
           % (good.sum(), recon.size, 100 * good.mean(), recon.shape[0]))
-    print("  model rms %.5f in ln flux" % np.nanstd(recon[good]))
+    log("  model rms %.5f in ln flux" % np.nanstd(recon[good]))
     if args.out:
         write_fits(args.out, wave, recon, parity, row, model, args.file)
     if args.plot:

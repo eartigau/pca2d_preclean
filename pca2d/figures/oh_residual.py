@@ -96,7 +96,7 @@ def main(argv=None):
     ratio = oh_over_flux(args.source_dir, grid, args.n_files)
     ok = np.isfinite(col) & np.isfinite(ratio) & (live.sum(axis=0) > 20)
     rho = spearmanr(col[ok], ratio[ok]).statistic
-    print("  %d usable columns, Spearman rho = %+.3f" % (ok.sum(), rho))
+    log("  %d usable columns, Spearman rho = %+.3f" % (ok.sum(), rho))
 
     edges = [0.0, 0.01, 0.05, 0.2, 1.0, 5.0, np.inf]
     centres, meds, counts = [], [], []
@@ -107,7 +107,7 @@ def main(argv=None):
         centres.append(np.sqrt(max(lo, 1e-3) * min(hi, 20.0)))
         meds.append(np.median(col[m_]))
         counts.append(int(m_.sum()))
-        print("  OH/flux %6.2f - %-8.2f  %7d columns  residual/sigma = %.2f"
+        log("  OH/flux %6.2f - %-8.2f  %7d columns  residual/sigma = %.2f"
               % (lo, hi, m_.sum(), meds[-1]))
 
     fig, axes = plt.subplots(2, 1, figsize=(7.4, 6.2))
@@ -149,7 +149,7 @@ def main(argv=None):
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     fig.savefig(args.out)
     plt.close(fig)
-    print("wrote %s" % args.out)
+    log("wrote %s" % args.out)
 
 
 if __name__ == "__main__":

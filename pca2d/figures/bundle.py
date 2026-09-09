@@ -153,12 +153,12 @@ def summary(config, args, fit):
 
 def run(cmd, log):
     """Run one diagnostic, and say so if it fails rather than dying."""
-    print("   " + " ".join(os.path.basename(c) if c.endswith(".py") else c
+    log("   " + " ".join(os.path.basename(c) if c.endswith(".py") else c
                            for c in cmd[:4]) + " ...")
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
         log.append((" ".join(cmd), (r.stderr or r.stdout or "").strip()[-400:]))
-        print("      failed, see the bundle's last page")
+        log("      failed, see the bundle's last page")
     return r.returncode == 0
 
 
@@ -176,7 +176,7 @@ def main(argv=None):
     # ---- the figures ---------------------------------------------------
     py = sys.executable
     d = lambda name: os.path.join(HERE, name)                 # noqa: E731
-    print("  building the figures")
+    log("  building the figures")
     run([py, d("sequence.py"), "--cube", args.cube, "--fit", fit_path,
          "--windows", *args.windows, "--source-dir",
          args.source_dir or config["input"]["directory"],
@@ -283,15 +283,15 @@ def main(argv=None):
                 except OSError:
                     pass
         if removed:
-            print("  folded %d loose figures into the bundle and removed them"
+            log("  folded %d loose figures into the bundle and removed them"
                   % removed)
     if args.keep:
         keep = os.path.join(args.outdir, "figures")
         shutil.rmtree(keep, ignore_errors=True)
         shutil.copytree(tmp, keep)
-        print("  individual figures kept in %s" % keep)
+        log("  individual figures kept in %s" % keep)
     shutil.rmtree(tmp, ignore_errors=True)
-    print("wrote %s: %d pages from %d figures%s"
+    log("wrote %s: %d pages from %d figures%s"
           % (out, page, bound,
              ", %d failed" % len(failures) if failures else ""))
     return None

@@ -142,9 +142,9 @@ def main(argv=None):
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     fig.savefig(args.out)
     plt.close(fig)
-    print("wrote %s" % args.out)
+    log("wrote %s" % args.out)
 
-    print("  %-14s %9s %9s %9s %9s" % ("band (nm)", "weight", "star", "observer",
+    log("  %-14s %9s %9s %9s %9s" % ("band (nm)", "weight", "star", "observer",
                                        "LBL lines"))
     for lo, hi in ((955, 1500), (1500, 2000), (2000, 2300), (2300, 2400),
                    (2400, 2600)):
@@ -155,7 +155,7 @@ def main(argv=None):
                100 * pe[m].sum() / max(pe.sum(), 1e-30))
         extra = ("%8.1f%%" % (100 * lines[m].sum() / lines.sum())
                  if lines is not None else "        -")
-        print("  %5.0f - %-6.0f %8.1f%% %8.1f%% %8.1f%% %s"
+        log("  %5.0f - %-6.0f %8.1f%% %8.1f%% %8.1f%% %s"
               % (lo, hi, row[0], row[1], row[2], extra))
 
 
