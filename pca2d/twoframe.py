@@ -182,7 +182,7 @@ class FourierShifter:
         self.n_pad = next_fast_len(n_pixels + pad)
         self.freq = np.fft.rfftfreq(self.n_pad)
 
-    def rows(self, arr, pix, chunk=64):
+    def rows(self, arr, pix, chunk=64, desc=None):
         out = np.empty_like(arr)
         for start in range(0, arr.shape[0], chunk):
             stop = min(start + chunk, arr.shape[0])
@@ -202,11 +202,11 @@ class FourierShifter:
         ramp = np.exp(-2j * np.pi * self.freq[None, None, :] * pix[:, None, None])
         return irfft(prepared[None] * ramp, n=self.n_pad, axis=2)[:, :, :self.n]
 
-    def adjoint(self, arr, pix):
+    def adjoint(self, arr, pix, desc=None):
         """S^T x. Only equal to shift(-pix) because the operator is (nearly) unitary."""
         return self.rows(arr, -pix)
 
-    def diag_normal(self, w, pix):
+    def diag_normal(self, w, pix, desc=None):
         """diag(S^T W S), approximated by the shifted weight map. This is the
         step that is wrong; the clip exists only to hide the ringing."""
         return np.clip(self.rows(w, -pix), 0.0, None)
@@ -282,28 +282,36 @@ class LanczosShifter:
         window = sliding_window_view(segment, 2 * self.a, axis=-1)
         return window @ taps
 
-    def rows(self, arr, pix):
+    # `desc`, where it appears below, is a progress bar and nothing else. These
+    # three loops run once per spectrum and are where the seventy seconds of a
+    # basis update actually go; a caller that wants the wait to be visible
+    # names the step, and a caller that does not passes nothing and sees no bar.
+
+    def rows(self, arr, pix, desc=None):
         padded = self._padded(arr)
         out = np.empty((arr.shape[0], self.n))
-        for i in range(arr.shape[0]):
+        for i in _bar(range(arr.shape[0]), desc=desc, unit="row") if desc \
+                else range(arr.shape[0]):
             base, c = self._taps(pix[i])
             out[i] = self._apply(padded[i], base, c, +1)
         return out
 
-    def adjoint(self, arr, pix):
+    def adjoint(self, arr, pix, desc=None):
         """S^T x, exactly: the same taps scattered rather than gathered."""
         padded = self._padded(arr)
         out = np.empty((arr.shape[0], self.n))
-        for i in range(arr.shape[0]):
+        for i in _bar(range(arr.shape[0]), desc=desc, unit="row") if desc \
+                else range(arr.shape[0]):
             base, c = self._taps(pix[i])
             out[i] = self._apply(padded[i], base, c, -1)
         return out
 
-    def diag_normal(self, w, pix):
+    def diag_normal(self, w, pix, desc=None):
         """diag(S^T W S)[j] = sum_t c_t^2 w[j + base - t]. Exact, never negative."""
         padded = self._padded(w)
         out = np.empty((w.shape[0], self.n))
-        for i in range(w.shape[0]):
+        for i in _bar(range(w.shape[0]), desc=desc, unit="row") if desc \
+                else range(w.shape[0]):
             base, c = self._taps(pix[i])
             out[i] = self._apply(padded[i], base, c ** 2, -1)
         return out
@@ -486,11 +494,12 @@ def gap_guard(w, delta, a, verbose=True):
     return w
 
 
-def star_model(P, a, shifter, delta, n_spectra, n_pixels, chunk=64):
+def star_model(P, a, shifter, delta, n_spectra, n_pixels, chunk=64, desc=None):
     """sum_k a_nk (S_n P_k), never materialising S_n P^T for all n at once."""
     out = np.zeros((n_spectra, n_pixels))
     Pf = shifter.prepare(P)
-    for start in range(0, n_spectra, chunk):
+    steps = range(0, n_spectra, chunk)
+    for start in (_bar(steps, desc=desc, unit="chunk") if desc else steps):
         stop = min(start + chunk, n_spectra)
         out[start:stop] = np.einsum(
             "nk,nkm->nm", a[start:stop], shifter.carry(Pf, delta[start:stop])
@@ -567,9 +576,11 @@ def update_star(data, w, P, Q, a, b, shifter, delta, chunk):
     resid *= -1.0
     resid += data
     resid *= w
-    resid_star = shifter.adjoint(resid, delta)              # S^T (W r)
+    resid_star = shifter.adjoint(resid, delta,
+                                 desc="star basis, carrying home")
     del resid
-    w_star = shifter.diag_normal(w, delta)                  # diag(S^T W S)
+    w_star = shifter.diag_normal(w, delta,
+                                 desc="star basis, normal diagonal")
     with np.errstate(invalid="ignore", divide="ignore"):
         resid_star /= np.where(w_star > 1e-12, w_star, 1.0)
     resid_star[w_star <= 1e-12] = 0.0
@@ -578,7 +589,8 @@ def update_star(data, w, P, Q, a, b, shifter, delta, chunk):
 
 def update_earth(data, w, P, Q, a, b, shifter, delta, chunk):
     """Step 2: deflate the star model. No shifting of the weights at all."""
-    model = star_model(P, a, shifter, delta, data.shape[0], data.shape[1], chunk)
+    model = star_model(P, a, shifter, delta, data.shape[0], data.shape[1], chunk,
+                       desc="observer basis, carrying the star out")
     model *= -1.0
     model += data                       # in place: data - model
     return mstep(model, w, b, Q)
