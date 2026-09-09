@@ -60,11 +60,13 @@
         <em>measure</em> rather than the noise a photon model claims. The two
         disagree by a factor of fifty at the red end of a SPIRou spectrum, and
         for a reason worth stating: past about 2200&nbsp;nm the thermal
-        background dominates, the pipeline subtracts it, and its shot noise
-        does not go with it. A photon model computed from what is left is
-        describing a spectrum that was never recorded, and it reports the
-        noisiest part of the detector as the quietest. Measuring the
-        sample-to-sample scatter instead costs nothing and cannot make that
+        background dominates. Those are photons and they were counted, so they
+        arrive with their own Poisson noise, and the pipeline subtracts their
+        <em>mean</em> and not their variance. The noise stays in the data after
+        the signal it belonged to has gone, so a photon model computed from
+        what is left is describing a spectrum that was never recorded, and it
+        reports the noisiest part of the detector as the quietest. Measuring
+        the sample-to-sample scatter instead costs nothing and cannot make that
         mistake.
       </p>
       <p>

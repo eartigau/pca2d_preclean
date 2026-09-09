@@ -82,9 +82,12 @@ general:
                               # that and the photon estimate.
                               #
                               # Not a refinement. Past about 2200 nm on SPIRou
-                              # the THERMAL background dominates, the pipeline
-                              # subtracts it, and its shot noise stays behind.
-                              # A photon sigma computed from what is left
+                              # the THERMAL background dominates. Those photons
+                              # were counted, so they carry their own Poisson
+                              # noise, and the pipeline subtracts their MEAN and
+                              # not their variance: the noise stays in the data
+                              # after the signal it belonged to has gone. A
+                              # photon sigma computed from what is left
                               # describes a spectrum that was never recorded,
                               # and it calls the noisiest part of the detector
                               # the quietest, by a factor of fifty. The
