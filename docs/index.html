@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>pca2d-preclean</title>
+<meta name="description" content="Two-frame weighted PCA of echelle spectra: one basis in the star's rest frame, one in the observer's, fitted jointly, with only the atmosphere divided back out." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg-orb orb-a"></div>
+  <div class="bg-orb orb-b"></div>
+
+  <div class="site-banner">
+    <div class="site-banner-inner">
+      <div class="site-banner-text">
+        <h2>pca2d-preclean</h2>
+        <p>Two-frame weighted PCA &middot; SPIRou, NIRPS, and whatever you add next</p>
+      </div>
+      <a href="https://eartigau.github.io/" class="home-link">&larr; Home</a>
+    </div>
+  </div>
+
+  <header class="hero">
+    <p class="eyebrow">Spectroscopy &middot; telluric and airglow precleaning</p>
+    <h1>Two frames, one fit</h1>
+    <p class="subtitle">
+      A spectrum holds two things that move differently. The star's lines shift
+      with the barycentric velocity; the sky's do not. Give the decomposition
+      one basis that travels and one that stands still, fit them together, and
+      only the one that stands still needs to come off.
+    </p>
+  </header>
+
+  <main class="layout">
+
+    <section class="card span-3">
+      <h2>The idea</h2>
+      <p>
+        Over a year of observing, the barycentric velocity sweeps by tens of
+        kilometres per second. That is enough to separate the star from the
+        atmosphere, but only if the model is told which of the two travels.
+      </p>
+      <pre><code>y_n  =  S_n P a_n  +  Q b_n</code></pre>
+      <p>
+        <code>S_n</code> is an exact translation by that exposure's own
+        barycentric velocity, <code>P</code> is the basis that follows the star
+        and <code>Q</code> the one that stays put on the detector. Both are
+        solved for together, under weights taken from the noise you can
+        <em>measure</em> rather than the noise a photon model claims: on the red
+        end of a SPIRou spectrum those two disagree by a factor of fifty, and
+        the photon model calls the noisiest region the quietest.
+      </p>
+      <p>
+        Nothing is taken out before the fit except one instrumental offset. No
+        median template, no mean spectrum removed in front. Whatever is
+        subtracted early is outside the model, and the correction removes
+        components, so an early subtraction would be fitted by nothing and
+        removed from nothing.
+      </p>
+    </section>
+
+    <section class="card span-3">
+      <h2>Every step, on one page</h2>
+      <p>
+        A window of 1266 to 1268&nbsp;nm, drawn in the star's rest frame with
+        the rows ordered by barycentric velocity. Vertical structure belongs to
+        the star; anything slanted does not. The oxygen airglow band at
+        1267.44&nbsp;nm runs diagonally through the first four panels and is
+        simply gone from the fifth.
+      </p>
+      <figure>
+        <img src="figures/sequence.png" alt="The six stages from the delivered flux to the corrected spectrum" />
+        <figcaption>
+          1 the flux as delivered &middot; 2 its log minus a Savitzky-Golay of
+          its log &middot; 3 minus the instrumental offset, what the fit is
+          given &middot; 4 the reconstruction &middot; 5 minus the observer
+          block, what a corrected file holds &middot; 6 minus everything.
+          Scatter falls from 0.0695 to 0.0365, a 48&nbsp;per&nbsp;cent cut,
+          entirely in the airglow.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section class="card">
+      <h2>Vertical or slanted</h2>
+      <figure>
+        <img src="figures/stack.png" alt="Every spectrum in the star's rest frame, before and after" />
+        <figcaption>
+          The same spectra before and after the two blocks. One glance
+          separates what belongs to the star from what belongs to the sky.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section class="card">
+      <h2>What each component carries</h2>
+      <figure>
+        <img src="figures/variance.png" alt="Weighted variance share per component" />
+        <figcaption>
+          The observer block's first component takes the static atmosphere; the
+          rest describe how it varies from night to night.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section class="card">
+      <h2>The bases themselves</h2>
+      <figure>
+        <img src="figures/components.png" alt="The star-frame and observer-frame basis vectors" />
+        <figcaption>
+          Two components in the star's frame, seven in the observer's. The
+          counts are a configuration value, not a law.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section class="card span-2">
+      <h2>Running it</h2>
+      <p>Spectra go in <code>data/&lt;object&gt;/</code>. Then:</p>
+      <pre><code>pca2d-preclean --object TOI-2120</code></pre>
+      <p>
+        That is the whole interface. The instrument is read from the
+        <code>INSTRUME</code> keyword of the files, never chosen on a command
+        line, because reading the wrong extension raises no error: it returns
+        different photons.
+      </p>
+      <p>Four stages, each announcing how long it took:</p>
+      <ul>
+        <li><strong>cube</strong> &mdash; every spectrum on one log-uniform grid</li>
+        <li><strong>fit</strong> &mdash; the two bases and their coefficients</li>
+        <li><strong>figures</strong> &mdash; one multipage PDF, parameters first, then every plot</li>
+        <li><strong>correct</strong> &mdash; the observer block divided out, written as t.fits</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>Adding a spectrograph</h2>
+      <p>
+        A block in <code>config.yaml</code>, not a line of code:
+      </p>
+      <pre><code>instruments:
+  YOURS:
+    extensions:
+      flux: FluxAB
+      wave: WaveAB
+      blaze: BlazeAB
+      recon: Recon
+      sky: OHLine
+    domain:
+      wave_min: 955.0
+      wave_max: 2500.0
+      wave0: 955.0</code></pre>
+      <p>
+        The wavelength solution comes from the extension, never from header
+        polynomials, and the blaze from the blaze extension of the same file.
+      </p>
+    </section>
+
+    <section class="card span-3">
+      <h2>Access</h2>
+      <p>
+        The repository is <strong>private</strong> for the moment. If you would
+        like access, or would like to try it on a dataset of your own, contact
+        <strong>Étienne Artigau</strong> (Université de Montréal). This page
+        stays public so the method and its figures can be pointed at.
+      </p>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <p>
+      Étienne Artigau &middot;
+      <a href="https://eartigau.github.io/" target="_blank">More tools</a>
+    </p>
+  </footer>
+
+  <div id="lightbox" class="lightbox" hidden>
+    <button id="lightboxClose" class="lightbox-close" aria-label="Close" type="button">&times;</button>
+    <figure class="lightbox-figure">
+      <img id="lightboxImg" src="" alt="" />
+      <figcaption id="lightboxCaption"></figcaption>
+    </figure>
+  </div>
+  <script src="lightbox.js"></script>
+</body>
+</html>

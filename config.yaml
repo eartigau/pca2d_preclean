@@ -1,0 +1,196 @@
+# pca2d-preclean: the one configuration file
+# ---------------------------------------------------------------------------
+# Three layers, merged in this order, later winning:
+#
+#   1. `general`            everything that does not depend on the instrument
+#   2. `instruments.<NAME>` what does, picked from the INSTRUME keyword of the
+#                           files themselves, never from a command line flag
+#   3. `objects.<NAME>`     anything one target needs and the others do not
+#
+# So a run is `pca2d-preclean --object TOI-2120` and nothing else, and adding a
+# spectrograph is adding a block under `instruments`, not editing any code.
+
+general:
+
+  input:
+    format: tfits           # APERO telluric-corrected 2D spectra
+    pattern: "*t.fits"      # data/<object>/ is searched with this
+    max_files: null         # a small number here makes a fast dry run
+    min_order_finite_fraction: 0.05
+    blaze_min_frac: 0.05    # reject a pixel where the blaze has fallen below
+                            # this fraction of its order's peak
+    nightly_stack: auto     # auto, true or false. Coadding a night is a MEMORY
+                            # decision and never a modelling one: every exposure
+                            # is registered with its own BERV before it is
+                            # added, so nothing is smeared either way, and
+                            # fitting the individual spectra is strictly more
+                            # information. `auto` weighs the fit's footprint
+                            # against output.max_memory_gb and coadds only if it
+                            # would not otherwise fit.
+
+  domain:
+    grid_source: magic      # lambda_i = wave0 * exp(i * dv / c). On a
+                            # log-uniform grid a Doppler shift is a pure
+                            # translation, which is what lets the star basis be
+                            # carried into each exposure's frame by an exact
+                            # operator instead of an interpolation.
+    dv: 0.5                 # km/s per sample
+    # wave_min, wave_max and wave0 are per instrument, below.
+
+  registration:
+    frame: observer         # NOT a free choice: the two-frame fit does its own
+                            # BERV shifting, and a pre-shifted cube would leave
+                            # it nothing to shift.
+    target_berv: 0.0
+    spline_order: 3
+    mask_threshold: 0.999
+
+  highpass:
+    method: savgol
+    window: 151             # samples, about 76 km/s at dv = 0.5
+    polyorder: 2
+    mode: log_sub           # ln(f) - savgol(ln(f))
+
+  quality:
+    min_snr: 1.0
+    require_positive_flux: true
+    max_nan_fraction: 0.9
+    max_sky_ratio: 4.0      # drop a sample where the sky emission the pipeline
+                            # subtracted was more than this many times the
+                            # stellar flux. null keeps everything.
+    isolated_window: 3      # drop a valid sample that has a gap within this many
+                            # samples on BOTH sides. It passed every cut but its
+                            # neighbourhood did not, so its high pass came from a
+                            # filter window mostly filled by interpolation.
+    min_rjd: null
+    max_rjd: null
+
+  weights:
+    mode: photon
+    snr_pixel_scale: 1.0
+    ln_clip_low: -0.5
+    ln_clip_high: null
+    sigma_floor_frac: 0.0
+    telluric_mode: recon
+    telluric_ramp_zero: 0.5
+    telluric_ramp_one: 1.0
+    telluric_file: null
+    telluric_power: 2.0
+    telluric_min_transmission: null
+    empirical_noise_box: 201  # samples. Measures the noise from the
+                              # sample-to-sample scatter and keeps the LARGER of
+                              # that and the photon estimate. Without it the
+                              # photon model calls the noisiest part of a SPIRou
+                              # spectrum its quietest, by a factor of fifty.
+    min_good_fraction: 0.2
+
+  twoframe:
+    n_star: 2               # components anchored in the STELLAR rest frame
+    n_earth: 7              # components anchored in the OBSERVER frame
+    template: false         # NO star-frame median template, and no
+                            # observer-frame mean either. Whatever is subtracted
+                            # before the fit is outside the model, and the
+                            # correction removes components and never a
+                            # template, so it would be fitted by nothing and
+                            # removed from nothing. Each block describes the
+                            # static content of its own frame. The only thing
+                            # still taken out is the even-minus-odd instrumental
+                            # offset, which belongs to neither.
+    iters: 16
+    order: star_first
+    tie_parities: true
+    max_mad: 10.0           # rejection threshold in ROBUST SIGMAS, 1.4826 x MAD
+    max_mad_rounds: 2
+    clip: 3.0
+    min_snr_frac: 0.5
+    dtype: float32          # storage for the two (rows, samples) arrays the fit
+                            # lives in. float32 halves them, which is what makes
+                            # fitting every exposure possible instead of nightly
+                            # means; every weighted sum accumulates in float64
+                            # whatever this says.
+    shift: lanczos
+    kernel_halfwidth: 8
+    gap_guard: true
+    leakage: true
+    chunk: null
+    template_berv_bin: 3000
+    template_berv_min_entries: 3
+
+  correct:
+    n_star: 0               # star components divided out of the corrected file.
+                            # ZERO on purpose: with no template the first star
+                            # component IS the star, and dividing it out would
+                            # flatten the spectrum a velocity code is about to
+                            # measure. Only what is fixed in the observer's
+                            # frame comes off.
+    n_earth: null           # null means every observer component the fit has
+
+  output:
+    cube_dtype: float32
+    directory: outputs
+    cache_directory: cache
+    use_cache: true
+    max_memory_gb: 16.0
+    windows:                # centre:width in nm, the regions each run draws
+      - 1200.3:2
+      - 1220:4
+      - 1267:2
+      - 1593.6:2
+      - 1669.5:5
+      - 1700.5:3
+      - 2196.2:2
+      - 2450:5
+
+# ---------------------------------------------------------------------------
+# One block per spectrograph. The instrument is read from the INSTRUME keyword
+# of the files, so this is never chosen by hand and cannot be chosen wrongly.
+#
+# `extensions` is the part that matters most and the part that fails silently
+# if it is wrong: a SPIRou file carries FluxA and FluxB as well as FluxAB, and
+# reading FluxA from one raises no error, it returns half the light with a
+# different blaze and SNR.
+# ---------------------------------------------------------------------------
+instruments:
+
+  SPIROU:
+    extensions:
+      flux: FluxAB          # the combined AB fibre, NEVER FluxA or FluxB
+      wave: WaveAB          # the extension, NEVER the header polynomials
+      blaze: BlazeAB
+      recon: Recon
+      sky: OHLine
+    domain:
+      wave_min: 955.0
+      wave_max: 2500.0
+      wave0: 955.0
+      bands:
+        Y: [970.0, 1070.0]
+        J: [1170.0, 1330.0]
+        H: [1490.0, 1780.0]
+        K: [2030.0, 2370.0]
+
+  NIRPS:
+    extensions:
+      flux: FluxA
+      wave: WaveA
+      blaze: BlazeA
+      recon: Recon
+      sky: SKYCORR_SCI
+    domain:
+      wave_min: 965.0
+      wave_max: 1950.0
+      wave0: 965.0
+      bands:
+        Y: [970.0, 1070.0]
+        J: [1170.0, 1330.0]
+        H: [1490.0, 1780.0]
+    input:
+      nightly_stack: true   # NIRPS takes three or four exposures a visit and
+                            # the campaign cubes were built this way; kept
+                            # explicit so those cache keys still pin.
+
+# ---------------------------------------------------------------------------
+# Anything one target needs and the others do not. Keys here are OBJECT names
+# and match --object. Everything is optional; most targets need nothing.
+# ---------------------------------------------------------------------------
+objects: {}

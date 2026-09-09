@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pca2d-preclean"
+version = "0.1.0"
+description = "Two-frame weighted PCA precleaning of echelle spectra: a stellar-frame basis and an observer-frame basis, fitted jointly, with the atmosphere divided back out."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "Etienne Artigau"}]
+dependencies = [
+  "numpy>=1.24",
+  "scipy>=1.10",
+  "astropy>=5.3",
+  "matplotlib>=3.8",
+  "pyyaml>=6.0",
+  "pypdf>=4.0",
+  "tqdm>=4.66",
+]
+
+[project.scripts]
+pca2d-preclean = "pca2d.cli:main"
+
+[tool.setuptools]
+packages = ["pca2d", "pca2d.figures"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

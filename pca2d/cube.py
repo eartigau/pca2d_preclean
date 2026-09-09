@@ -1,0 +1,731 @@
+"""Build the registered data and weight cubes, from s1d or from t.fits.
+
+The cube has one row per *measurement*, not per exposure. With s1d input that
+is the same thing. With t.fits input each exposure contributes two rows, the
+even orders and the odd orders resampled separately onto the same destination
+grid (see pca2d/tfits.py for why two is the right number). Rows carry
+`exposure` and `parity` columns so the two halves can be recombined afterwards.
+
+With input.nightly_stack the "measurement" is a whole night rather than a
+single exposure: every exposure is still registered individually, with its own
+BERV, and only then are they coadded. See pca2d/nights.py.
+"""
+
+from __future__ import annotations
+
+import os
+import shutil
+
+import numpy as np
+from astropy.table import Table
+
+from . import grids
+from . import io as spio
+from . import nights as spnights
+from . import preprocess as prep
+from . import tfits as sptf
+from .config import cache_key
+from .logger import log
+from .progress import bar as _bar
+
+C_KMS = 299792.458
+
+
+# --------------------------------------------------------------------------
+# cache
+# --------------------------------------------------------------------------
+def _cache_dir(config: dict) -> str:
+    """Where this configuration's cube lives on disk.
+
+    The input format is in the name, not only in the hash, so that a directory
+    listing of the cache says what each cube is. The hash already depends on it
+    (input.format is part of the hashed config), so this is labelling rather
+    than disambiguation, and that is the point.
+    """
+    directory = config["output"]["cache_directory"]
+    os.makedirs(directory, exist_ok=True)
+    fmt = str(config["input"].get("format", "tfits"))
+    return os.path.join(directory, "cube_%s_%s" % (fmt, cache_key(config)))
+
+
+def _load_cache(path: str):
+    """Read a cached cube back. Returns None if it is absent or incomplete."""
+    needed = ["grid.npy", "data.npy", "sigma.npy", "meta.fits"]
+    if not all(os.path.exists(os.path.join(path, name)) for name in needed):
+        return None
+    log("loading cached cube from %s" % path)
+    grid = np.load(os.path.join(path, "grid.npy"))
+    data = np.load(os.path.join(path, "data.npy"))
+    sigma = np.load(os.path.join(path, "sigma.npy"))
+    trans_path = os.path.join(path, "trans.npy")
+    trans = np.load(trans_path) if os.path.exists(trans_path) else None
+    meta = Table.read(os.path.join(path, "meta.fits"))
+    log("cube: %d rows x %d pixels" % data.shape, "value")
+    return grid, data, sigma, trans, meta
+
+
+def _save_cache(path: str, grid, data, sigma, trans, meta):
+    """Write the cube as separate .npy files rather than one compressed npz.
+
+    A full-domain NIRPS cube is several GB. np.savez_compressed on that spends
+    minutes in zlib for a file that barely compresses -- the payload is float32
+    noise -- and has to hold the whole thing in memory twice. Plain .npy files
+    write at disk speed and can be memory-mapped later if it ever comes to that.
+    """
+    tmp = path + ".partial"
+    shutil.rmtree(tmp, ignore_errors=True)
+    os.makedirs(tmp, exist_ok=True)
+    np.save(os.path.join(tmp, "grid.npy"), grid)
+    np.save(os.path.join(tmp, "data.npy"), data)
+    np.save(os.path.join(tmp, "sigma.npy"), sigma)
+    if trans is not None:
+        np.save(os.path.join(tmp, "trans.npy"), trans)
+    meta.write(os.path.join(tmp, "meta.fits"), overwrite=True)
+    shutil.rmtree(path, ignore_errors=True)
+    os.rename(tmp, path)
+    log("cached cube -> %s" % path)
+
+
+# --------------------------------------------------------------------------
+# destination grid
+# --------------------------------------------------------------------------
+def destination_grid(config: dict, files: list[str]):
+    """The common wavelength grid every spectrum is resampled onto."""
+    dom = config["domain"]
+    source = dom.get("grid_source", "magic")
+    if source == "native":
+        if config["input"].get("format", "tfits") == "tfits":
+            raise ValueError(
+                "domain.grid_source = 'native' needs an s1d file to read the grid"
+                " from; t.fits carry no common grid. Use 'magic'."
+            )
+        grid = spio.magic_grid(files[0], dom["wave_min"], dom["wave_max"])
+        log("recycling the native s1d_v grid from %s" % os.path.basename(files[0]))
+    else:
+        grid = grids.magic_grid(dom["wave0"], dom["dv"], dom["wave_min"], dom["wave_max"])
+        log("magic grid: anchor %.3f nm, step %.4f km/s"
+            % (float(dom["wave0"]), float(dom["dv"])))
+    dv = grids.grid_dv(grid)
+    log("domain %.1f-%.1f nm -> %d pixels at %.4f km/s"
+        % (dom["wave_min"], dom["wave_max"], grid.size, dv), "value")
+    return grid, dv
+
+
+def resolve_stacking(config, n_files, n_pixels):
+    """Whether to coadd each night, and why. Returns (stack, reason).
+
+    Coadding a night is not a modelling choice and never was: it exists so the
+    fit holds in memory. Every exposure is registered with its own BERV before
+    it is added, so nothing is smeared either way, and fitting the individual
+    spectra is strictly more information. So the default is `auto`: fit every
+    file unless the fit would not fit.
+
+    The budget compared against is `output.max_memory_gb`, a CONFIG value, and
+    deliberately not the machine's actual RAM. The decision has to be a pure
+    function of the configuration, because the configuration is what the cube
+    cache key hashes: if it depended on the machine, the same key would name a
+    stacked cube on one computer and an unstacked one on another, and nothing
+    downstream would notice.
+
+    What the budget is spent on is the FIT, not the cube. The cube is float32
+    and its own limit is checked separately; the fit promotes to float64 and
+    holds four arrays of (rows, pixels) at its peak: the data, the weights,
+    the star block carried into every frame, and the observer block.
+    """
+    inp = config["input"]
+    asked = inp.get("nightly_stack", "auto")
+    rows = 2 * int(n_files)                       # even and odd order parities
+    # two arrays at the fit's own storage dtype, the data and the weights, plus
+    # the two float64 temporaries the model costs: the bases stay float64, so
+    # the star block carried into every frame and the observer block are
+    # float64 whatever the cube is stored as
+    item = np.dtype(config["twoframe"].get("dtype", "float64")).itemsize \
+        if "twoframe" in config else 8
+    need = rows * int(n_pixels) * (2 * item + 2 * 8) / 1e9
+    budget = float(config["output"].get("max_memory_gb") or 0.0)
+    if asked is True or str(asked).lower() == "true":
+        return True, "asked for"
+    if asked is False or str(asked).lower() == "false":
+        return False, "asked for; the fit needs about %.1f GB" % need
+    if not budget:
+        return False, "auto, and no output.max_memory_gb to weigh it against"
+    if need <= budget:
+        return False, ("auto: the fit needs about %.1f GB of the %.1f GB budget,"
+                       " so every file is fitted on its own" % (need, budget))
+    return True, ("auto: fitting every file would need about %.1f GB, above the"
+                  " %.1f GB budget, so nights are coadded" % (need, budget))
+
+
+def _check_memory(config, n_rows, n_pixels, n_arrays=4):
+    """Refuse to allocate a cube that will not fit, with a useful message.
+
+    Four arrays of that shape are live at the peak: data, sigma, transmission
+    and, once cube.build_weights has run, the weights. The mean subtraction is
+    done in place, but the band-restricted block handed to the decomposition is
+    an extra copy of a fraction of it in pca.fit_dtype.
+    """
+    dtype = np.dtype(config["output"]["cube_dtype"])
+    gigabytes = n_rows * n_pixels * dtype.itemsize * n_arrays / 1e9
+    log("cube footprint: %d rows x %d pixels x %d arrays (%s) = %.2f GB"
+        % (n_rows, n_pixels, n_arrays, dtype.name, gigabytes), "value")
+    limit = config["output"].get("max_memory_gb")
+    if limit and gigabytes > float(limit):
+        raise MemoryError(
+            "the cube would need %.1f GB, above output.max_memory_gb = %.1f. "
+            "Narrow domain.wave_min/wave_max, set input.max_files, or raise the "
+            "limit if the machine really has the memory." % (gigabytes, float(limit))
+        )
+    return gigabytes
+
+
+# --------------------------------------------------------------------------
+# inverse-variance coadder
+# --------------------------------------------------------------------------
+class _Coadder:
+    """Accumulate registered rows into their output group.
+
+    A group is one exposure by default, or one night when input.nightly_stack
+    is on. Within a group the rows are combined by inverse variance, per parity
+    and per grid column:
+
+        y = sum(w y) / sum(w),  sigma = 1 / sqrt(sum w),  w = 1 / sigma^2
+
+    which is the right answer for the mean of independent measurements and,
+    just as importantly, is the operation that lets a pixel be rejected in one
+    exposure and kept in the next without leaving a hole.
+
+    Groups are assumed to arrive contiguously (the file list is time-ordered
+    upstream), so only the open group's accumulators are ever in memory.
+    """
+
+    def __init__(self, n_groups, n_parity, n_pixels, dtype, with_trans):
+        self.n_parity = n_parity
+        self.n_pixels = n_pixels
+        self.data = np.zeros((n_groups * n_parity, n_pixels), dtype=dtype)
+        self.sigma = np.full((n_groups * n_parity, n_pixels), np.nan, dtype=dtype)
+        self.trans = (np.zeros((n_groups * n_parity, n_pixels), dtype=dtype)
+                      if with_trans else None)
+        self.rows = []
+        self.n_groups = 0
+        self._label = None
+        self._sw = np.zeros((n_parity, n_pixels))
+        self._swy = np.zeros((n_parity, n_pixels))
+        self._swt = np.zeros((n_parity, n_pixels))
+        self._meta = []
+
+    def add(self, label, values, sigma, trans, good, meta):
+        if self._label is not None and label != self._label:
+            self.flush()
+        self._label = label
+        self._meta.append(meta)
+        for parity in range(self.n_parity):
+            keep = good[parity] & np.isfinite(sigma[parity]) & (sigma[parity] > 0)
+            if not np.any(keep):
+                continue
+            weight = np.zeros(self.n_pixels)
+            weight[keep] = 1.0 / np.asarray(sigma[parity], dtype=np.float64)[keep] ** 2
+            self._sw[parity] += weight
+            self._swy[parity] += weight * np.where(keep, values[parity], 0.0)
+            if trans is not None:
+                self._swt[parity] += weight * np.where(keep, trans[parity], 0.0)
+
+    def flush(self):
+        """Close the open group and write its rows out."""
+        if self._label is None:
+            return
+        merged = _merge_meta(self._meta)
+        merged["night"] = self._label
+        merged["n_exposures"] = len(self._meta)
+        for parity in range(self.n_parity):
+            slot = self.n_groups * self.n_parity + parity
+            live = self._sw[parity] > 0
+            with np.errstate(invalid="ignore", divide="ignore"):
+                self.data[slot] = np.where(live, self._swy[parity] / self._sw[parity], 0.0)
+                self.sigma[slot] = np.where(live, 1.0 / np.sqrt(self._sw[parity]), np.nan)
+                if self.trans is not None:
+                    self.trans[slot] = np.where(
+                        live, self._swt[parity] / self._sw[parity], 0.0)
+            row = dict(merged)
+            row["exposure"] = self.n_groups
+            row["parity"] = parity
+            row["parity_name"] = (sptf.PARITY_NAMES[parity] if self.n_parity == 2
+                                  else "all")
+            row["n_good_columns"] = int(live.sum())
+            self.rows.append(row)
+        self.n_groups += 1
+        self._label = None
+        self._meta = []
+        self._sw[:] = 0.0
+        self._swy[:] = 0.0
+        self._swt[:] = 0.0
+
+    def result(self):
+        self.flush()
+        n_rows = self.n_groups * self.n_parity
+        trans = self.trans[:n_rows] if self.trans is not None else None
+        return self.data[:n_rows], self.sigma[:n_rows], trans, Table(self.rows)
+
+
+_MEAN_KEYS = ("bjd", "mjdmid", "berv", "bervmax", "airmass", "airmass_start",
+              "airmass_end", "seeing", "humidity", "sun_elevation",
+              "median_flux", "nan_fraction")
+
+
+def _merge_meta(rows):
+    """Collapse the metadata of the exposures that went into one group.
+
+    Times and conditions are averaged, exposure time adds up, and the band SNR
+    adds in quadrature -- which is what coadding n exposures actually does to
+    it, and what makes the quality cuts mean the same thing before and after
+    stacking.
+    """
+    if len(rows) == 1:
+        return dict(rows[0])
+    merged = dict(rows[0])
+    for key in _MEAN_KEYS:
+        values = np.array([row.get(key, np.nan) for row in rows], dtype=float)
+        with np.errstate(invalid="ignore"):
+            merged[key] = float(np.nanmean(values)) if np.any(np.isfinite(values)) \
+                else np.nan
+    merged["exptime"] = float(np.nansum([row.get("exptime", np.nan) for row in rows]))
+    snr = np.array([row.get("snr_band", np.nan) for row in rows], dtype=float)
+    snr = snr[np.isfinite(snr)]
+    merged["snr_band"] = float(np.sqrt(np.sum(snr ** 2))) if snr.size else np.nan
+    merged["filename"] = rows[0]["filename"]
+    return merged
+
+
+# --------------------------------------------------------------------------
+# main entry point
+# --------------------------------------------------------------------------
+def build_cube(config: dict):
+    """Read every spectrum, high-pass it, register it and stack.
+
+    Returns (grid, data, sigma, trans, meta). `data` is the high-passed log
+    spectrum on the common grid, `sigma` its per-pixel uncertainty with NaN
+    marking unusable samples, `trans` the telluric transmission carried through
+    the identical resampling, and `meta` one row per cube row.
+    """
+    cache = _cache_dir(config)
+    if config["output"]["use_cache"]:
+        cached = _load_cache(cache)
+        if cached is not None:
+            return cached
+
+    inp = config["input"]
+    files = spio.find_spectra(inp["directory"], inp["pattern"], inp["max_files"])
+    if len(files) == 0:
+        raise RuntimeError("no files matched %s/%s" % (inp["directory"], inp["pattern"]))
+    log("found %d files in %s" % (len(files), inp["directory"]), "value")
+
+    grid, _ = destination_grid(config, files)
+    fmt = inp.get("format", "tfits")
+    if fmt == "tfits":
+        result = _build_tfits(config, files, grid)
+    elif fmt == "s1d":
+        result = _build_s1d(config, files, grid)
+    else:
+        raise ValueError("unknown input.format: %r (expected 'tfits' or 's1d')" % fmt)
+
+    grid, data, sigma, trans, meta = result
+    if config["output"]["use_cache"]:
+        _save_cache(cache, grid, data, sigma, trans, meta)
+    return grid, data, sigma, trans, meta
+
+
+# --------------------------------------------------------------------------
+# t.fits path
+# --------------------------------------------------------------------------
+def _build_tfits(config: dict, files: list[str], grid: np.ndarray):
+    dom = config["domain"]
+    inp = config["input"]
+    dtype = np.dtype(config["output"]["cube_dtype"])
+    n_pixels = grid.size
+
+    stack, why = resolve_stacking(config, len(files), n_pixels)
+    log("nightly stacking: %s (%s)" % ("on" if stack else "off", why), "value")
+    files, labels = spnights.group_files(files, stack, extension=1)
+    n_groups = len(set(labels))
+    _check_memory(config, 2 * n_groups, n_pixels)
+
+    use_recon = config["weights"].get("telluric_mode") == "recon"
+    coadd = _Coadder(n_groups, 2, n_pixels, dtype, use_recon)
+
+    n_rejected = 0
+    n_used = 0
+    parity_ratio = []
+
+    for i, (path, label) in enumerate(_bar(zip(files, labels), total=len(files),
+                                          desc="reading spectra", unit="file")):
+        if i % 50 == 0:
+            log("reading exposure %d / %d" % (i, len(files)))
+        try:
+            payload = sptf.read_tfits(path)
+        except Exception as exc:                        # noqa: BLE001
+            log("skipping %s (%s)" % (os.path.basename(path), exc), "warn")
+            continue
+
+        meta = dict(payload["meta"])
+        if inp["object"] is not None and meta["object"] != inp["object"]:
+            log("skipping %s (OBJECT=%s)" % (meta["filename"], meta["object"]), "warn")
+            continue
+        meta["snr_band"] = sptf.band_snr(payload, dom["wave_min"], dom["wave_max"])
+        usable = np.isfinite(payload["flux"]) & (payload["flux"] > 0)
+        meta["median_flux"] = (float(np.median(payload["flux"][usable]))
+                               if usable.any() else np.nan)
+        meta["nan_fraction"] = float(1.0 - usable.mean())
+
+        reason = _quality_reason(meta, grid, config["quality"])
+        if reason is not None:
+            log("rejecting %s: %s" % (meta["filename"], reason), "warn")
+            n_rejected += 1
+            continue
+
+        # each exposure is registered with its OWN BERV before it is coadded:
+        # within a night the BERV moves by up to 0.5 km/s, a whole destination
+        # pixel, and stacking first would smear every stellar line by that much
+        values, sig, tr, good, n_orders = sptf.resample_exposure(payload, grid, config)
+        if n_orders == 0 or not good.any():
+            log("rejecting %s: no order survived in the domain" % meta["filename"],
+                "warn")
+            n_rejected += 1
+            continue
+
+        ratio = _parity_agreement(values, sig, good)
+        if np.isfinite(ratio):
+            parity_ratio.append(ratio)
+
+        coadd.add(label, values, sig, tr if use_recon else None, good, meta)
+        n_used += 1
+
+    if n_used == 0:
+        raise RuntimeError("every exposure was rejected")
+    if n_rejected:
+        log("%d exposures failed the quality cuts" % n_rejected, "warn")
+    data, sigma, trans, meta_table = coadd.result()
+    log("kept %d exposures -> %d groups -> %d cube rows (even + odd orders)"
+        % (n_used, coadd.n_groups, data.shape[0]), "value")
+    if parity_ratio:
+        median_ratio = float(np.median(parity_ratio))
+        log("odd vs even disagreement in the order overlaps: %.2f x the photon"
+            " noise (median over exposures)" % median_ratio, "value")
+        if median_ratio > 1.3:
+            log("  the two parities disagree by more than photon noise. That is"
+                " expected -- the overlaps sit at the order edges, where the"
+                " blaze has collapsed and the effective resolution differs"
+                " between the two orders -- but it means the photon model is"
+                " optimistic there.", "warn")
+    return grid, data, sigma, trans, meta_table
+
+
+def _parity_agreement(values, sigma, good):
+    """Observed odd-even scatter over the order overlaps, in units of sigma.
+
+    Free diagnostic: wherever both parities cover a column they measured the
+    same photons at two different places on the detector, so their difference
+    is an error estimate that owes nothing to any noise model.
+    """
+    both = good[0] & good[1]
+    if both.sum() < 100:
+        return np.nan
+    difference = values[0][both] - values[1][both]
+    expected = np.sqrt(sigma[0][both] ** 2 + sigma[1][both] ** 2)
+    expected = np.median(expected[np.isfinite(expected)])
+    if not np.isfinite(expected) or expected <= 0:
+        return np.nan
+    return float(np.std(difference) / expected)
+
+
+# --------------------------------------------------------------------------
+# s1d path (unchanged in substance; rows are exposures, parity is always 0)
+# --------------------------------------------------------------------------
+def _build_s1d(config: dict, files: list[str], grid: np.ndarray):
+    dom = config["domain"]
+    inp = config["input"]
+    reg = config["registration"]
+    hip = config["highpass"]
+    wcf = config["weights"]
+
+    spio.check_common_grid(files)
+    stack, why = resolve_stacking(config, len(files), grid.size)
+    log("nightly stacking: %s (%s)" % ("on" if stack else "off", why), "value")
+    files, labels = spnights.group_files(files, stack, extension=0)
+    n_groups = len(set(labels))
+    n_pixels = grid.size
+    _check_memory(config, n_groups, n_pixels)
+
+    dtype = np.dtype(config["output"]["cube_dtype"])
+    use_recon = wcf.get("telluric_mode") == "recon"
+    coadd = _Coadder(n_groups, 1, n_pixels, dtype, use_recon)
+
+    n_missing_recon = 0
+    n_used = 0
+    n_rejected = 0
+    observer_frame = reg["frame"] == "observer"
+    pad = max(40.0, abs(reg["target_berv"]) + 40.0)
+
+    for i, (path, label) in enumerate(_bar(zip(files, labels), total=len(files),
+                                          desc="reading spectra", unit="file")):
+        if i % 50 == 0:
+            log("reading spectrum %d / %d" % (i, len(files)))
+        try:
+            wave, flux, s1d_w, meta = spio.read_spectrum(
+                path, dom["wave_min"], dom["wave_max"], pad_kms=pad,
+            )
+        except Exception as exc:                        # noqa: BLE001
+            log("skipping %s (%s)" % (os.path.basename(path), exc), "warn")
+            continue
+
+        if inp["object"] is not None and meta["object"] != inp["object"]:
+            log("skipping %s (OBJECT=%s)" % (meta["filename"], meta["object"]), "warn")
+            continue
+        reason = _quality_reason(meta, wave, config["quality"])
+        if reason is not None:
+            log("rejecting %s: %s" % (meta["filename"], reason), "warn")
+            n_rejected += 1
+            continue
+
+        if wcf["mode"] == "photon":
+            sig_obs = prep.photon_sigma(flux, s1d_w, meta["snr_band"],
+                                        wcf["snr_pixel_scale"])
+        else:
+            sig_obs = np.ones_like(flux)
+
+        if hip["method"] == "none":
+            positive = np.isfinite(flux) & (flux > 0)
+            values = np.where(positive, np.log(np.where(positive, flux, 1.0)), 0.0)
+            good = positive
+        elif hip["frame"] == "observer":
+            values, good = prep.highpass(flux, hip["window"], hip["polyorder"],
+                                         hip["mode"])
+        else:
+            positive = np.isfinite(flux) & (flux > 0)
+            values, good = np.where(positive, flux, np.nan), positive
+
+        good &= np.isfinite(sig_obs)
+        berv = 0.0 if observer_frame else float(meta["berv"])
+        target = 0.0 if observer_frame else float(reg["target_berv"])
+
+        reg_values, reg_good = prep.register(
+            wave, values, good, berv, target, grid,
+            spline_order=reg["spline_order"], mask_threshold=reg["mask_threshold"],
+        )
+        reg_sigma, _ = prep.register(
+            wave, np.where(good, sig_obs, np.nanmedian(sig_obs)), good, berv, target,
+            grid, spline_order=1, mask_threshold=reg["mask_threshold"],
+        )
+        if hip["method"] != "none" and hip["frame"] != "observer":
+            reg_values, hp_good = prep.highpass(
+                np.where(reg_good, reg_values, np.nan),
+                hip["window"], hip["polyorder"], hip["mode"],
+            )
+            reg_good &= hp_good
+
+        reg_trans = None
+        if use_recon:
+            recon = spio.recon_path_for(path)
+            trans_obs = None
+            if recon is not None:
+                try:
+                    trans_obs = spio.read_transmission(
+                        recon, dom["wave_min"], dom["wave_max"], pad_kms=pad)
+                except Exception as exc:                # noqa: BLE001
+                    # an unreadable partner must not end a 700-file run. It
+                    # happens: on a cloud-synced directory a file can be a
+                    # placeholder that materialises as garbage, which astropy
+                    # reports as "No SIMPLE card found"
+                    log("cannot read %s (%s); telluric weight left at 1"
+                        % (os.path.basename(recon), exc), "warn")
+            if trans_obs is None:
+                if recon is None:
+                    log("no recon partner for %s; telluric weight left at 1"
+                        % meta["filename"], "warn")
+                n_missing_recon += 1
+                reg_trans = np.ones(n_pixels)
+            else:
+                finite_trans = np.isfinite(trans_obs)
+                reg_trans, trans_good = prep.register(
+                    wave, np.where(finite_trans, trans_obs, 1.0), finite_trans,
+                    berv, target, grid, spline_order=reg["spline_order"],
+                    mask_threshold=reg["mask_threshold"],
+                )
+                reg_trans = np.where(trans_good, reg_trans, 0.0)
+
+        reg_good &= np.isfinite(reg_sigma) & (reg_sigma > 0)
+        coadd.add(label, reg_values[None, :], reg_sigma[None, :],
+                  None if reg_trans is None else reg_trans[None, :],
+                  reg_good[None, :], meta)
+        n_used += 1
+
+    if n_used == 0:
+        raise RuntimeError("every spectrum was rejected")
+    if n_rejected:
+        log("%d spectra failed the quality cuts" % n_rejected, "warn")
+    if n_missing_recon:
+        log("%d spectra had no recon partner" % n_missing_recon, "warn")
+    data, sigma, trans, meta_table = coadd.result()
+    log("kept %d / %d spectra -> %d cube rows" % (n_used, len(files), data.shape[0]),
+        "value")
+    return grid, data, sigma, trans, meta_table
+
+
+def _quality_reason(meta, wave, quality):
+    """Return why this exposure should be rejected, or None to keep it.
+
+    The four 2025-04-11 frames in this dataset motivated making these checks
+    explicit: they carry a *negative* median flux and negative or 'NaN'
+    per-order SNR across the whole band, i.e. the extraction failed. Before
+    these cuts existed they were dropped only by accident, when the string
+    'NaN' in EXTSN crashed a numpy call.
+    """
+    if np.size(wave) < 10:
+        return "no coverage in the requested band"
+    if not np.isfinite(meta["berv"]):
+        return "no valid BERV"
+    if not np.isfinite(meta["bjd"]):
+        return "no valid BJD"
+    snr = meta["snr_band"]
+    if quality["min_snr"] is not None:
+        if not np.isfinite(snr):
+            return "no valid per-order SNR in the band"
+        if snr < float(quality["min_snr"]):
+            return "band SNR %.2f below the %.1f threshold" % (snr, quality["min_snr"])
+    if quality["require_positive_flux"] and not (meta["median_flux"] > 0):
+        return "median band flux %.4g is not positive" % meta["median_flux"]
+    if quality["max_nan_fraction"] is not None:
+        if meta["nan_fraction"] > float(quality["max_nan_fraction"]):
+            return "%.1f%% of the band is NaN" % (100 * meta["nan_fraction"])
+    # the epoch window, in rjd. meta["bjd"] is a full Julian date, so the
+    # conversion happens here once rather than in every config
+    rjd = float(meta["bjd"]) - 2400000.0
+    if quality.get("min_rjd") is not None and rjd < float(quality["min_rjd"]):
+        return "rjd %.2f is before the %.0f window start" % (rjd, quality["min_rjd"])
+    if quality.get("max_rjd") is not None and rjd > float(quality["max_rjd"]):
+        return "rjd %.2f is after the %.0f window end" % (rjd, quality["max_rjd"])
+    return None
+
+
+# --------------------------------------------------------------------------
+# weights
+# --------------------------------------------------------------------------
+def build_weights(config: dict, grid, data, sigma, meta, trans=None, chunk=64):
+    """Turn per-pixel sigmas into PCA weights, applying every rejection rule.
+
+    Done in row blocks. At full NIRPS coverage a single float64 temporary the
+    size of the cube is 5 GB, so `variance = sigma.astype(float) ** 2` written
+    the obvious way is the difference between a run that works and one that
+    swaps.
+    """
+    wcf = config["weights"]
+    weights = np.zeros(data.shape, dtype=np.float32)
+    n_total = weights.size
+    counters = dict(dead=0, low=0, high=0, telluric_killed=0, telluric_sum=0.0)
+
+    mode = wcf.get("telluric_mode", "recon")
+    use_ramp = mode == "recon" and trans is not None
+    if mode == "recon" and trans is None:
+        log("telluric_mode is 'recon' but no transmission cube was built;"
+            " no telluric weighting applied", "warn")
+
+    for start in range(0, data.shape[0], chunk):
+        stop = min(start + chunk, data.shape[0])
+        with np.errstate(invalid="ignore", divide="ignore"):
+            variance = np.asarray(sigma[start:stop], dtype=np.float64) ** 2
+            if wcf["sigma_floor_frac"]:
+                variance = variance + float(wcf["sigma_floor_frac"]) ** 2
+            block = np.where(np.isfinite(variance) & (variance > 0), 1.0 / variance, 0.0)
+        values = data[start:stop]
+        bad = ~np.isfinite(values)
+        block[bad] = 0.0
+        counters["dead"] += int(np.sum(block == 0))
+        if wcf["ln_clip_low"] is not None:
+            cut = values < float(wcf["ln_clip_low"])
+            block[cut] = 0.0
+            counters["low"] += int(cut.sum())
+        if wcf["ln_clip_high"] is not None:
+            cut = values > float(wcf["ln_clip_high"])
+            block[cut] = 0.0
+            counters["high"] += int(cut.sum())
+        if use_ramp:
+            ramp = prep.telluric_ramp(trans[start:stop], wcf["telluric_ramp_zero"],
+                                      wcf["telluric_ramp_one"])
+            block *= ramp
+            counters["telluric_killed"] += int(np.sum(ramp <= 0))
+            counters["telluric_sum"] += float(ramp.sum())
+        weights[start:stop] = block
+
+    log("zero-weight from non-finite / failed registration: %.3f%%"
+        % (100.0 * counters["dead"] / n_total), "value")
+    if wcf["ln_clip_low"] is not None:
+        log("zero-weight from y < %.2f (deep lines): %.3f%%"
+            % (wcf["ln_clip_low"], 100.0 * counters["low"] / n_total), "value")
+    if wcf["ln_clip_high"] is not None:
+        log("zero-weight from y > %.2f: %.3f%%"
+            % (wcf["ln_clip_high"], 100.0 * counters["high"] / n_total), "value")
+    if use_ramp:
+        log("telluric weight from the recon extension: ramp 0 at T = %.2f, 1 at T"
+            " = %.2f" % (wcf["telluric_ramp_zero"], wcf["telluric_ramp_one"]))
+        log("  mean telluric weight %.4f, %.3f%% of samples fully rejected"
+            % (counters["telluric_sum"] / n_total,
+               100.0 * counters["telluric_killed"] / n_total), "value")
+    elif mode == "from_data":
+        from . import telluric as _telluric
+        weights = _telluric.apply_from_data(weights, grid, meta, config)
+    elif mode == "file" and wcf["telluric_file"]:
+        weights = apply_telluric(weights, grid, meta, config)
+
+    _mask_thin_columns(weights, meta, float(wcf["min_good_fraction"]))
+    log("total zero-weight fraction: %.3f%%"
+        % (100.0 * np.mean(weights == 0)), "value")
+    return weights
+
+
+def _mask_thin_columns(weights, meta, min_good_fraction):
+    """Kill grid columns that too few spectra constrain.
+
+    Counted within each parity rather than over all rows. Half the domain is
+    covered by the even orders only and half by the odd ones, so a global count
+    would condemn every single-parity column no matter how well measured it is.
+    """
+    parity = np.asarray(meta["parity"]) if "parity" in meta.colnames else np.zeros(
+        weights.shape[0], dtype=int)
+    best = np.zeros(weights.shape[1])
+    for value in np.unique(parity):
+        rows = parity == value
+        best = np.maximum(best, np.mean(weights[rows] > 0, axis=0))
+    dead = best < min_good_fraction
+    if np.any(dead):
+        weights[:, dead] = 0.0
+        where = " in either parity" if np.unique(parity).size > 1 else ""
+        log("masked %d / %d grid columns below %.0f%% good spectra%s"
+            % (dead.sum(), dead.size, 100 * min_good_fraction, where), "warn")
+
+
+def apply_telluric(weights, grid, meta, config):
+    """Down-weight pixels sitting under telluric absorption, from a text model.
+
+    Expects a two-column text file (wavelength in nm, transmission in 0-1)
+    sampled in the OBSERVER frame. That frame matters: tellurics are fixed in
+    the Earth frame while the cube is registered to the stellar frame, so the
+    model has to be shifted per spectrum by that spectrum's BERV before being
+    applied. The weight is multiplied by transmission ** telluric_power, which
+    for power = 2 is what a pure photon-noise argument gives.
+    """
+    path = config["weights"]["telluric_file"]
+    power = float(config["weights"]["telluric_power"])
+    if not os.path.exists(path):
+        log("telluric file %s not found; skipping telluric weighting" % path, "warn")
+        return weights
+
+    table = np.loadtxt(path)
+    wave_model, trans_model = table[:, 0], np.clip(table[:, 1], 0.0, 1.0)
+    observer_frame = config["registration"]["frame"] == "observer"
+    target = 0.0 if observer_frame else float(config["registration"]["target_berv"])
+
+    for n in range(weights.shape[0]):
+        berv = 0.0 if observer_frame else float(meta["berv"][n])
+        wave_obs = grid * (1.0 + target / C_KMS) / (1.0 + berv / C_KMS)
+        trans = np.interp(wave_obs, wave_model, trans_model, left=1.0, right=1.0)
+        weights[n] *= np.clip(trans, 0.0, 1.0) ** power
+    log("applied telluric weighting from %s (power %.1f)" % (path, power))
+    return weights

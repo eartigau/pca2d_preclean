@@ -1,0 +1,19 @@
+# data and everything derived from it: this repository is code
+data/
+cache/
+outputs/
+*.npz
+*.npy
+*.log
+*.fits
+
+# except the figures the site shows
+!docs/figures/*
+
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+*.egg-info/
+build/
+dist/
