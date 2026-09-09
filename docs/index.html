@@ -144,16 +144,25 @@ cd pca2d_preclean
 conda env create -f environment.yml
 conda activate pca2d-preclean</code></pre>
       <p>
-        <code>environment.yml</code> pulls numpy, scipy, astropy, matplotlib,
-        pyyaml, pypdf and tqdm from conda-forge and then installs the package
-        itself in place, which is what puts the one command on your path. It
-        asks for <code>astropy-base</code> and <code>matplotlib-base</code>
-        rather than the metapackages: nothing here imports pandas or pyarrow,
-        and every entry point calls <code>matplotlib.use("Agg")</code> before it
-        draws, so the GUI toolkits would be installed to be never loaded.
-        Python is pinned to the 3.12 series, which is what this is run and
-        tested on. Check the install with <code>./check.sh</code>: 69 tests,
-        under a second, no file and no network access.
+        That environment holds <strong>both codes</strong>: this one and
+        <a href="https://github.com/njcuk9999/lbl" target="_blank">LBL</a>,
+        which is what the corrected spectra exist to be fed to. Having to
+        deactivate one to run the other is how a t.fits gets measured by the
+        wrong version of something, so afterwards
+        <code>pca2d-preclean</code>, <code>lbl_setup</code> and
+        <code>lbl_find</code> are all on the same path.
+      </p>
+      <p>
+        It is why the versions are nailed down rather than floored. LBL pins
+        its dependencies exactly, <code>numpy==2.3.3</code>,
+        <code>astropy==7.2.0</code>, <code>scipy==1.17.0</code> and the rest,
+        and asks for python 3.12; <code>environment.yml</code> repeats those
+        pins so that <em>conda</em> installs them and pip finds them already
+        satisfied. Only <code>lbl</code> itself, which is not on PyPI, this
+        package in place, and one PyPI-only dependency come through pip, so the
+        two package managers never fight over numpy. Check the install with
+        <code>./check.sh</code>: 69 tests, under a second, no file and no
+        network access.
       </p>
       <h3>Running it</h3>
       <p>
@@ -230,7 +239,8 @@ conda activate pca2d-preclean</code></pre>
         including the wavelength solution and the blaze, is copied through
         untouched. LBL reads them exactly as it reads the originals, with the
         same instrument class, so the comparison that matters is one command
-        apart: the velocities before, the velocities after.
+        apart: the velocities before, the velocities after, and it is one
+        command apart in the same environment, since LBL is installed in it.
       </p>
       <p>
         Only the observer block is divided out. The star components stay in,

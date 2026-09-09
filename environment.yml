@@ -1,40 +1,64 @@
-# The environment this is developed in and run in.
+# The environment this is developed in and run in, and the one LBL runs in.
 #
 #     conda env create -f environment.yml
 #     conda activate pca2d-preclean
 #
-# Everything but the package itself comes from conda-forge, and two of the
-# names are the lean halves of split packages on purpose:
+# Two codes in one environment on purpose: the corrected spectra this writes
+# exist to be fed to LBL, and having to deactivate one to run the other is how
+# a t.fits gets measured by the wrong version of something.
 #
-#   astropy-base     `astropy` is a metapackage that also pulls pandas,
-#                    pyarrow, s3fs, bqplot and ipykernel. Nothing here imports
-#                    any of them.
-#   matplotlib-base  every entry point calls matplotlib.use("Agg") before it
-#                    draws, so the GUI toolkits would be installed to be
-#                    never loaded.
+# WHY THE VERSIONS ARE NAILED DOWN. LBL's pyproject pins its dependencies
+# exactly (numpy==2.3.3, astropy==7.2.0, scipy==1.17.0, and the rest below),
+# and it asks for python >=3.12,<3.13. Those pins are repeated here so that
+# CONDA installs them and pip finds them already satisfied: pip and conda
+# fighting over numpy in the same environment is the failure this avoids, and
+# it leaves conda able to update the environment later without clobbering what
+# pip put there. Nothing but `lbl` itself, and the one dependency of it that
+# lives only on PyPI, comes through pip.
 #
-# Python is pinned to the 3.12 series because that is what this is run and
-# tested on; pyproject.toml keeps the honest floor of 3.10 for anyone
-# installing the package on its own.
+# pca2d-preclean's own floors are looser (see pyproject.toml); it runs fine on
+# every version below, and the tests are run here on exactly them.
 #
-# The last line installs pca2d-preclean itself in place, which is what puts
-# the one command on the path, so `conda env create` has to be run from a
-# clone rather than from the file alone.
+# astropy-base and matplotlib-base rather than the metapackages: `astropy`
+# also drags in s3fs, bqplot and ipykernel, and every entry point here calls
+# matplotlib.use("Agg") before it draws, so the GUI toolkits would be
+# installed to be never loaded. LBL wants pandas and pytables, which is why
+# those appear even though nothing in this package imports them.
 name: pca2d-preclean
 
 channels:
   - conda-forge
 
 dependencies:
-  - python 3.12.*
-  - numpy >=1.24
-  - scipy >=1.10
-  - astropy-base >=5.3
-  - matplotlib-base >=3.8
-  - pyyaml >=6.0
+  - python 3.12.*            # LBL: >=3.12,<3.13
+
+  # shared by both codes, at LBL's pins
+  - numpy 2.3.3
+  - scipy 1.17.0
+  - astropy-base 7.2.0
+  - matplotlib-base 3.10.8
+  - pyyaml 6.0.3
+  - tqdm 4.67.3
+
+  # pca2d-preclean only
   - pypdf >=4.0
-  - tqdm >=4.66
   - pytest >=7.0
+
+  # LBL only
+  - bottleneck 1.6.0
+  - numba 0.62.1
+  - llvmlite 0.45.1
+  - pandas 3.0.0
+  - pytables 3.11.0          # the `tables` module
+  - requests 2.33.1
+  - chardet <6
+  - ipython 8.32.0
+
   - pip
   - pip:
+      # this package, in place, which is what puts pca2d-preclean on the path,
+      # so `conda env create` has to be run from a clone
       - --editable .
+      # LBL is not on PyPI. main is its long-term stable branch; `working` is
+      # where its development happens if you need something newer.
+      - git+https://github.com/njcuk9999/lbl@main

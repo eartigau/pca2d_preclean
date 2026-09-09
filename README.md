@@ -56,14 +56,28 @@ conda env create -f environment.yml
 conda activate pca2d-preclean
 ```
 
-`environment.yml` takes numpy, scipy, astropy, matplotlib, pyyaml, pypdf and
-tqdm from conda-forge and then installs the package itself in place, which is
-what puts `pca2d-preclean` on the path. It asks for `astropy-base` and
-`matplotlib-base` rather than the metapackages: nothing here imports pandas or
-pyarrow, and every entry point calls `matplotlib.use("Agg")` before it draws,
-so the GUI toolkits would be installed to be never loaded. Python is pinned to
-the 3.12 series, which is what this is run and tested on; `pyproject.toml`
-keeps the floor of 3.10 for anyone installing the package on its own.
+That environment holds **both codes**: `pca2d-preclean` and
+[LBL](https://github.com/njcuk9999/lbl), which is what the corrected spectra
+exist to be fed to. Having to deactivate one to run the other is how a t.fits
+gets measured by the wrong version of something.
+
+It is why the versions are nailed down rather than floored. LBL pins its
+dependencies exactly, `numpy==2.3.3`, `astropy==7.2.0`, `scipy==1.17.0` and the
+rest, and asks for python >=3.12,<3.13; `environment.yml` repeats those pins so
+that **conda** installs them and pip finds them already satisfied. Only `lbl`
+itself, which is not on PyPI, this package in place, and one PyPI-only
+dependency come through pip, so conda and pip never fight over numpy and
+`conda env update` later cannot clobber what pip put there. `astropy-base` and
+`matplotlib-base` rather than the metapackages: nothing here imports pyarrow or
+bqplot, and every entry point calls `matplotlib.use("Agg")` before it draws, so
+the GUI toolkits would be installed to be never loaded.
+
+`pyproject.toml` keeps this package's own honest floor of 3.10 and its looser
+bounds, for anyone installing it on its own.
+
+After that, `pca2d-preclean`, `lbl_find`, `lbl_setup`, `lbl_demo` and
+`lbl_reset` are all on the path, and `./check.sh` is 69 tests in under a
+second.
 
 ## Running it
 
