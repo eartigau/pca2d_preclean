@@ -47,6 +47,24 @@ comes out before the fit is outside the model, and the correction removes
 components: a term subtracted early would be fitted by nothing and removed from
 nothing.
 
+## Installing it
+
+```
+git clone https://github.com/eartigau/pca2d_preclean.git
+cd pca2d_preclean
+conda env create -f environment.yml
+conda activate pca2d-preclean
+```
+
+`environment.yml` takes numpy, scipy, astropy, matplotlib, pyyaml, pypdf and
+tqdm from conda-forge and then installs the package itself in place, which is
+what puts `pca2d-preclean` on the path. It asks for `astropy-base` and
+`matplotlib-base` rather than the metapackages: nothing here imports pandas or
+pyarrow, and every entry point calls `matplotlib.use("Agg")` before it draws,
+so the GUI toolkits would be installed to be never loaded. Python is pinned to
+the 3.12 series, which is what this is run and tested on; `pyproject.toml`
+keeps the floor of 3.10 for anyone installing the package on its own.
+
 ## Running it
 
 Two roots, and a run reads from one and writes to the other. Spectra go under

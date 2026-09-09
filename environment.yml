@@ -1,0 +1,40 @@
+# The environment this is developed in and run in.
+#
+#     conda env create -f environment.yml
+#     conda activate pca2d-preclean
+#
+# Everything but the package itself comes from conda-forge, and two of the
+# names are the lean halves of split packages on purpose:
+#
+#   astropy-base     `astropy` is a metapackage that also pulls pandas,
+#                    pyarrow, s3fs, bqplot and ipykernel. Nothing here imports
+#                    any of them.
+#   matplotlib-base  every entry point calls matplotlib.use("Agg") before it
+#                    draws, so the GUI toolkits would be installed to be
+#                    never loaded.
+#
+# Python is pinned to the 3.12 series because that is what this is run and
+# tested on; pyproject.toml keeps the honest floor of 3.10 for anyone
+# installing the package on its own.
+#
+# The last line installs pca2d-preclean itself in place, which is what puts
+# the one command on the path, so `conda env create` has to be run from a
+# clone rather than from the file alone.
+name: pca2d-preclean
+
+channels:
+  - conda-forge
+
+dependencies:
+  - python 3.12.*
+  - numpy >=1.24
+  - scipy >=1.10
+  - astropy-base >=5.3
+  - matplotlib-base >=3.8
+  - pyyaml >=6.0
+  - pypdf >=4.0
+  - tqdm >=4.66
+  - pytest >=7.0
+  - pip
+  - pip:
+      - --editable .

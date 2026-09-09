@@ -138,17 +138,22 @@
 
     <section class="card span-2">
       <h2>Installing it</h2>
-      <p>Python 3.10 or newer.</p>
+      <p>A conda environment, described by the repository itself:</p>
       <pre><code>git clone https://github.com/eartigau/pca2d_preclean.git
 cd pca2d_preclean
-python -m venv venv
-source venv/bin/activate
-pip install -e .</code></pre>
+conda env create -f environment.yml
+conda activate pca2d-preclean</code></pre>
       <p>
-        That pulls numpy, scipy, astropy, matplotlib, pyyaml, pypdf and tqdm,
-        and puts one command on your path. Check the install with
-        <code>./check.sh</code>: 69 tests, under a second, no file and no
-        network access.
+        <code>environment.yml</code> pulls numpy, scipy, astropy, matplotlib,
+        pyyaml, pypdf and tqdm from conda-forge and then installs the package
+        itself in place, which is what puts the one command on your path. It
+        asks for <code>astropy-base</code> and <code>matplotlib-base</code>
+        rather than the metapackages: nothing here imports pandas or pyarrow,
+        and every entry point calls <code>matplotlib.use("Agg")</code> before it
+        draws, so the GUI toolkits would be installed to be never loaded.
+        Python is pinned to the 3.12 series, which is what this is run and
+        tested on. Check the install with <code>./check.sh</code>: 69 tests,
+        under a second, no file and no network access.
       </p>
       <h3>Running it</h3>
       <p>
@@ -165,6 +170,16 @@ pip install -e .</code></pre>
         different photons. Four stages, each announcing how long it took, with
         a progress bar while it works. On 321 SPIRou exposures the whole run
         takes about forty minutes, two thirds of it in the fit.
+      </p>
+      <p>
+        <code>domain.smart_dv: true</code> takes the grid step from the data
+        rather than from the file: the finest pixel in the first spectrum,
+        sampled at 70% of its own width, which is all a resampling has to
+        guarantee. SPIRou pixels are about 2.27&nbsp;km/s, so 955 to
+        2500&nbsp;nm goes from 577,002 samples at <code>dv: 0.5</code> to
+        182,596, and every array the run allocates with it. With it on,
+        <code>domain.dv</code> is not read at all, and the run says so on the
+        line where it announces the domain.
       </p>
     </section>
 
