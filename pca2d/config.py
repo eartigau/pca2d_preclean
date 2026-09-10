@@ -223,7 +223,10 @@ DEFAULTS = {
         "suffix": "_PCA2D_{tag}",
         "before": True,              # the delivered spectra as their own object
         "after": True,               # and the corrected ones as another
-        "teff": None,                # LBL picks the mask's stellar model by it
+        # LBL picks the stellar model its mask comes from by this, and stops
+        # without it. 'auto' reads it from the spectra, where APERO writes it
+        # as OBJTEMP and PP_TEFF; a number here overrides the header.
+        "teff": "auto",
         "template": None,            # OBJECT_COMPARISON; None = each its own
         "steps": ["template", "mask", "compute", "compile"],
         "link": "symlink",           # 'symlink' or 'copy' into LBL's tree

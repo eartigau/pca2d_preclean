@@ -196,9 +196,13 @@ general:
     before: true            # measure the delivered spectra too. Leaving this
                             # off measures the correction against nothing.
     after: true
-    teff: null              # the target's effective temperature. LBL chooses
-                            # the stellar model its mask comes from by it, so
-                            # the mask step needs it.
+    teff: auto              # the target's effective temperature, which LBL
+                            # needs to choose the stellar model its mask comes
+                            # from, and stops without. `auto` reads it from the
+                            # spectra: APERO writes it as OBJTEMP on the
+                            # primary header and PP_TEFF on the science one. A
+                            # number here overrides the header, and the run
+                            # says so when the two disagree.
     template: null          # OBJECT_COMPARISON. null means each object builds
                             # its own template, which is what makes the two
                             # velocity series comparable: a shared template
@@ -283,3 +287,7 @@ instruments:
 # and match --object. Everything is optional; most targets need nothing.
 # ---------------------------------------------------------------------------
 objects: {}
+
+# TOI2120 needs nothing here: APERO wrote OBJTEMP = 3179 K in its headers, and
+# that is the same number the TIC carries for TIC 389900760 (TIC v8.2 via
+# VizieR, which also gives R = 0.240 Rsun, K = 10.21; SIMBAD types it M4.5V).

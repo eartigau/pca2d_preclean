@@ -51,6 +51,67 @@ FALLBACK = {
 
 STEPS = ("telluclean", "template", "mask", "compute", "compile")
 
+#: Where the target's effective temperature is written, in the order they are
+#: tried. APERO puts OBJTEMP on the primary header and PP_TEFF on the science
+#: extension, with PP_TEFFS saying where the DRS got it. LBL needs the number
+#: and does not read it from anywhere itself: it stops with "Teff is require.
+#: Please add OBJECT_TEFF to config". It is in the file, so read it there.
+TEFF_KEYS = ("OBJTEMP", "PP_TEFF", "OBJ_TEMP", "TEFF")
+
+
+def teff_from_header(path: str):
+    """(teff, keyword) from the first of TEFF_KEYS that carries a number."""
+    from .io import robust_open
+
+    try:
+        with robust_open(path) as hdulist:
+            for key in TEFF_KEYS:
+                for hdu in hdulist:
+                    value = hdu.header.get(key)
+                    if value in (None, "", "None"):
+                        continue
+                    try:
+                        number = float(value)
+                    except (TypeError, ValueError):
+                        continue
+                    if number > 0:
+                        return number, key
+    except Exception:                                         # noqa: BLE001
+        return None, None
+    return None, None
+
+
+def resolve_teff(config: dict, files) -> tuple:
+    """The Teff LBL will be given, and where it came from.
+
+    `auto`, the default, reads it from the spectra, for the same reason the
+    instrument is read from them: it is written in the file, by the pipeline
+    that reduced it, and a number typed into a config is a number that can be
+    typed wrong. A number in the config wins over the header, and is checked
+    against it out loud, because disagreeing with the file is a thing worth
+    doing deliberately and not by accident.
+    """
+    asked = (config.get("lbl") or {}).get("teff", "auto")
+    header, key = (teff_from_header(files[0]) if files else (None, None))
+
+    if isinstance(asked, str) and asked.strip().lower() == "auto":
+        if header is None:
+            log("lbl.teff is `auto` and none of %s is in the header of %s."
+                " LBL needs a Teff to choose the stellar model its mask comes"
+                " from: put a number in lbl.teff."
+                % (", ".join(TEFF_KEYS), os.path.basename(files[0]) if files
+                   else "the spectra"), "warn")
+            return None, "nowhere"
+        return header, "%s in the header" % key
+    if asked is None:
+        return None, "unset"
+    value = float(asked)
+    if header is not None and abs(header - value) > 1.0:
+        log("lbl.teff says %.0f K and %s in the header says %.0f K. The config"
+            " wins, which is what it is for, but one of the two is wrong."
+            % (value, key, header), "warn")
+    return value, "lbl.teff in the config"
+
 
 def available():
     """(True, version) if LBL can be imported, (False, why) if it cannot."""
@@ -128,7 +189,7 @@ def link_spectra(files, target: str, mode: str = "symlink") -> tuple:
 
 
 def config_document(config: dict, data_dir: str, instrument: str,
-                    data_source: str) -> dict:
+                    data_source: str, teff=None) -> dict:
     """The default LBL configuration, as LBL's own keys.
 
     Only keys LBL knows go in: it validates every one of them against its
@@ -149,13 +210,13 @@ def config_document(config: dict, data_dir: str, instrument: str,
         # re-running must not redo the hours that are already on disk
         "SKIP_DONE": True,
     }
-    if block.get("teff") is not None:
-        document["OBJECT_TEFF"] = block["teff"]
+    if teff is not None:
+        document["OBJECT_TEFF"] = teff
     return document
 
 
 def runparams(config: dict, data_dir: str, instrument: str, data_source: str,
-              objects: list, config_file: str) -> dict:
+              objects: list, config_file: str, teff=None) -> dict:
     """The dict LBL's wrapper takes, with both objects in it.
 
     Every object is its own comparison, which is to say each builds its own
@@ -179,7 +240,7 @@ def runparams(config: dict, data_dir: str, instrument: str, data_source: str,
         "DATA_TYPES": ["SCIENCE"] * len(objects),
         "OBJECT_SCIENCE": list(objects),
         "OBJECT_COMPARISON": [template or name for name in objects],
-        "OBJECT_TEFF": [block.get("teff")] * len(objects),
+        "OBJECT_TEFF": [teff] * len(objects),
     }
     for step in STEPS:
         params["RUN_LBL_%s" % step.upper()] = step in steps
@@ -282,7 +343,11 @@ def prepare(plan) -> dict:
                    ", ..." if len(strangers) > 3 else ""), "warn")
         objects.append(name)
 
-    document = config_document(config, data_dir, instrument, data_source)
+    teff, whence = resolve_teff(config, plan["files"])
+    if teff is not None:
+        log("Teff %.0f K, from %s" % (teff, whence), "value")
+
+    document = config_document(config, data_dir, instrument, data_source, teff)
     config_file = os.path.join(plan["outdir"], "lbl_config.yaml")
     with open(config_file, "w") as handle:
         handle.write("# LBL's own configuration, written by pca2d-preclean.\n"
@@ -291,14 +356,14 @@ def prepare(plan) -> dict:
                        default_flow_style=False)
 
     params = runparams(config, data_dir, instrument, data_source, objects,
-                       config_file)
+                       config_file, teff)
     script = write_runner(os.path.join(plan["outdir"], "run_lbl.py"), params,
                           object_name, plan["tag"], config_file)
 
-    if params["RUN_LBL_MASK"] and block.get("teff") is None:
-        log("lbl.teff is not set. LBL picks the stellar model its mask comes"
-            " from by effective temperature, so put the target's Teff in the"
-            " config before running the mask step.", "warn")
+    if params["RUN_LBL_MASK"] and teff is None:
+        log("no Teff, and the mask step is on. LBL stops on that rather than"
+            " guessing, so either the spectra have to carry one of %s or"
+            " lbl.teff has to be a number." % ", ".join(TEFF_KEYS), "warn")
 
     log("LBL config   %s" % config_file, "value")
     log("LBL script   %s" % script, "value")

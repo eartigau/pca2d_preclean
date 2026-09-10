@@ -107,6 +107,37 @@ def test_an_unknown_step_stops_the_run():
         build(spirou(steps=["compute", "reduce"]))
 
 
+# --------------------------------------------------------------- the Teff ---
+def test_the_teff_is_read_from_the_spectra_by_default(monkeypatch):
+    """APERO writes it as OBJTEMP; LBL stops without it and never looks."""
+    monkeypatch.setattr(splbl, "teff_from_header", lambda path: (3179.0, "OBJTEMP"))
+    teff, whence = splbl.resolve_teff(spirou(), ["2811170t.fits"])
+    assert teff == 3179.0 and "OBJTEMP" in whence
+
+
+def test_a_number_in_the_config_beats_the_header(monkeypatch):
+    monkeypatch.setattr(splbl, "teff_from_header", lambda path: (3179.0, "OBJTEMP"))
+    teff, whence = splbl.resolve_teff(spirou(teff=3400), ["2811170t.fits"])
+    assert teff == 3400.0 and "config" in whence
+
+
+def test_a_header_without_a_teff_says_so_rather_than_guessing(monkeypatch):
+    monkeypatch.setattr(splbl, "teff_from_header", lambda path: (None, None))
+    teff, whence = splbl.resolve_teff(spirou(), ["2811170t.fits"])
+    assert teff is None and whence == "nowhere"
+
+
+def test_the_resolved_teff_is_what_lbl_is_handed(monkeypatch):
+    monkeypatch.setattr(splbl, "teff_from_header", lambda path: (3179.0, "OBJTEMP"))
+    cfg = spirou()
+    teff, _ = splbl.resolve_teff(cfg, ["2811170t.fits"])
+    params = splbl.runparams(cfg, "lbl", "SPIROU", "APERO",
+                             ["TOI2120", "TOI2120_PCA2D_2-7"], "c.yaml", teff)
+    assert params["OBJECT_TEFF"] == [3179.0, 3179.0]
+    assert splbl.config_document(cfg, "lbl", "SPIROU", "APERO",
+                                 teff)["OBJECT_TEFF"] == 3179.0
+
+
 # ------------------------------------------------------------ the staging ---
 def test_linking_is_idempotent_and_names_what_is_not_ours(tmp_path):
     source = tmp_path / "spectra"
