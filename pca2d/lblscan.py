@@ -338,7 +338,8 @@ def strpca_page(runs, aliased):
         return None
     ncol = min(4, len(pairs))
     nrow = int(np.ceil(len(pairs) / ncol))
-    fig, axes = plt.subplots(nrow, ncol, figsize=(11, 0.8 + 2.7 * nrow), squeeze=False)
+    fig, axes = plt.subplots(nrow, ncol, figsize=(0.6 + 2.7 * ncol, 0.8 + 2.9 * nrow),
+                             squeeze=False)
     for ax in axes.ravel()[len(pairs):]:
         ax.axis("off")
     for ax, (tag, (key, x, y, e)) in zip(axes.ravel(), pairs):
@@ -349,6 +350,7 @@ def strpca_page(runs, aliased):
         lim = 1.1 * np.percentile(np.abs(np.r_[x, y]), 99.5) if x.size else 1
         ax.plot([-lim, lim], [-lim, lim], color="0.45", lw=0.8)
         ax.set(xlim=(-lim, lim), ylim=(-lim, lim))
+        ax.set_aspect("equal", adjustable="box")
         late = aliased and int(key[6:]) >= 3
         ax.set_title("%s %s: r %.3f, slope %.2f%s" % (tag, key, r, slope,
                                                        "\nLBL divides this residual twice"
