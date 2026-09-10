@@ -40,7 +40,7 @@ from pca2d.lblscan import nightly, read_rdb, velocity_stats  # noqa: F401
 from pca2d.logger import log
 from pca2d.plotting import nan_cmap, plot_correlations, rank_correlations
 from pca2d.reconstruct import correction_on_grid, load_model, order_correction
-from pca2d.twoframe import plot_coeffs
+from pca2d.twoframe import exposures_label, plot_coeffs
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 C_KMS = 299792.458
@@ -336,7 +336,7 @@ def _coefficient_figures(fit, keep, n_star, sigma, out):
     labels = [str(x) for x in fit["anc_labels"]]
     rho = rank_correlations(comps, fit["anc_values"][:, keep])
     plot_correlations(rho, comps, labels, os.path.join(out, "correlations." + FORMAT),
-                      title="%d exposures" % int(keep.sum()))
+                      title=exposures_label(fit["filename"], keep))
     plt.close("all")
     log("wrote coefficients_vs_time.%s and correlations.%s" % (FORMAT, FORMAT), "value")
 

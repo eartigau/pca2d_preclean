@@ -1180,6 +1180,21 @@ def count_exposures(meta, rows=None):
     return len({str(n).strip() for n in names})
 
 
+def exposures_label(names, keep):
+    """'316 exposures' for the rows `keep` selects, counted as exposures.
+
+    What a figure says about how many points went into it. The correlation
+    matrix used to print keep.sum(), which on a t.fits cube is 632 for 316
+    exposures, two rows each, and a reader rightly asks where the other half
+    of the data came from. Without file names only rows can be counted, and
+    the label says rows.
+    """
+    keep = np.asarray(keep, dtype=bool)
+    if names is None:
+        return "%d rows" % int(keep.sum())
+    return "%d exposures" % count_exposures({"filename": np.asarray(names)}, keep)
+
+
 def load_cube(path, ln_clip_low=-0.5, ramp_zero=0.5, min_snr_frac=0.5,
               dtype=np.float64, columns=None):
     """The observer-frame cube plus the weights, condensed from cube.py.
@@ -1984,7 +1999,8 @@ def replot(outdir, cube=None):
         correlate_and_plot(outdir, fit["a"][keep], fit["b"][keep],
                            [str(x) for x in fit["anc_labels"]],
                            fit["anc_values"][:, keep],
-                           title="%d exposures" % int(keep.sum()))
+                           title=exposures_label(fit["filename"] if "filename"
+                                                 in fit.files else None, keep))
     elif cube and "filename" in fit.files:
         # an archive written before the ancillary table was stored: rebuild it
         # from the cube, matching on filename so a rejected row cannot shift the
@@ -2000,7 +2016,7 @@ def replot(outdir, cube=None):
                                          source_dir=source_directory(cube))
         correlate_and_plot(outdir, fit["a"][keep], fit["b"][keep], labels,
                            values[:, keep] if len(labels) else values,
-                           title="%d exposures" % int(keep.sum()))
+                           title=exposures_label(names, keep))
     else:
         log("  no ancillary quantities in the archive and no --cube given,"
               " skipping correlations.pdf")
@@ -2588,7 +2604,7 @@ def main(argv=None):
                     os.path.join(args.outdir, "components.pdf"))
     correlate_and_plot(args.outdir, a[keep], b[keep], anc_labels,
                        anc_values[:, keep] if len(anc_labels) else anc_values,
-                       title="%d exposures" % int(keep.sum()))
+                       title=exposures_label(table["filename"], keep))
     write_components_fits(os.path.join(args.outdir, "twoframe_components.fits"),
                           grid, P, Q, template, means, power_star, power_earth,
                           chi2_null, chi2, table, dv, tied=bool(args.tie_parities),

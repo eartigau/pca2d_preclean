@@ -49,7 +49,9 @@ def cube(tmp_path):
     np.save(path / "data.npy", data)
     np.save(path / "sigma.npy", np.full_like(data, 0.01))
     meta = Table()
-    meta["filename"] = ["%04dt.fits" % i for i in range(N_ROWS)]
+    # both order parities of an exposure come from one file, as in a real
+    # cube: a figure's count of exposures is a count of these names
+    meta["filename"] = ["%04dt.fits" % (i // 2) for i in range(N_ROWS)]
     meta["bjd"] = 2459000.0 + np.arange(N_ROWS) * 1.7
     meta["berv"] = berv
     meta["airmass"] = np.full(N_ROWS, 1.2)
@@ -93,6 +95,26 @@ def test_the_same_fit_without_the_term_writes_no_velocity(cube, tmp_path):
     table = Table.read(out / "coefficients.csv", format="csv")
     assert "vrad_fit" not in table.colnames
     assert os.path.exists(out / "twoframe_components.fits")
+
+
+def test_a_figure_counts_exposures_not_rows():
+    """The correlation matrix said 632 exposures for 316: two rows each."""
+    from pca2d.twoframe import exposures_label
+    names = ["a.fits", "a.fits", "b.fits", "b.fits", "c.fits", "c.fits"]
+    keep = np.array([True, True, True, False, False, False])
+    assert exposures_label(names, keep) == "2 exposures"
+    assert exposures_label(names, np.ones(6, dtype=bool)) == "3 exposures"
+    assert exposures_label(None, keep) == "3 rows", "no names, so it says rows"
+
+
+def test_the_fit_s_correlation_matrix_is_titled_in_exposures(cube, tmp_path):
+    """The title the fit writes on correlations.pdf, on twelve rows of six exposures."""
+    from unittest import mock
+    from pca2d import plotting
+    with mock.patch.object(plotting, "plot_correlations") as drawn:
+        run(cube, tmp_path / "fit")
+    titles = [call.kwargs.get("title") for call in drawn.call_args_list]
+    assert titles and all(t == "6 exposures" for t in titles), titles
 
 
 def test_a_count_of_rows_is_reported_as_a_count_of_exposures():
