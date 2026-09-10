@@ -51,9 +51,15 @@ def test_a_suffix_without_the_tag_is_still_allowed():
 
 # ----------------------------------------------------------- the profile ----
 def test_the_profile_comes_from_the_instrument_block():
-    assert splbl.profile(spirou())[:2] == ("SPIROU", "APERO")
+    """CADC, not APERO, even for an APERO reduction.
+
+    The pairing picks the class that reads the files, and only LBL's CADC
+    classes read the named fibre extensions where a t.fits keeps its
+    wavelength solution. Getting this wrong cost a run.
+    """
+    assert splbl.profile(spirou())[:2] == ("SPIROU", "CADC")
     nirps = load_config("config.yaml", instrument="NIRPS")
-    assert splbl.profile(nirps)[:2] == ("NIRPS_HE", "APERO")
+    assert splbl.profile(nirps)[:2] == ("NIRPS_HE", "CADC")
 
 
 def test_a_spectrograph_with_no_profile_stops_rather_than_guesses():
