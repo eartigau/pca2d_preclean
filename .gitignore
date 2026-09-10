@@ -2,6 +2,7 @@
 data/
 cache/
 outputs/
+lbl/
 *.npz
 *.npy
 *.log
