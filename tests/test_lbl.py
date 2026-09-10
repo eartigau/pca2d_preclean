@@ -221,8 +221,9 @@ def test_the_corrected_header_names_every_component_the_fit_has():
     cards = coefficient_cards(model, row, k=0, j=7)
 
     keys = [key for key, _, _ in cards]
-    assert keys[:3] == ["PCASTR_N", "PCASTR01", "PCASTR02"]
-    assert keys[3:] == ["PCAOBS_N"] + ["PCAOBS0%d" % (i + 1) for i in range(7)]
+    assert keys[:4] == ["PCASTR_N", "PCASTR_D", "PCASTR01", "PCASTR02"]
+    assert keys[4:] == ["PCAOBS_N", "PCAOBS_D"] + [
+        "PCAOBS0%d" % (i + 1) for i in range(7)]
     assert dict((k, v) for k, v, _ in cards)["PCASTR01"] == -0.5
 
 
@@ -236,6 +237,8 @@ def test_the_counts_say_how_many_cards_follow():
     values = {key: value for key, value, _ in cards}
     assert values["PCASTR_N"] == 2, "two star amplitudes are written"
     assert values["PCAOBS_N"] == 7
+    assert values["PCASTR_D"] == 0, "and none of them was divided out"
+    assert values["PCAOBS_D"] == 7
     listed = [key for key in values if key.startswith("PCASTR") and key[-2:].isdigit()]
     assert len(listed) == values["PCASTR_N"], "the count must match the cards"
 
@@ -291,6 +294,10 @@ def test_the_header_spells_the_two_frames_one_way_only():
     source = inspect.getsource(reconstruct.correct_file)
     written = set(re.findall(r'head\["(PCA[A-Z0-9_]+)"\]', source))
     assert written, "no header keywords found; did correct_file change?"
+    model = {"n_star": 2, "n_earth": 3}
+    row = {"a1": 0.0, "a2": 0.0, "b1": 0.0, "b2": 0.0, "b3": 0.0}
+    written |= {key for key, _, _ in
+                reconstruct.coefficient_cards(model, row, 1, 2)}
     for key in written:
         assert len(key) <= 8, key
         assert "EAR" not in key and "STA" not in key, (

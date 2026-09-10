@@ -274,6 +274,11 @@ def coefficient_cards(model, row, k, j):
     against afterwards; nothing downstream carries them otherwise, since an rdb
     knows only what LBL measured.
 
+    Every keyword here is PCASTR or PCAOBS and then either a two-digit index or
+    _N and _D, so one prefix names the frame and the suffix names the number.
+    The PCA2xxxx keywords beside them are the ones that belong to the run as a
+    whole rather than to one frame: PCA2BERV, PCA2NPIX, PCA2REJ.
+
     Two digits and not three. A FITS keyword is eight characters: PCASTR001
     would be nine, and astropy would write it as a HIERARCH card, which is not
     what a file whose whole point is to stay an ordinary t.fits should carry.
@@ -288,13 +293,15 @@ def coefficient_cards(model, row, k, j):
                 " the rest are not written to the header"
                 % (count, frame, prefix), "warn")
         listed = min(int(count), 99)
-        # How many cards follow, so a reader can loop without guessing, and
-        # deliberately NOT the same number as PCA2NSTR / PCA2NOBS: those say
-        # how many components were divided out of the flux, this says how many
-        # the fit had and therefore how many amplitudes are written down.
+        # Two counts, and they are different numbers: _N is how many amplitude
+        # cards follow, so a reader loops without guessing, and _D is how many
+        # of those components were actually divided out of the flux. With
+        # correct.n_star = 0 the first is 2 and the second is 0.
         cards.append(("%s_N" % prefix, listed,
                       "%s-frame comps listed, %s01..%02d"
                       % (frame, prefix, listed)))
+        cards.append(("%s_D" % prefix, int(removed),
+                      "%s-frame comps divided out of the flux" % frame))
         for i in range(listed):
             key = "%s%02d" % (prefix, i + 1)
             value = float(row["%s%d" % (letter, i + 1)])
@@ -378,8 +385,6 @@ def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
         head["PCA2SKYR"] = (float(max_sky), "sky/flux above this was set to NaN")
         head["PCA2SKYN"] = (masked, "samples removed as sky-dominated")
     head["PCA2REF"] = (True, "two-frame PCA correction applied")
-    head["PCA2NSTR"] = (k, "star-frame components divided out")
-    head["PCA2NOBS"] = (j, "observer-frame components divided out")
     head["PCA2BERV"] = (float(row["berv"]), "km/s used to carry the star basis")
     head["PCA2NPIX"] = (touched, "samples corrected")
     head["PCA2REJ"] = (bool(row["rejected"]), "exposure was MAD-rejected")

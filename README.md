@@ -118,22 +118,32 @@ runs four stages, each announcing how long it took:
 | `figures` | **one** multipage PDF: the resolved parameters, then every plot |
 | `correct` | the observer block divided out, as t.fits, in `outputs/<object>/<M>-<N>/corrected/` |
 
-A corrected file carries what was done to it in its primary header: `PCA2NSTR`
-and `PCA2NOBS` for how many components came out, `PCA2BERV`, `PCA2NPIX`,
-`PCA2REJ`, and one card per component of the fit,
+A corrected file carries what was done to it in its primary header, in two
+families and only two. `PCA2xxxx` is what belongs to the run as a whole:
+`PCA2REF`, `PCA2BERV`, `PCA2NPIX`, `PCA2REJ`, `PCA2SKYR`, `PCA2SKYN`. Anything
+that counts or measures one frame carries that frame's prefix, and the suffix
+says which number it is:
 
 ```
 PCASTR_N =                  2 / star-frame comps listed, PCASTR01..02
+PCASTR_D =                  0 / star-frame comps divided out of the flux
 PCASTR01 = -44.47644178207584 / star-frame comp 1 amplitude, left in the flux
+PCASTR02 =   1.29821047355073 / star-frame comp 2 amplitude, left in the flux
 PCAOBS_N =                  7 / observer-frame comps listed, PCAOBS01..07
+PCAOBS_D =                  7 / observer-frame comps divided out of the flux
 PCAOBS01 =  16.86883589814704 / observer-frame comp 1 amplitude, divided out
 ```
 
-`PCASTR_N` and `PCAOBS_N` say how many cards follow, so a reader loops without
-guessing. They are deliberately not the same numbers as `PCA2NSTR` and
-`PCA2NOBS`: those two say how many components were divided out of the flux,
-these say how many the fit had and therefore how many amplitudes are written
-down.
+`_N` and `_D` are different numbers on purpose: `_N` is how many amplitude
+cards follow, so a reader loops without guessing, and `_D` is how many of those
+components were actually taken out of the flux. With `correct.n_star: 0` the
+star pair reads 2 and 0, which is the whole design in two lines: the fit found
+the star, and the correction left it alone.
+
+Every amplitude the fit has is written, not only the ones divided out. An rdb
+downstream knows only what LBL measured, so the header is the one place a
+component can be lined up with the exposure it belongs to. Two digits, since a
+FITS keyword is eight characters and `PCASTR001` would be nine.
 
 for **every** component the fit has, not only the ones divided out: with
 `correct.n_star: 0` the star coefficients are exactly what stays in the flux,
