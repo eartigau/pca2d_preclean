@@ -22,10 +22,18 @@ components, and LBL on the same exposures before and after:
 | --- | --- | ---: | ---: | ---: | ---: |
 | as delivered | LBL's own | 47.7 m/s | 35.0 m/s | 46.7 m/s | 7.29 m/s |
 | corrected, 1-3v | LBL's own | 27.3 m/s | 20.6 m/s | 25.5 m/s | 7.00 m/s |
+| corrected, 1-3v | the fit's star | 26.3 m/s | 17.8 m/s | 24.6 m/s | 8.35 m/s |
 
 The robust sigma is 1.4826 times the MAD, and the nightly rms is that of the
 weighted nightly means, over 81 nights. `docs/make_figures.py` draws the
 velocities from the rdb files and prints these numbers.
+
+Against the fit's own star template (below) the same spectra scatter a little
+less, and their formal errors are 19% larger. The extra error is in each line,
+on the same lines with the same widths and depths, and its cause is not pinned
+down: it is not the lines the mask keeps, not the template's rms column (LBL
+takes its noise from the science residual), and giving each order parity its
+own template takes back only a little of it.
 
 ## The model
 
@@ -133,7 +141,10 @@ corrections landing in one would be measured as one series without a word.
 **The corrected object's template is the fit's star.** The first star
 component at its mean amplitude is a high-passed template of the star, fitted
 to every exposure at once in the barycentric frame with the atmosphere already
-described by the other block. The stage writes it in LBL's template format, by
+described by the other block. Each order parity gets its own: the star block
+plus that parity's weighted mean of what the fit left, since LBL measures an
+order against the template of its parity and the two parities see a line at
+different resolutions. The stage writes it in LBL's template format, by
 LBL's own writer (`pca2d/lbltemplate.py`), as `star_template.fits` beside the
 run's outputs, and copies it to where LBL looks for that object's template, so
 LBL's template step finds it there and has nothing to do. A template LBL built
@@ -154,6 +165,17 @@ written, and then its velocities are measured with them; the rdb gets a
 in place for each table, so a second table would be projected on a residual
 divided twice: `STRPCA2` is right, and the stage warns when a fit has three star
 components or more.
+
+On TOI-2120 with two star components (2-3v), LBL's `STRPCA2` follows the fit's
+own `a2` exposure by exposure with a correlation of 0.969 and a slope of 0.81
+(`docs/figures/strpca_2-3v.svg`): the tables carry what they should. That fit is
+also the warning that goes with them. Its `a2` follows the barycentric velocity
+(-0.55), the seeing (-0.58) and the sun's elevation (-0.49), which is a star
+component modelling the sky, and its velocity term absorbed shifts of 232 m/s
+rms that follow the barycentric velocity. The correction leaves that in the
+flux, and LBL's velocities on the 2-3v spectra scatter by 67 m/s against 27 m/s
+for 1-3v. A second star component is a variability indicator once the
+correlation table says it belongs to the star.
 
 Beside the run's outputs:
 
@@ -286,10 +308,11 @@ km/s.
 ./check.sh
 ```
 
-269 tests in about six seconds, with no file and no network access. They pin
+273 tests in about six seconds, with no file and no network access. They pin
 the things that have gone wrong here: the adjoint identity the block solve
 depends on, the parity tie producing identical coefficients, the corrected file
-being panel 3, the rejection threshold being in robust sigmas rather than MADs,
+being panel 3, a file's OBJECT matching its object whatever case it was typed
+in, the rejection threshold being in robust sigmas rather than MADs,
 LBL's own reader accepting the config, the runparams and the template written
 for it, the STRPCA tables being written between the mask and the velocities,
 and a header card that used to be tested against a dict while the real rows

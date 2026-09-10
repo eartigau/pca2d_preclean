@@ -433,12 +433,14 @@ def star_template(plan, config_file: str, name: str, files, place=True) -> dict:
 
     fit = os.path.join(plan["outdir"], "fit.npz")
     made = os.path.join(plan["outdir"], "star_template.fits")
-    if lt.stamp(made) != lt.fit_stamp(fit):
-        log("making the star template: the fit's first star component at its"
-            " mean amplitude, in LBL's format and by LBL's own writer", "info")
-        seen, _ = lt.build(plan["cube"], fit, config_file, name, files, made,
-                           run=plan["tag"])
-        log("star template %s, covering %.1f%% of the grid" % (made, 100 * seen),
+    if lt.stamp(made) != lt.template_stamp(fit):
+        log("making the star template: the fit's star at its mean amplitude,"
+            " each order parity with its own residual mean, in LBL's format and"
+            " by LBL's own writer", "info")
+        seen, _, split = lt.build(plan["cube"], fit, config_file, name, files,
+                                  made, run=plan["tag"])
+        log("star template %s, covering %.1f%% of the grid; its even and odd"
+            " orders differ by %.4f rms in ln f" % (made, 100 * seen, split),
             "value")
     inst = lt.lbl_instrument(config_file, name)
     slot, mask, models = lt.lbl_paths(inst)

@@ -71,6 +71,8 @@
                 <td>46.7 m/s</td><td>7.29 m/s</td></tr>
             <tr><td>corrected, 1-3v</td><td>LBL's own</td><td>27.3 m/s</td><td>20.6 m/s</td>
                 <td>25.5 m/s</td><td>7.00 m/s</td></tr>
+            <tr><td>corrected, 1-3v</td><td>the fit's star</td><td>26.3 m/s</td><td>17.8 m/s</td>
+                <td>24.6 m/s</td><td>8.35 m/s</td></tr>
           </tbody>
         </table>
       </div>
@@ -81,7 +83,10 @@
           its median. The robust sigma is 1.4826 times the MAD; the nightly rms
           is that of the weighted nightly means, over 81 nights. The median
           error barely moves: what the correction removes is not photon noise
-          but structure that LBL used to read as velocity.
+          but structure that LBL used to read as velocity. Against the fit's
+          own star template the same spectra scatter a little less and their
+          formal errors are 19% larger, line by line on the same lines; why is
+          not pinned down yet.
         </figcaption>
       </figure>
     </section>
@@ -187,7 +192,10 @@
         <strong>The corrected object's template is the fit's star.</strong>
         The first star component at its mean amplitude is a high-passed template
         of the star, fitted to every exposure at once with the atmosphere
-        already described by the other block. The stage writes it in LBL's
+        already described by the other block. Each order parity gets its own,
+        the star block plus that parity's weighted mean of what the fit left,
+        since LBL measures an order against the template of its parity. The
+        stage writes it in LBL's
         template format, by LBL's own writer, and puts it where LBL looks for
         that object's template, so LBL's template step finds it and has nothing
         to do. A template LBL built itself is never replaced. Through the same
@@ -206,6 +214,24 @@
         its error. LBL reads those tables in the star's rest frame, which its
         mask step measures, so the corrected object's mask is made first, then
         the tables, then the velocities.
+      </p>
+      <figure class="wide">
+        <img src="figures/strpca_2-3v.svg" alt="LBL's STRPCA2 amplitude against the fit's own second star coefficient, exposure by exposure" />
+        <figcaption>
+          TOI-2120 fitted with two star components: LBL's STRPCA2, every line
+          projected on the second star component, against the fit's own a2.
+          Correlation 0.969, slope 0.81.
+        </figcaption>
+      </figure>
+      <p>
+        That same fit is also the warning that goes with it. Its a2 follows the
+        barycentric velocity (&minus;0.55), the seeing (&minus;0.58) and the
+        sun's elevation (&minus;0.49): a star component modelling the sky. Its
+        velocity term absorbed shifts of 232&nbsp;m/s rms that follow the
+        barycentric velocity, the correction left that in the flux, and LBL's
+        velocities on those spectra scatter by 67&nbsp;m/s, against 27 with
+        one star component. A second star component is a variability
+        indicator once the correlation table says it belongs to the star.
       </p>
       <p>
         What the stage leaves is meant to be read and rerun by hand:
@@ -269,7 +295,7 @@ conda activate pca2d-preclean</code></pre>
         <code>scipy==1.17.0</code> and the rest, and asks for python 3.12;
         <code>environment.yml</code> repeats those pins so that conda installs
         them and pip finds them already satisfied. Check the install with
-        <code>./check.sh</code>: 269 tests, about six seconds, no file and no
+        <code>./check.sh</code>: 273 tests, about six seconds, no file and no
         network access.
       </p>
       <h3>Running it</h3>

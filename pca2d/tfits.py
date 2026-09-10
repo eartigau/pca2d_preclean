@@ -202,6 +202,10 @@ def read_tfits(path: str):
                 number = float("nan")
             meta[name] = number
     meta["object"] = str(_get(headers, "OBJECT", "")).strip()
+    # APERO's own name for the target, upper case and without the form's
+    # spelling: what cube.same_object falls back on when OBJECT was typed
+    # otherwise
+    meta["drsobjn"] = str(_get(headers, "DRSOBJN", "")).strip()
     meta["airmass"] = 0.5 * (meta["airmass_start"] + meta["airmass_end"])
     return dict(flux=flux, wave=wave, blaze=blaze, recon=recon, sky=sky,
                 snr=snr, meta=meta)

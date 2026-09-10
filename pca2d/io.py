@@ -174,6 +174,7 @@ def read_spectrum(path: str, wave_min: float, wave_max: float, pad_kms: float = 
             else:
                 meta[name] = header_float(header, key)
         meta["object"] = str(header.get("OBJECT", "")).strip()
+        meta["drsobjn"] = str(header.get("DRSOBJN", "")).strip()
         meta["snr_band"] = band_snr(header, wave_min, wave_max)
         meta["airmass"] = 0.5 * (meta["airmass_start"] + meta["airmass_end"])
         with np.errstate(invalid="ignore"):

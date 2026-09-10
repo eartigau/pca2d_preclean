@@ -14,6 +14,7 @@ BERV, and only then are they coadded. See pca2d/nights.py.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 
 import numpy as np
@@ -27,6 +28,25 @@ from . import tfits as sptf
 from .config import cache_key, spectra_dir
 from .logger import log
 from .progress import bar as _bar
+
+
+def object_key(name) -> str:
+    """An object name reduced to what identifies it: upper case, letters and
+    digits only, so 'Proxima', 'PROXIMA', 'TOI-2120' and 'TOI 2120' are two
+    names and not four."""
+    return re.sub(r"[^0-9A-Z]", "", str(name or "").upper())
+
+
+def same_object(meta: dict, wanted) -> bool:
+    """Whether a file's OBJECT, or APERO's DRSOBJN, names the object asked for.
+
+    Compared as object_key, never as typed. OBJECT is what somebody typed into
+    an observing form: 'Proxima' on the files APERO calls PROXIMA, which an
+    exact comparison with the folder's name skipped one by one.
+    """
+    key = object_key(wanted)
+    return any(object_key(meta.get(name)) == key
+               for name in ("object", "drsobjn") if meta.get(name))
 
 C_KMS = 299792.458
 
@@ -410,8 +430,9 @@ def _build_tfits(config: dict, files: list[str], grid: np.ndarray,
             continue
 
         meta = dict(payload["meta"])
-        if inp["object"] is not None and meta["object"] != inp["object"]:
-            log("skipping %s (OBJECT=%s)" % (meta["filename"], meta["object"]), "warn")
+        if inp["object"] is not None and not same_object(meta, inp["object"]):
+            log("skipping %s (OBJECT=%s, not %s)"
+                % (meta["filename"], meta["object"], inp["object"]), "warn")
             continue
         meta["snr_band"] = sptf.band_snr(payload, dom["wave_min"], dom["wave_max"])
         usable = np.isfinite(payload["flux"]) & (payload["flux"] > 0)
@@ -524,8 +545,9 @@ def _build_s1d(config: dict, files: list[str], grid: np.ndarray):
             log("skipping %s (%s)" % (os.path.basename(path), exc), "warn")
             continue
 
-        if inp["object"] is not None and meta["object"] != inp["object"]:
-            log("skipping %s (OBJECT=%s)" % (meta["filename"], meta["object"]), "warn")
+        if inp["object"] is not None and not same_object(meta, inp["object"]):
+            log("skipping %s (OBJECT=%s, not %s)"
+                % (meta["filename"], meta["object"], inp["object"]), "warn")
             continue
         reason = _quality_reason(meta, wave, config["quality"])
         if reason is not None:

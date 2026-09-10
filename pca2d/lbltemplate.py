@@ -3,7 +3,9 @@
 The first star component, at its mean amplitude, is a high-passed template of
 the star: fitted to every exposure at once, in the barycentric frame, with the
 observer block already describing the atmosphere. That is what LBL's template
-step spends its time estimating. Written by LBL's own writer, in LBL's template
+step spends its time estimating. Each order parity gets its own: the star block
+plus that parity's weighted mean of what the fit left (star_coverage), since
+LBL measures an order against the template of its parity. Written by LBL's own writer, in LBL's template
 format and under the name LBL looks for, it takes the place of that step for
 the corrected object, which is what makes pca2d a front end to LBL rather than
 a stage in front of it.
@@ -41,7 +43,12 @@ from astropy.table import Table
 
 from .grids import doppler, pixel_shift
 from .plotting import live_mask
-from .twoframe import LanczosShifter, load_cube, row_parity
+from .twoframe import (LanczosShifter, carried_means, fit_means, fit_templates,
+                       load_cube, row_parity, star_model)
+
+#: what changes a template beyond the fit it came from, in its PCA2FIT stamp:
+#: 2 adds each parity's residual mean (star_coverage)
+TEMPLATE_VERSION = 2
 
 #: the header keyword of a template written here. A template without it was
 #: written by LBL, and is never overwritten from here.
@@ -78,16 +85,31 @@ def mean_star(fit):
 
 
 def star_coverage(cube, fit, chunk=16):
-    """How well the fit saw each star-frame sample, per parity.
+    """How well the fit saw each star-frame sample per parity, and what it left.
 
     The weights the fit read from the cube (twoframe.load_cube, its defaults),
-    carried into the star's frame by each exposure's own shift, and kept only
-    where plotting.live_mask keeps them, the rule the report's panels use.
-    Rows the MAD cut rejected are left out. Returns (grid, rows that saw each
-    sample (2, M), their summed weight (2, M), rows per parity (2,)).
+    carried into the star's frame by each exposure's own shift and kept only
+    where plotting.live_mask keeps them, the rule the report's panels use;
+    rows the MAD cut rejected are left out. Beside them, each parity's
+    weighted mean of what the whole model leaves (the data less the star
+    block, its star-frame means, the observer block and the parity offset),
+    carried the same way.
+
+    That mean is the part of the star each parity sees and the star block does
+    not. Under the default --mean offset the block is one spectrum for both
+    parities, while the two sample a line at different places on the order and
+    so at different resolutions, and LBL measures each order against the
+    template of its own parity. On TOI-2120 LBL's own template differs between
+    parities at line scales by 0.014 in ln f, a third of the line structure,
+    and against a template whose parities were one spectrum LBL's velocity
+    errors came out 20% larger. The velocity term is not in the model
+    subtracted: its mean over the exposures moves both parities by the same
+    velocity, which LBL takes as an offset.
+
+    Returns (grid, rows that saw each sample (2, M), their summed weight
+    (2, M), rows per parity (2,), residual mean (2, M), NaN where unseen).
     """
     grid, data, w, meta = load_cube(cube, dtype=np.float32)
-    del data
     n, m = w.shape
     if len(fit["berv"]) != n:
         raise SystemExit("the fit has %d rows and the cube %d: it was not made on"
@@ -98,19 +120,37 @@ def star_coverage(cube, fit, chunk=16):
             else np.ones(n, dtype=bool))
     delta = -pixel_shift(np.asarray(fit["berv"], dtype=float), float(fit["dv"]))
     shifter = LanczosShifter(m, a=8, max_shift=int(np.ceil(np.abs(delta).max())) + 2)
-    count, wsum = np.zeros((2, m)), np.zeros((2, m))
+    P, a = np.asarray(fit["P"], dtype=float), np.asarray(fit["a"], dtype=float)
+    Q, b = np.asarray(fit["Q"], dtype=float), np.asarray(fit["b"], dtype=float)
+    means, group = fit_means(fit, meta, n, m)
+    T, tgroup = fit_templates(fit, meta, n, m)
+    Tf = shifter.prepare(T) if np.any(T) else None
+    count, wsum, rsum = np.zeros((2, m)), np.zeros((2, m)), np.zeros((2, m))
     for start in range(0, n, chunk):
         stop = min(start + chunk, n)
-        carried = shifter.rows(w[start:stop], -delta[start:stop])
-        live = live_mask(carried) & keep[start:stop, None]
+        rows = slice(start, stop)
+        model = star_model(P, a[rows], shifter, delta[rows], stop - start, m)
+        if Tf is not None:
+            model += carried_means(Tf, tgroup, shifter, delta, start, stop)
+        model += b[rows] @ Q
+        model += means[group[rows]]
+        weighted = np.where(w[rows] > 0, w[rows] * (data[rows] - model), 0.0)
+        del model
+        carried = shifter.rows(w[rows], -delta[rows])
+        carried_r = shifter.rows(weighted, -delta[rows])
+        live = live_mask(carried) & keep[rows, None]
         carried = np.where(live, carried, 0.0)
+        carried_r = np.where(live, carried_r, 0.0)
         for p in (0, 1):
-            sel = parity[start:stop] == p
+            sel = parity[rows] == p
             if sel.any():
                 count[p] += live[sel].sum(axis=0)
                 wsum[p] += carried[sel].sum(axis=0)
-    rows = np.array([np.sum(keep & (parity == p)) for p in (0, 1)])
-    return grid, count, wsum, rows
+                rsum[p] += carried_r[sel].sum(axis=0)
+    per_parity = np.array([np.sum(keep & (parity == p)) for p in (0, 1)])
+    with np.errstate(invalid="ignore", divide="ignore"):
+        resid = np.where(wsum > 0, rsum / np.where(wsum > 0, wsum, 1.0), np.nan)
+    return grid, count, wsum, per_parity, resid
 
 
 def template_columns(ln_star, count, wsum, rows, min_fraction=0.5):
@@ -293,26 +333,45 @@ def stamp(path):
         return None
 
 
+def template_stamp(fit_path):
+    """PCA2FIT: the fit's stamp and the template rule, so that a template made
+    from the same fit by an older rule is made again."""
+    return "%s t%d" % (fit_stamp(fit_path), TEMPLATE_VERSION)
+
+
+def parity_split(columns):
+    """rms of ln(flux_even / flux_odd) wherever the template has both parities:
+    how differently the two see the star, as written for LBL."""
+    with np.errstate(invalid="ignore", divide="ignore"):
+        d = np.log(columns["flux_even"]) - np.log(columns["flux_odd"])
+    both = np.isfinite(d)
+    return float(np.std(d[both])) if both.any() else float("nan")
+
+
 def build(cube, fit_path, config_file, object_name, science_files, path, run=""):
     """The fit's star template, written to `path` by LBL's writer.
 
-    Returns (fraction of the grid the template covers, star components).
+    Each parity is the star block at its mean amplitude plus that parity's
+    residual mean (star_coverage). Returns (fraction of the grid the template
+    covers, star components, rms of the even-minus-odd residual means).
     """
     fit = np.load(fit_path)
     ln_star, _, P = mean_star(fit)
-    grid, count, wsum, rows = star_coverage(cube, fit)
+    grid, count, wsum, rows, resid = star_coverage(cube, fit)
+    ln_star = ln_star + np.where(np.isfinite(resid), resid, 0.0)
     columns = template_columns(ln_star, count, wsum, rows)
     inst = lbl_instrument(config_file, object_name)
     provenance = {
         PROVENANCE: (str(run)[:60], "LBL template from the pca2d star block"),
-        "PCA2FIT": (fit_stamp(fit_path), "the fit.npz it was made from"),
+        "PCA2FIT": (template_stamp(fit_path), "the fit.npz it came from, and rule"),
         "PCA2NSTR": (int(P.shape[0]), "star components in that fit"),
     }
     if os.path.exists(path):
         os.remove(path)
     write_template(inst, path, grid, columns, science_files,
                    1000.0 * float(fit["dv"]), provenance)
-    return float(np.isfinite(columns["flux"]).mean()), int(P.shape[0])
+    return (float(np.isfinite(columns["flux"]).mean()), int(P.shape[0]),
+            parity_split(columns))
 
 
 def place(made, slot):
