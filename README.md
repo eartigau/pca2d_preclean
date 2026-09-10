@@ -118,8 +118,8 @@ runs four stages, each announcing how long it took:
 | `figures` | **one** multipage PDF: the resolved parameters, then every plot |
 | `correct` | the observer block divided out, as t.fits, in `outputs/<object>/<M>-<N>/corrected/` |
 
-A corrected file carries what was done to it in its primary header: `PCA2NSTA`
-and `PCA2NEAR` for how many components came out, `PCA2BERV`, `PCA2NPIX`,
+A corrected file carries what was done to it in its primary header: `PCA2NSTR`
+and `PCA2NOBS` for how many components came out, `PCA2BERV`, `PCA2NPIX`,
 `PCA2REJ`, and one card per component of the fit,
 
 ```
@@ -130,8 +130,8 @@ PCAOBS01 =  16.86883589814704 / observer-frame comp 1 amplitude, divided out
 ```
 
 `PCASTR_N` and `PCAOBS_N` say how many cards follow, so a reader loops without
-guessing. They are deliberately not the same numbers as `PCA2NSTA` and
-`PCA2NEAR`: those two say how many components were divided out of the flux,
+guessing. They are deliberately not the same numbers as `PCA2NSTR` and
+`PCA2NOBS`: those two say how many components were divided out of the flux,
 these say how many the fit had and therefore how many amplitudes are written
 down.
 

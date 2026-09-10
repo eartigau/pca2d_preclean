@@ -289,7 +289,7 @@ def coefficient_cards(model, row, k, j):
                 % (count, frame, prefix), "warn")
         listed = min(int(count), 99)
         # How many cards follow, so a reader can loop without guessing, and
-        # deliberately NOT the same number as PCA2NSTA / PCA2NEAR: those say
+        # deliberately NOT the same number as PCA2NSTR / PCA2NOBS: those say
         # how many components were divided out of the flux, this says how many
         # the fit had and therefore how many amplitudes are written down.
         cards.append(("%s_N" % prefix, listed,
@@ -378,15 +378,15 @@ def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
         head["PCA2SKYR"] = (float(max_sky), "sky/flux above this was set to NaN")
         head["PCA2SKYN"] = (masked, "samples removed as sky-dominated")
     head["PCA2REF"] = (True, "two-frame PCA correction applied")
-    head["PCA2NSTA"] = (k, "star-frame components removed")
-    head["PCA2NEAR"] = (j, "observer-frame components removed")
+    head["PCA2NSTR"] = (k, "star-frame components divided out")
+    head["PCA2NOBS"] = (j, "observer-frame components divided out")
     head["PCA2BERV"] = (float(row["berv"]), "km/s used to carry the star basis")
     head["PCA2NPIX"] = (touched, "samples corrected")
     head["PCA2REJ"] = (bool(row["rejected"]), "exposure was MAD-rejected")
     for key, value, comment in coefficient_cards(model, row, k, j):
         head[key] = (value, comment)
-    head.add_history("two-frame PCA: %d star + %d Earth components divided out"
-                     % (k, j))
+    head.add_history("two-frame PCA: %d star-frame + %d observer-frame"
+                     " components divided out" % (k, j))
     head.add_history("f_corrected = f * exp(-model), model in ln f - savgol(ln f)")
 
     stem = os.path.basename(path)

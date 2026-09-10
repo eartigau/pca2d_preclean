@@ -8,6 +8,7 @@ whether our config and our runparams are things it will accept.
 """
 
 import os
+import re
 
 import pytest
 import yaml
@@ -275,3 +276,22 @@ def test_a_card_says_whether_that_component_was_removed():
     assert "left in the flux" in comments["PCASTR02"]
     assert "divided out" in comments["PCAOBS02"]
     assert "left in the flux" in comments["PCAOBS03"]
+
+
+def test_the_header_spells_the_two_frames_one_way_only():
+    """STR for the star, OBS for the observer, in every keyword of the family.
+
+    The counts were PCA2NSTA and PCA2NEAR while the amplitudes were PCASTR01
+    and PCAOBS01, so one header called the same two blocks by four names.
+    """
+    import inspect
+
+    from pca2d import reconstruct
+
+    source = inspect.getsource(reconstruct.correct_file)
+    written = set(re.findall(r'head\["(PCA[A-Z0-9_]+)"\]', source))
+    assert written, "no header keywords found; did correct_file change?"
+    for key in written:
+        assert len(key) <= 8, key
+        assert "EAR" not in key and "STA" not in key, (
+            "%s does not use the STR / OBS spelling the amplitude cards use" % key)
