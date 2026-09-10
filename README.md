@@ -117,6 +117,21 @@ runs four stages, each announcing how long it took:
 | `fit` | the two bases and their coefficients, in `outputs/<object>/<M>-<N>/` |
 | `figures` | **one** multipage PDF: the resolved parameters, then every plot |
 | `correct` | the observer block divided out, as t.fits, in `outputs/<object>/<M>-<N>/corrected/` |
+
+A corrected file carries what was done to it in its primary header: `PCA2NSTA`
+and `PCA2NEAR` for how many components came out, `PCA2BERV`, `PCA2NPIX`,
+`PCA2REJ`, and one card per component of the fit,
+
+```
+PCASTR01 = -44.47644178207584 / star-frame comp 1 amplitude, left in the flux
+PCAOBS01 =  16.86883589814704 / observer-frame comp 1 amplitude, divided out
+```
+
+for **every** component the fit has, not only the ones divided out: with
+`correct.n_star: 0` the star coefficients are exactly what stays in the flux,
+and an rdb downstream knows only what LBL measured, so the header is the one
+place they can be lined up with the exposure they belong to. Two digits, since
+a FITS keyword is eight characters and `PCASTR001` would be nine.
 | `lbl` | both sets of spectra set up for LBL, delivered and corrected, and the two files that run it |
 
 Both roots live in `config.yaml`, since a run is a config and an object and

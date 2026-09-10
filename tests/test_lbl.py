@@ -202,3 +202,48 @@ def test_lbl_accepts_every_key_the_runner_hands_it():
     for key in ("INSTRUMENT", "DATA_DIR", "DATA_SOURCE", "DATA_TYPES",
                 "OBJECT_SCIENCE", "OBJECT_COMPARISON", "OBJECT_TEFF"):
         lbl_misc.check_runparams(params, key)
+
+
+# ------------------------------------- the coefficients a corrected file keeps
+def test_the_corrected_header_names_every_component_the_fit_has():
+    """Not only the ones divided out.
+
+    correct.n_star is 0 by default, so the star coefficients are exactly what
+    stays in the flux, and nothing downstream carries them: an rdb knows only
+    what LBL measured. The header is the only place they can be lined up with
+    the exposure they belong to.
+    """
+    from pca2d.reconstruct import coefficient_cards
+
+    model = {"n_star": 2, "n_earth": 7}
+    row = {"a1": -0.5, "a2": 0.25, **{"b%d" % (i + 1): 0.1 * i for i in range(7)}}
+    cards = coefficient_cards(model, row, k=0, j=7)
+
+    keys = [key for key, _, _ in cards]
+    assert keys[:2] == ["PCASTR01", "PCASTR02"]
+    assert keys[2:] == ["PCAOBS0%d" % (i + 1) for i in range(7)]
+    assert dict((k, v) for k, v, _ in cards)["PCASTR01"] == -0.5
+
+
+def test_no_keyword_is_longer_than_fits_allows():
+    """PCASTR001 would be nine characters and astropy would write HIERARCH."""
+    from pca2d.reconstruct import coefficient_cards
+
+    model = {"n_star": 12, "n_earth": 40}
+    row = {"a%d" % (i + 1): 0.0 for i in range(12)}
+    row.update({"b%d" % (i + 1): 0.0 for i in range(40)})
+    for key, _, comment in coefficient_cards(model, row, 0, 40):
+        assert len(key) <= 8, key
+        assert len(comment) <= 47, "%s: comment would be truncated" % key
+
+
+def test_a_card_says_whether_that_component_was_removed():
+    from pca2d.reconstruct import coefficient_cards
+
+    model = {"n_star": 2, "n_earth": 3}
+    row = {"a1": 1.0, "a2": 2.0, "b1": 3.0, "b2": 4.0, "b3": 5.0}
+    comments = {key: c for key, _, c in coefficient_cards(model, row, k=1, j=2)}
+    assert "divided out" in comments["PCASTR01"]
+    assert "left in the flux" in comments["PCASTR02"]
+    assert "divided out" in comments["PCAOBS02"]
+    assert "left in the flux" in comments["PCAOBS03"]

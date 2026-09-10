@@ -265,6 +265,37 @@ def correction_on_grid(model, row, n_star=None, n_earth=None, halfwidth=8):
     return star_obs + earth, k, j
 
 
+def coefficient_cards(model, row, k, j):
+    """The fit's coefficients for one exposure, as (keyword, value, comment).
+
+    Every component the fit HAS, not only the ones divided out. With
+    correct.n_star = 0 the star coefficients are exactly what stays in the
+    corrected flux, and they are the thing a velocity is worth correlating
+    against afterwards; nothing downstream carries them otherwise, since an rdb
+    knows only what LBL measured.
+
+    Two digits and not three. A FITS keyword is eight characters: PCASTR001
+    would be nine, and astropy would write it as a HIERARCH card, which is not
+    what a file whose whole point is to stay an ordinary t.fits should carry.
+    Ninety-nine components is already twice what the validator calls sane.
+    """
+    cards = []
+    for prefix, letter, count, removed, frame in (
+            ("PCASTR", "a", model["n_star"], k, "star"),
+            ("PCAOBS", "b", model["n_earth"], j, "observer")):
+        if count > 99:
+            log("%d %s components is more than the %s01..99 keywords can name;"
+                " the rest are not written to the header"
+                % (count, frame, prefix), "warn")
+        for i in range(min(int(count), 99)):
+            key = "%s%02d" % (prefix, i + 1)
+            value = float(row["%s%d" % (letter, i + 1)])
+            cards.append((key, value, "%s-frame comp %d amplitude, %s"
+                          % (frame, i + 1, "divided out" if i < removed
+                             else "left in the flux")))
+    return cards
+
+
 def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
                  halfwidth=8, overwrite=False, max_sky=None):
     """Write a t.fits with the components divided out. Returns the new path.
@@ -344,6 +375,8 @@ def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
     head["PCA2BERV"] = (float(row["berv"]), "km/s used to carry the star basis")
     head["PCA2NPIX"] = (touched, "samples corrected")
     head["PCA2REJ"] = (bool(row["rejected"]), "exposure was MAD-rejected")
+    for key, value, comment in coefficient_cards(model, row, k, j):
+        head[key] = (value, comment)
     head.add_history("two-frame PCA: %d star + %d Earth components divided out"
                      % (k, j))
     head.add_history("f_corrected = f * exp(-model), model in ln f - savgol(ln f)")
