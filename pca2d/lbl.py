@@ -45,8 +45,13 @@ from .logger import log
 #: pairing lives in config.yaml, per instrument, and this is only the fallback
 #: for a spectrograph whose block does not say.
 FALLBACK = {
-    "SPIROU": ("SPIROU", "APERO"),
-    "NIRPS": ("NIRPS_HE", "APERO"),
+    # CADC, and not APERO, even for an APERO reduction: LBL's CADC classes are
+    # the ones that read the named fibre extensions (FluxAB / WaveAB / BlazeAB
+    # for SPIRou, FluxA / WaveA / BlazeA for NIRPS), which is where the
+    # wavelength solution of a t.fits is. Its APERO classes read the primary
+    # header's wavelength polynomials, which these files do not carry there.
+    "SPIROU": ("SPIROU", "CADC"),
+    "NIRPS": ("NIRPS_HE", "CADC"),
 }
 
 STEPS = ("telluclean", "template", "mask", "compute", "compile")
@@ -300,6 +305,34 @@ def write_runner(path: str, params: dict, object_name: str, tag: str,
     return path
 
 
+def check_profile(instrument: str, data_source: str, config_file: str,
+                  sample: str) -> tuple:
+    """Ask LBL to read one spectrum with the chosen profile. (ok, why not).
+
+    Two seconds against hours. The pairing of instrument and data source picks
+    the class that reads the files, and the wrong one does not fail on the
+    first line: it downloads a few hundred megabytes of stellar models, sorts
+    every exposure, and dies at the reference file, which is what happened the
+    first time this was pointed at SPIRou with LBL's APERO class instead of its
+    CADC one. What is read here is the wavelength solution, because that is the
+    thing the two classes disagree about.
+    """
+    try:
+        from lbl.instruments import select
+    except Exception as exc:                                  # noqa: BLE001
+        return True, "LBL is not importable here (%s), so nothing was checked" % exc
+    try:
+        args = select.parse_args(
+            ["INSTRUMENT", "DATA_DIR", "DATA_SOURCE", "DATA_TYPE", "INPUT_FILE"],
+            dict(config_file=os.path.abspath(config_file)), __name__, parse=False)
+        inst = select.load_instrument(args, plogger=None)
+        image, header = inst.load_science_file(sample)
+        inst.get_wave_solution(sample, image, header)
+    except Exception as exc:                                  # noqa: BLE001
+        return False, str(exc)
+    return True, "reads %s" % os.path.basename(sample)
+
+
 def prepare(plan) -> dict:
     """Stage both objects, write LBL's config and the script that runs it."""
     config = plan["config"]
@@ -355,6 +388,19 @@ def prepare(plan) -> dict:
         yaml.safe_dump(document, handle, sort_keys=False,
                        default_flow_style=False)
 
+    ok, why = check_profile(instrument, data_source, config_file,
+                            plan["files"][0] if plan["files"] else None)
+    if ok:
+        log("profile check: %s/%s %s" % (instrument, data_source, why), "value")
+    else:
+        log("%s/%s cannot read %s: %s"
+            % (instrument, data_source, os.path.basename(plan["files"][0]), why),
+            "error")
+        log("the instrument and data source together pick the class that reads"
+            " the files, and it is set per spectrograph in config.yaml. For a"
+            " t.fits with named fibre extensions the reader is the CADC one.",
+            "error")
+
     params = runparams(config, data_dir, instrument, data_source, objects,
                        config_file, teff)
     script = write_runner(os.path.join(plan["outdir"], "run_lbl.py"), params,
@@ -368,7 +414,7 @@ def prepare(plan) -> dict:
     log("LBL config   %s" % config_file, "value")
     log("LBL script   %s" % script, "value")
     return {"config_file": config_file, "script": script, "objects": objects,
-            "data_dir": data_dir}
+            "data_dir": data_dir, "readable": ok}
 
 
 def run(script: str) -> None:

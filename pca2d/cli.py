@@ -230,6 +230,11 @@ def run_lbl(plan):
                          % detail), "value" if ok else "warn")
     prepared = splbl.prepare(plan)
     if block.get("run", False):
+        if not prepared.get("readable", True):
+            log("not running LBL: the profile above cannot read these spectra,"
+                " and it would take a few hundred megabytes of downloads and a"
+                " template to find that out again", "error")
+            raise SystemExit(2)
         splbl.run(prepared["script"])
         return
     log("LBL is not run by this stage unless asked. Both objects are staged"
