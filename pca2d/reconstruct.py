@@ -287,7 +287,15 @@ def coefficient_cards(model, row, k, j):
             log("%d %s components is more than the %s01..99 keywords can name;"
                 " the rest are not written to the header"
                 % (count, frame, prefix), "warn")
-        for i in range(min(int(count), 99)):
+        listed = min(int(count), 99)
+        # How many cards follow, so a reader can loop without guessing, and
+        # deliberately NOT the same number as PCA2NSTA / PCA2NEAR: those say
+        # how many components were divided out of the flux, this says how many
+        # the fit had and therefore how many amplitudes are written down.
+        cards.append(("%s_N" % prefix, listed,
+                      "%s-frame comps listed, %s01..%02d"
+                      % (frame, prefix, listed)))
+        for i in range(listed):
             key = "%s%02d" % (prefix, i + 1)
             value = float(row["%s%d" % (letter, i + 1)])
             cards.append((key, value, "%s-frame comp %d amplitude, %s"

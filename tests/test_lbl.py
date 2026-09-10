@@ -220,9 +220,37 @@ def test_the_corrected_header_names_every_component_the_fit_has():
     cards = coefficient_cards(model, row, k=0, j=7)
 
     keys = [key for key, _, _ in cards]
-    assert keys[:2] == ["PCASTR01", "PCASTR02"]
-    assert keys[2:] == ["PCAOBS0%d" % (i + 1) for i in range(7)]
+    assert keys[:3] == ["PCASTR_N", "PCASTR01", "PCASTR02"]
+    assert keys[3:] == ["PCAOBS_N"] + ["PCAOBS0%d" % (i + 1) for i in range(7)]
     assert dict((k, v) for k, v, _ in cards)["PCASTR01"] == -0.5
+
+
+def test_the_counts_say_how_many_cards_follow():
+    """And are not the same number as how many were divided out."""
+    from pca2d.reconstruct import coefficient_cards
+
+    model = {"n_star": 2, "n_earth": 7}
+    row = {"a1": 0.0, "a2": 0.0, **{"b%d" % (i + 1): 0.0 for i in range(7)}}
+    cards = coefficient_cards(model, row, k=0, j=7)   # the default correction
+    values = {key: value for key, value, _ in cards}
+    assert values["PCASTR_N"] == 2, "two star amplitudes are written"
+    assert values["PCAOBS_N"] == 7
+    listed = [key for key in values if key.startswith("PCASTR") and key[-2:].isdigit()]
+    assert len(listed) == values["PCASTR_N"], "the count must match the cards"
+
+
+def test_the_count_never_promises_a_card_that_was_dropped():
+    """Past 99 the extra cards are not written, so the count must not name them."""
+    from pca2d.reconstruct import coefficient_cards
+
+    model = {"n_star": 1, "n_earth": 120}
+    row = {"a1": 0.0}
+    row.update({"b%d" % (i + 1): 0.0 for i in range(120)})
+    cards = coefficient_cards(model, row, 0, 120)
+    values = {key: value for key, value, _ in cards}
+    written = sum(1 for key, _, _ in cards
+                  if key.startswith("PCAOBS") and key[-2:].isdigit())
+    assert values["PCAOBS_N"] == written == 99
 
 
 def test_no_keyword_is_longer_than_fits_allows():

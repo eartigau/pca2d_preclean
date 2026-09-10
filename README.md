@@ -123,9 +123,17 @@ and `PCA2NEAR` for how many components came out, `PCA2BERV`, `PCA2NPIX`,
 `PCA2REJ`, and one card per component of the fit,
 
 ```
+PCASTR_N =                  2 / star-frame comps listed, PCASTR01..02
 PCASTR01 = -44.47644178207584 / star-frame comp 1 amplitude, left in the flux
+PCAOBS_N =                  7 / observer-frame comps listed, PCAOBS01..07
 PCAOBS01 =  16.86883589814704 / observer-frame comp 1 amplitude, divided out
 ```
+
+`PCASTR_N` and `PCAOBS_N` say how many cards follow, so a reader loops without
+guessing. They are deliberately not the same numbers as `PCA2NSTA` and
+`PCA2NEAR`: those two say how many components were divided out of the flux,
+these say how many the fit had and therefore how many amplitudes are written
+down.
 
 for **every** component the fit has, not only the ones divided out: with
 `correct.n_star: 0` the star coefficients are exactly what stays in the flux,
