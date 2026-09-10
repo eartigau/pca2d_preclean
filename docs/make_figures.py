@@ -36,6 +36,7 @@ from scipy.signal import savgol_filter
 from pca2d.config import load_config, spectra_dir
 from pca2d.figures.sequence import AFTER, BEFORE, draw_window, load_context, window_arrays
 from pca2d.grids import doppler, pixel_shift
+from pca2d.lblscan import nightly, read_rdb, velocity_stats  # noqa: F401
 from pca2d.logger import log
 from pca2d.plotting import nan_cmap, plot_correlations, rank_correlations
 from pca2d.reconstruct import correction_on_grid, load_model, order_correction
@@ -157,35 +158,8 @@ def corrected_file_figure(ctx, run, source, centre=1267.0, width=2.0):
 
 
 # ----------------------------------------------------------------- velocities
-def read_rdb(path):
-    t = Table.read(path, format="ascii.rdb")
-    rjd = np.asarray(t["rjd"], float)
-    v = np.asarray(t["vrad"], float)
-    e = np.asarray(t["svrad"], float)
-    ok = np.isfinite(rjd) & np.isfinite(v) & np.isfinite(e) & (e > 0)
-    return rjd[ok], v[ok], e[ok]
-
-
-def nightly(rjd, v, e):
-    night = np.floor(rjd + 0.5).astype(int)
-    out = []
-    for n in np.unique(night):
-        s = night == n
-        w = 1 / e[s] ** 2
-        out.append((rjd[s].mean(), np.sum(w * v[s]) / w.sum(), 1 / np.sqrt(w.sum())))
-    return np.array(out).T
-
-
-def velocity_stats(t, v, e):
-    """rms, robust sigma (1.4826 MAD), median error and the rms of nightly
-    weighted means, all about the median."""
-    d = v - np.median(v)
-    nt = nightly(t, v, e)
-    return {"n": d.size, "rms": float(np.std(d)),
-            "robust": float(1.4826 * np.median(np.abs(d - np.median(d)))),
-            "median_error": float(np.median(e)),
-            "nightly_rms": float(np.std(nt[1] - np.median(nt[1]))),
-            "nights": int(nt.shape[1])}
+# read_rdb, nightly and velocity_stats live in pca2d.lblscan, the scan report,
+# so the site and the report cannot count the same velocities two ways
 
 
 def velocity_figure(series):
