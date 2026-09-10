@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """Periodogram of every coefficient, with the star's known signals marked.
 
-    python diagnostics/coeff_periodogram.py --fit outputs/TOI2120/nominal/fit.npz \
-        --planets 5.7998 --out outputs/TOI2120/nominal/coeff_periodogram.pdf
+    python -m pca2d.figures.coeff_periodogram --fit outputs/TOI2120/1-3v/fit.npz \
+        --planets 5.7998 --out outputs/TOI2120/1-3v/coeff_periodogram.pdf
 
 The question this answers is the one that decides whether a correction is safe
 to apply: does any component of the basis vary on the period of a known planet?

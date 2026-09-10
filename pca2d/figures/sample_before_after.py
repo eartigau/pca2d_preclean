@@ -4,7 +4,7 @@
 Drawn in the STAR'S rest frame, like every other figure in the set, so the same
 wavelength means the same stellar feature from one page to the next.
 
-    python diagnostics/sample_before_after.py --cube <cube> --fit <fit.npz> \
+    python -m pca2d.figures.sample_before_after --cube <cube> --fit <fit.npz> \
         --windows 1200.3:2 1593.6:2 1669.5:5 --out sample.pdf
 
 The snippet figures show all the spectra as an image and the envelope figure
@@ -30,9 +30,11 @@ import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 
 from pca2d.logger import log  # noqa: E402
+from pca2d.twoframe import carried_means, fit_means, fit_templates, mean_rows  # noqa: E402
+from pca2d.grids import parse_window, pixel_shift, window_block
 from pca2d.plotting import live_mask, sample_source_file, window_parity
-from pca2d.twoframe import (LanczosShifter, load_cube, row_parity,
-                                 star_model)
+from pca2d.twoframe import (LanczosShifter, cube_grid, load_cube, row_parity,
+                            star_model)
 
 
 def parse_args(argv=None):
@@ -52,48 +54,60 @@ def parse_args(argv=None):
 
 def main(argv=None):
     args = parse_args(argv)
-    grid, data, w, meta = load_cube(args.cube)
-    n, m = data.shape
+    fit = np.load(args.fit)
+    dv = float(fit["dv"])
+    delta = -pixel_shift(np.asarray(fit["berv"], dtype=float), dv)
+    grid = cube_grid(args.cube)
+    _, _, _, meta = load_cube(args.cube, columns=np.arange(1))
+    n = len(meta)
     parity = row_parity(meta, n)
+    means, group = fit_means(fit, meta, n, grid.size)
+    templates = fit_templates(fit, meta, n, grid.size)
     # for windows an order overlap covers twice, see window_parity
     sample_path = sample_source_file(args.cube, meta)
-    fit = np.load(args.fit)
-    delta = -np.asarray(fit["berv"], dtype=float) / float(fit["dv"])
-    shifter = LanczosShifter(m, a=8, max_shift=int(np.ceil(np.abs(delta).max())) + 2)
-    model = (star_model(fit["P"], fit["a"], shifter, delta, n, m)
-             + fit["b"] @ fit["Q"])
-
-
-    # Into the star's frame, one array at a time so only one extra copy of an
-    # (N, M) array is alive at once. The exposure drawn is then on the same
-    # wavelength axis as every other figure in the set.
-    if args.frame == "star":
-        w = shifter.rows(w, -delta)
-        w = np.where(live_mask(w), w, 0.0)   # see plotting.live_mask
-        data = shifter.rows(data, -delta)
-        model = shifter.rows(model, -delta)
-        data[w <= 0] = 0.0
-
-    live = live_mask(w)
-    with np.errstate(invalid="ignore"):
-        amplitude = np.array([np.nanstd(np.where(live[i], model[i], np.nan))
-                              for i in range(n)])
     names = [str(v) for v in fit["filename"]] if "filename" in fit.files else []
-    log("  median correction rms over rows: %.4f" % np.nanmedian(amplitude))
-
-    pages = []
-    for spec in args.windows:
-        centre, _, width = spec.partition(":")
-        pages.append((float(centre), float(width or 2.0)))
+    pages = [parse_window(spec) for spec in args.windows]
 
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     with PdfPages(args.out) as pdf:
         for centre, width in pages:
             lo, hi = centre - 0.5 * width, centre + 0.5 * width
-            # the row is chosen PER WINDOW: a cube row holds one order parity,
-            # and the two parities cover different halves of the domain, so a
-            # row picked once for the whole figure is empty in half the windows
-            band = (grid >= lo) & (grid <= hi)
+            # The block around the window and nothing else: the cube read there
+            # and the model evaluated there, exact inside the window for any
+            # shift the Earth can produce (see grids.window_block).
+            block = window_block(grid, centre, width, dv)
+            if block is None:
+                log("  %.1f-%.1f nm: outside the grid, skipped" % (lo, hi), "warn")
+                continue
+            a0, b0 = block
+            g, data, w, _ = load_cube(args.cube, columns=np.arange(a0, b0))
+            m = b0 - a0
+            shifter = LanczosShifter(m, a=8,
+                                     max_shift=int(np.ceil(np.abs(delta).max())) + 2)
+            model = (star_model(fit["P"][:, a0:b0], fit["a"], shifter, delta, n, m)
+                     + fit["b"] @ fit["Q"][:, a0:b0])
+            # both means are part of the model: with --mean iterate the
+            # components are centred and hold none of the static content
+            model += np.asarray(mean_rows(means[:, a0:b0], group, n))
+            if np.any(templates[0][:, a0:b0]):
+                model += carried_means(shifter.prepare(templates[0][:, a0:b0]),
+                                       templates[1], shifter, delta, 0, n)
+            if args.frame == "star":
+                w = shifter.rows(w, -delta)
+                w = np.where(live_mask(w), w, 0.0)   # see plotting.live_mask
+                data = shifter.rows(data, -delta)
+                model = shifter.rows(model, -delta)
+                data[w <= 0] = 0.0
+            live = live_mask(w)
+            band = (g >= lo) & (g <= hi)
+            # The row with the median correction IN THIS WINDOW. It was the
+            # median over the whole spectrum, which needed the model on the
+            # whole grid; for a page about this window, this window's is the
+            # more telling choice anyway.
+            with np.errstate(invalid="ignore"):
+                amplitude = np.array([np.nanstd(np.where(live[i] & band, model[i],
+                                                         np.nan))
+                                      for i in range(n)])
             covers = (live[:, band].sum(axis=1) > 0.5 * band.sum())
             # In an order overlap both parities cover the window, one near its
             # order's middle and one at an edge. Draw the middle one, so the
@@ -121,7 +135,7 @@ def main(argv=None):
                 log("  %.1f-%.1f nm: only %d live columns, skipped"
                       % (lo, hi, win.sum()))
                 continue
-            x = grid[win]
+            x = g[win]
             before = data[row][win]
             corr = model[row][win]
             after = before - corr

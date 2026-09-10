@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pca2d-preclean"
-version = "0.1.0"
+version = "0.2.0"
 description = "Two-frame weighted PCA precleaning of echelle spectra: a stellar-frame basis and an observer-frame basis, fitted jointly, with the atmosphere divided back out."
 readme = "README.md"
 requires-python = ">=3.10"

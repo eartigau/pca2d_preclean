@@ -34,6 +34,29 @@ except ImportError:                                           # pragma: no cover
     _tqdm = None
 
 
+# What the bars currently belong to, "sweep 3" say, prefixed to every bar's
+# label so that a bar reading "coefficients" says which sweep it is part of.
+_label = None
+
+
+def set_label(label):
+    """Name the unit of work every bar opened from now on belongs to.
+
+    A setter and not a context manager on purpose: the loop that uses it has
+    `break`s in it, and resetting once after the loop is simpler than
+    re-indenting a hundred lines under a `with`.
+    """
+    global _label
+    _label = label
+
+
+def _labelled(desc):
+    """`desc` with the current label in front of it, if there is one."""
+    if _label and desc:
+        return "%s: %s" % (_label, desc)
+    return desc or _label or ""
+
+
 def bar(iterable=None, total=None, desc="", unit="it", **kwargs):
     """A progress bar that leaves nothing behind when it finishes.
 
@@ -42,6 +65,7 @@ def bar(iterable=None, total=None, desc="", unit="it", **kwargs):
     """
     if _tqdm is None:                                         # pragma: no cover
         return iterable if iterable is not None else _Null()
+    desc = _labelled(desc)
     return _tqdm(iterable, total=total, desc=desc, unit=unit, leave=False,
                  file=sys.stderr, dynamic_ncols=True,
                  disable=not sys.stderr.isatty(), **kwargs)

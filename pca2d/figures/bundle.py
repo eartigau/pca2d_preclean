@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """Everything a run produced, as ONE multipage PDF.
 
-    python diagnostics/bundle.py --config configs/TOI2120.yaml \
-        --cube cache/cube_tfits_d42905209be4 --outdir outputs/TOI2120/2-7
+    python -m pca2d.figures.bundle --config outputs/TOI2120/1-3v/resolved_config.yaml \
+        --cube cache/cube_tfits_<key> --outdir outputs/TOI2120/1-3v
 
 Scattering forty PDFs across three directories makes them hard to look at in
 order, hard to send, and easy to compare across runs by accident: two files
@@ -36,8 +36,12 @@ from matplotlib.backends.backend_pdf import PdfPages
 from pypdf import PdfReader, PdfWriter
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
-sys.path.insert(0, ROOT)
+# No sys.path edit here. There was one, pointing at the pca2d/ directory rather
+# than at the repository, so it never made `import pca2d` work (the install
+# does that); what it did do was put pca2d/ at the head of the path of the whole
+# pipeline, since the CLI imports this module in-process. From then on the name
+# `lbl` meant pca2d/lbl.py and not the LBL package, and a full run died at its
+# last stage with "attempted relative import with no known parent package".
 
 from pca2d.config import cache_key, load_config, spectra_dir  # noqa: E402
 from pca2d.logger import log                              # noqa: E402

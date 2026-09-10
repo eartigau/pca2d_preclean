@@ -50,8 +50,8 @@ def _cache_dir(config: dict) -> str:
     (input.format is part of the hashed config), so this is labelling rather
     than disambiguation, and that is the point.
     """
-    directory = config["output"]["cache_directory"]
-    os.makedirs(directory, exist_ok=True)
+    from . import cache as _cache
+    directory = _cache.ensure(config)
     fmt = str(config["input"].get("format", "tfits"))
     return os.path.join(directory, "cube_%s_%s" % (fmt, cache_key(config)))
 
@@ -335,8 +335,9 @@ def build_cube(config: dict):
 
     grid, _ = destination_grid(config, files)
     fmt = inp.get("format", "tfits")
+    snippets = {}
     if fmt == "tfits":
-        result = _build_tfits(config, files, grid)
+        result = _build_tfits(config, files, grid, snippets)
     elif fmt == "s1d":
         result = _build_s1d(config, files, grid)
     else:
@@ -345,13 +346,43 @@ def build_cube(config: dict):
     grid, data, sigma, trans, meta = result
     if config["output"]["use_cache"]:
         _save_cache(cache, grid, data, sigma, trans, meta)
+        # after _save_cache, which replaces the whole directory
+        _write_snippets(cache, snippets)
     return grid, data, sigma, trans, meta
+
+
+def _figure_blocks(config: dict, grid: np.ndarray) -> list:
+    """The grid blocks around output.windows, as grids.window_block cuts them."""
+    blocks = []
+    dv = grids.grid_dv(grid)
+    for spec in config["output"].get("windows") or []:
+        try:
+            centre, width = grids.parse_window(spec)
+        except ValueError:
+            continue
+        block = grids.window_block(grid, centre, width, dv)
+        if block is not None and block not in blocks:
+            blocks.append(block)
+    return blocks
+
+
+def _write_snippets(cube_dir: str, snippets: dict) -> None:
+    """The raw flux kept during the build, one file per window block."""
+    from . import cache as _cache
+
+    for (a0, b0), by_file in sorted(snippets.items()):
+        _cache.write_snippet(cube_dir, a0, b0, by_file)
+    if snippets:
+        log("kept the raw flux around %d figure windows, %d spectra each, in %s"
+            % (len(snippets), max(len(v) for v in snippets.values()),
+               os.path.join(cube_dir, "snippets")), "value")
 
 
 # --------------------------------------------------------------------------
 # t.fits path
 # --------------------------------------------------------------------------
-def _build_tfits(config: dict, files: list[str], grid: np.ndarray):
+def _build_tfits(config: dict, files: list[str], grid: np.ndarray,
+                 snippets=None):
     dom = config["domain"]
     inp = config["input"]
     n_pixels = grid.size
@@ -368,6 +399,7 @@ def _build_tfits(config: dict, files: list[str], grid: np.ndarray):
     n_rejected = 0
     n_used = 0
     parity_ratio = []
+    blocks = _figure_blocks(config, grid) if snippets is not None else []
 
     for i, (path, label) in enumerate(_bar(zip(files, labels), total=len(files),
                                           desc="reading spectra", unit="file")):
@@ -402,6 +434,13 @@ def _build_tfits(config: dict, files: list[str], grid: np.ndarray):
                 "warn")
             n_rejected += 1
             continue
+
+        # The raw flux around every figure window, from the spectrum already in
+        # memory, so that drawing the figures never reopens the files. A few
+        # thousand samples per exposure; see cache.py.
+        for a0, b0 in blocks:
+            snippets.setdefault((a0, b0), {})[meta["filename"]] = sptf.raw_block(
+                payload, grid, a0, b0, config)
 
         ratio = _parity_agreement(values, sig, good)
         if np.isfinite(ratio):
@@ -733,7 +772,7 @@ def apply_telluric(weights, grid, meta, config):
 
     for n in range(weights.shape[0]):
         berv = 0.0 if observer_frame else float(meta["berv"][n])
-        wave_obs = grid * (1.0 + target / C_KMS) / (1.0 + berv / C_KMS)
+        wave_obs = grid * grids.doppler(target) / grids.doppler(berv)
         trans = np.interp(wave_obs, wave_model, trans_model, left=1.0, right=1.0)
         weights[n] *= np.clip(trans, 0.0, 1.0) ** power
     log("applied telluric weighting from %s (power %.1f)" % (path, power))

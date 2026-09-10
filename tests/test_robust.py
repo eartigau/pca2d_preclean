@@ -71,9 +71,9 @@ def test_clip_never_hard_rejects(problem, rng):
 
 def test_errors_are_positive_and_scale(problem):
     shifter = LanczosShifter(problem["data"].shape[1], threads=1)
-    a, b, _ = joint_coeffs(problem["data"], problem["w"], problem["P"],
+    a, b, _alpha, _ = joint_coeffs(problem["data"], problem["w"], problem["P"],
                            problem["Q"], shifter, problem["delta"], chunk=8)
-    formal, scaled, chi2_red = coefficient_errors(
+    formal, scaled, chi2_red, _vel = coefficient_errors(
         problem["data"], problem["w"], problem["P"], problem["Q"], shifter,
         problem["delta"], a, b, chunk=8)
     live = problem["w"].sum(axis=1) > 0

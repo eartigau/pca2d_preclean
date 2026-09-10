@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>pca2d-preclean</title>
-<meta name="description" content="Two-frame weighted PCA of echelle spectra: one basis in the star's rest frame, one in the observer's, fitted jointly, with only the atmosphere divided back out. Output is t.fits ready for LBL." />
+<meta name="description" content="Two-frame weighted PCA of echelle spectra and the front end of an LBL run: one basis in the star's rest frame, one in the observer's, fitted jointly, the observer's divided out, and LBL handed the corrected spectra with a template of the star from the same fit." />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -15,6 +15,14 @@
   figure.wide img { width: 100%; border-radius: 8px; background: #fff; }
   figure.wide figcaption { margin-top: .6rem; color: var(--muted); font-size: .92rem; }
   .runbox { font-family: "IBM Plex Mono", monospace; }
+  .numbers { overflow-x: auto; margin: 1rem 0; }
+  .numbers table { border-collapse: collapse; font-size: .92rem; min-width: 34rem; }
+  .numbers th, .numbers td { padding: .35rem .7rem; text-align: right; white-space: nowrap;
+                             border-bottom: 1px solid rgba(255, 255, 255, .12); }
+  .numbers th:first-child, .numbers td:first-child,
+  .numbers th:nth-child(2), .numbers td:nth-child(2) { text-align: left; }
+  .numbers th { color: var(--muted); font-weight: 500; }
+  ul.terms li { margin-bottom: .45rem; }
 </style>
 </head>
 <body>
@@ -25,24 +33,58 @@
     <div class="site-banner-inner">
       <div class="site-banner-text">
         <h2>pca2d-preclean</h2>
-        <p>Two-frame weighted PCA &middot; SPIRou, NIRPS, and whatever you add next</p>
+        <p>Two-frame weighted PCA &middot; the front end of LBL &middot; SPIRou, NIRPS, and whatever you add next</p>
       </div>
       <a href="https://eartigau.github.io/" class="home-link">&larr; Home</a>
     </div>
   </div>
 
   <header class="hero">
-    <p class="eyebrow">Spectroscopy &middot; telluric and airglow precleaning &middot; input for LBL</p>
+    <p class="eyebrow">Spectroscopy &middot; telluric and airglow precleaning &middot; LBL radial velocities</p>
     <h1>Two frames, one fit</h1>
     <p class="subtitle">
       A spectrum holds two things that move differently. The star's lines shift
       with the barycentric velocity; the sky's do not. Give the decomposition
-      one basis that travels and one that stands still, fit them together, and
-      divide out only the one that stands still.
+      one basis that travels and one that stands still, fit them together,
+      divide out only the one that stands still, and hand what is left to LBL
+      with a template of the star taken from the same fit.
     </p>
   </header>
 
   <main class="layout">
+
+    <section class="card span-3">
+      <h2>What it buys</h2>
+      <p>
+        TOI-2120, 316 SPIRou exposures over 452 days, corrected with one star
+        and three observer components, then measured by LBL on the same
+        exposures before and after:
+      </p>
+      <div class="numbers">
+        <table>
+          <thead>
+            <tr><th>spectra</th><th>template</th><th>rms</th><th>robust sigma</th>
+                <th>nightly rms</th><th>median error</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>as delivered</td><td>LBL's own</td><td>47.7 m/s</td><td>35.0 m/s</td>
+                <td>46.7 m/s</td><td>7.29 m/s</td></tr>
+            <tr><td>corrected, 1-3v</td><td>LBL's own</td><td>27.3 m/s</td><td>20.6 m/s</td>
+                <td>25.5 m/s</td><td>7.00 m/s</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <figure class="wide">
+        <img src="figures/lbl_velocities.svg" alt="LBL velocities of the same exposures, delivered and corrected" />
+        <figcaption>
+          One panel per LBL object, on the exposures they all have, each about
+          its median. The robust sigma is 1.4826 times the MAD; the nightly rms
+          is that of the weighted nightly means, over 81 nights. The median
+          error barely moves: what the correction removes is not photon noise
+          but structure that LBL used to read as velocity.
+        </figcaption>
+      </figure>
+    </section>
 
     <section class="card span-3">
       <h2>The idea</h2>
@@ -50,66 +92,142 @@
         Over a year of observing, the barycentric velocity sweeps by tens of
         kilometres per second. That is enough to separate the star from the
         atmosphere, but only if the model is told which of the two travels.
+        Each exposure is the log of its flux less a Savitzky-Golay of it (a
+        75&nbsp;km/s high pass), on one log-uniform grid in the observer's frame,
+        as two rows, its even orders and its odd ones:
       </p>
-      <pre><code>y_n  =  S_n P a_n  +  Q b_n</code></pre>
+      <pre><code>y_n  =  S_n P a_n  +  v_n d(S_n P a_n)/dv  +  Q b_n  +  m_p</code></pre>
+      <ul class="terms">
+        <li><code>S_n</code> carries the star basis <code>P</code> into exposure
+          <code>n</code> by its barycentric velocity. On a log grid a Doppler
+          shift is a translation of atanh(v/c)/(dv/c) samples, relativistic,
+          and <code>S_n</code> is an exact Lanczos operator for it rather than
+          an interpolation that would smear what it touched.</li>
+        <li><code>P a_n</code> is the star; <code>Q b_n</code> is what stands
+          still on the detector: telluric absorption, OH emission, the
+          instrument.</li>
+        <li><code>v_n</code> is one velocity per exposure, times the
+          derivative of the star as reconstructed. Without it the observer
+          block learns the star's own motion and the correction divides it out
+          of the flux. With it the motion is fitted, and stays in.</li>
+        <li><code>m_p</code> is one offset per order parity, in the observer's
+          frame. Consecutive orders overlap, and at a given wavelength one
+          parity samples near an order's centre and the other near its edge,
+          where the resolution differs. It is taken out before the fit and put
+          back into the correction.</li>
+      </ul>
       <p>
-        <code>S_n</code> is an exact translation by that exposure's own
-        barycentric velocity, <code>P</code> is the basis that follows the star
-        and <code>Q</code> the one that stays put on the detector. Both are
-        solved for together, under weights taken from the noise you can
-        <em>measure</em> rather than the noise a photon model claims. The two
-        disagree by a factor of fifty at the red end of a SPIRou spectrum, and
-        for a reason worth stating: past about 2200&nbsp;nm the thermal
-        background dominates. Those are photons and they were counted, so they
-        arrive with their own Poisson noise, and the pipeline subtracts their
-        <em>mean</em> and not their variance. The noise stays in the data after
-        the signal it belonged to has gone, so a photon model computed from
-        what is left is describing a spectrum that was never recorded, and it
-        reports the noisiest part of the detector as the quietest. Measuring
-        the sample-to-sample scatter instead costs nothing and cannot make that
-        mistake.
-      </p>
-      <p>
-        Nothing is taken out before the fit except one instrumental offset. No
-        median template, no mean spectrum removed in front. Whatever is
-        subtracted early is outside the model, and the correction removes
-        components, so an early subtraction would be fitted by nothing and
-        removed from nothing.
+        The coefficients of both blocks are solved together for each exposure,
+        under weights taken from the noise you can <em>measure</em> rather than
+        the noise a photon model claims. The two disagree by a factor of fifty
+        at the red end of a SPIRou spectrum: past about 2200&nbsp;nm the thermal
+        background dominates, the pipeline subtracts its <em>mean</em> and not
+        its variance, and a photon model computed from what is left reports the
+        noisiest part of the detector as the quietest.
       </p>
     </section>
 
     <section class="card span-3">
       <h2>Every step, on one page</h2>
       <p>
-        1667 to 1672&nbsp;nm of TOI-2120, 321 SPIRou exposures, drawn in the
-        star's rest frame with the rows ordered by barycentric velocity.
-        Vertical structure belongs to the star; anything slanted does not. The
-        OH airglow runs diagonally through the first two panels and is gone
-        from the third.
+        1667 to 1672&nbsp;nm of TOI-2120, drawn in the star's rest frame with
+        the 316 rows ordered by barycentric velocity. Vertical structure
+        belongs to the star; anything slanted does not. The OH airglow runs
+        diagonally through the reconstruction and is gone from the third panel.
       </p>
       <figure class="wide">
-        <img src="figures/sequence_1667nm.png" alt="The six stages from the delivered flux to the corrected spectrum, 1667 to 1672 nm" />
+        <img src="figures/sequence_1669nm.svg" alt="The five stages from the delivered flux to the corrected spectrum, 1667 to 1672 nm" />
         <figcaption>
-          1 the high pass &middot; 2 the reconstruction &middot; <strong>3 minus
-          the observer block, which is what a corrected file holds</strong>
-          &middot; 4 minus everything. Underneath, five of those exposures in
-          flux, before in red and after in green.
+          1 the high pass &middot; 2 the reconstruction &middot; <strong>3
+          minus the observer block and its parity offset, which is what a
+          corrected file holds</strong> &middot; 4 minus the star block
+          instead &middot; 5 minus everything. Underneath, five of those
+          exposures in flux, before in blue and after in orange. Yellow is
+          what the fit gave no weight.
         </figcaption>
       </figure>
     </section>
 
     <section class="card span-3">
+      <h2>What a corrected file holds</h2>
+      <p>
+        Panel 3, sample for sample. A corrected file is the delivered flux
+        times <code>exp(&minus;(Q b_n + m_p))</code> on its own pixels, and
+        NaN wherever the fit gave a sample no weight, so LBL is never handed
+        data the model never saw. The star block and the velocity term stay
+        in: they are what LBL is about to measure. Everything else in the
+        t.fits, wavelength solution and blaze included, is copied through.
+      </p>
+      <figure class="wide">
+        <img src="figures/corrected_file_1267nm.svg" alt="Panel 3 of the report, the corrected files, and the files written before the parity offset was put in the correction" />
+        <figcaption>
+          1266 to 1268&nbsp;nm. Top, panel 3 of the report; middle, the
+          corrected files read back through the same high pass, 0.0127 rms
+          from it, the round trip through the file's own pixels; bottom, the
+          files as written until 2026-09-10, when the parity offset was left in
+          them: 0.0275 rms, and the telluric residuals are plain to see.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section class="card span-3">
+      <h2>LBL, built in</h2>
+      <p>
+        The corrected spectra exist to be measured, and the only honest way to
+        know whether the correction helped is to measure both. The
+        <code>lbl</code> stage puts <strong>two objects</strong> side by side in
+        one LBL tree: <code>TOI-2120</code>, symlinked to the spectra as
+        delivered and measured against the template LBL builds from them, and
+        <code>TOI-2120_PCA2D_1-3v</code>, symlinked to what the run corrected.
+        The name carries the run's tag, because LBL takes a whole science
+        folder and two corrections in one would be measured as a single series
+        without a word.
+      </p>
+      <p>
+        <strong>The corrected object's template is the fit's star.</strong>
+        The first star component at its mean amplitude is a high-passed template
+        of the star, fitted to every exposure at once with the atmosphere
+        already described by the other block. The stage writes it in LBL's
+        template format, by LBL's own writer, and puts it where LBL looks for
+        that object's template, so LBL's template step finds it and has nothing
+        to do. A template LBL built itself is never replaced. Through the same
+        75&nbsp;km/s high pass it agrees with LBL's own template for the same
+        spectra at a correlation of 0.93 and a slope of 0.94, and 0.99 and 0.99
+        in H.
+      </p>
+      <p>
+        <strong>The star components past the first are variability
+        indicators</strong>, and LBL already knows what to do with those: it
+        projects every line's residual on RESPROJ tables, its DTEMP temperature
+        gradients. With two or more star components the stage writes the
+        others as the same tables, <code>STRPCA2</code> to
+        <code>STRPCAn</code>, measured on the star itself rather than taken
+        from a model, and the rdb gets each exposure's amplitude along them and
+        its error. LBL reads those tables in the star's rest frame, which its
+        mask step measures, so the corrected object's mask is made first, then
+        the tables, then the velocities.
+      </p>
+      <p>
+        What the stage leaves is meant to be read and rerun by hand:
+        <code>lbl_config.yaml</code> in LBL's own keys, and
+        <code>run_lbl.py</code>, an ordinary LBL wrap script with one runparams
+        dict per object. <code>lbl.run: true</code> or <code>--run-lbl</code>
+        has the stage run it.
+      </p>
+    </section>
+
+    <section class="card span-3">
       <h2>What the coefficients do in time</h2>
       <p>
-        Two components in the star's rest frame, seven in the observer's, one
+        One component in the star's rest frame, three in the observer's, one
         point per exposure over 452 days.
       </p>
       <figure class="wide">
-        <img src="figures/coefficients_vs_time.png" alt="Coefficients of every component against time" />
+        <img src="figures/coefficients_vs_time.svg" alt="Coefficients of every component against time" />
         <figcaption>
           The observer coefficients move on the timescale the atmosphere moves
-          on, night to night and within a night. The star coefficients do not
-          have to, and mostly do not.
+          on, night to night and within a night. The star coefficient does not
+          have to, and mostly does not.
         </figcaption>
       </figure>
     </section>
@@ -117,21 +235,20 @@
     <section class="card span-3">
       <h2>And what they follow</h2>
       <p>
-        A component carries no label. That one varies is a result; that it
-        varies <em>with the precipitable water column</em> says plainly what it
-        is describing. Every run writes this matrix without being asked,
-        because it is the diagnostic that catches a "stellar" component quietly
-        modelling the sky.
+        A component carries no label. That one varies is a result; what it
+        varies <em>with</em> says what it is describing. Every run writes this
+        matrix without being asked, because it is the diagnostic that catches a
+        "stellar" component quietly modelling the sky.
       </p>
       <figure class="wide">
-        <img src="figures/correlations.png" alt="Spearman rank correlation of every coefficient against ancillary quantities" />
+        <img src="figures/correlations.svg" alt="Spearman rank correlation of every coefficient against ancillary quantities" />
         <figcaption>
           Spearman rank correlation, |rho| printed above 0.30. The first
-          observer component follows the water column at +0.54 and the median
-          flux at &minus;0.52: it is the atmosphere, and it is the one the
-          correction removes. Above the line, the star coefficients follow
-          nothing strongly &mdash; which is the point, and which was not true
-          when nightly means were fitted instead of individual exposures.
+          observer component follows the median flux (+0.60) and the seeing
+          (&minus;0.59); the second, the barycentric velocity (&minus;0.63) and
+          time (+0.56), which over this baseline are both the season; the
+          third, the sun's elevation (+0.46). The star coefficient follows only
+          time, at +0.33.
         </figcaption>
       </figure>
     </section>
@@ -145,50 +262,38 @@ conda env create -f environment.yml
 conda activate pca2d-preclean</code></pre>
       <p>
         That environment holds <strong>both codes</strong>: this one and
-        <a href="https://github.com/njcuk9999/lbl" target="_blank">LBL</a>,
-        which is what the corrected spectra exist to be fed to. Having to
-        deactivate one to run the other is how a t.fits gets measured by the
-        wrong version of something, so afterwards
-        <code>pca2d-preclean</code>, <code>lbl_setup</code> and
-        <code>lbl_find</code> are all on the same path.
-      </p>
-      <p>
-        It is why the versions are nailed down rather than floored. LBL pins
-        its dependencies exactly, <code>numpy==2.3.3</code>,
-        <code>astropy==7.2.0</code>, <code>scipy==1.17.0</code> and the rest,
-        and asks for python 3.12; <code>environment.yml</code> repeats those
-        pins so that <em>conda</em> installs them and pip finds them already
-        satisfied. Only <code>lbl</code> itself, which is not on PyPI, this
-        package in place, and one PyPI-only dependency come through pip, so the
-        two package managers never fight over numpy. Check the install with
-        <code>./check.sh</code>: 83 tests, under a second, no file and no
+        <a href="https://github.com/njcuk9999/lbl" target="_blank">LBL</a>.
+        Having to deactivate one to run the other is how a t.fits gets measured
+        by the wrong version of something. LBL pins its dependencies exactly,
+        <code>numpy==2.3.3</code>, <code>astropy==7.2.0</code>,
+        <code>scipy==1.17.0</code> and the rest, and asks for python 3.12;
+        <code>environment.yml</code> repeats those pins so that conda installs
+        them and pip finds them already satisfied. Check the install with
+        <code>./check.sh</code>: 269 tests, about six seconds, no file and no
         network access.
       </p>
       <h3>Running it</h3>
       <p>
         Spectra go in <code>data/&lt;object&gt;/</code> under the input root and
         everything a run writes goes under the output root, so the archive it
-        reads is never the folder it writes to. Both are named in
-        <code>config.yaml</code>. Then:
+        reads is never the folder it writes to. Then:
       </p>
       <pre><code>pca2d-preclean --object TOI-2120</code></pre>
       <p>
         That is the whole interface. The instrument is read from the
         <code>INSTRUME</code> keyword of the files, never chosen on a command
         line, because reading the wrong extension raises no error: it returns
-        different photons. Four stages, each announcing how long it took, with
-        a progress bar while it works. On 321 SPIRou exposures the whole run
-        takes about forty minutes, two thirds of it in the fit.
+        different photons. Five stages, <code>cube</code>, <code>fit</code>,
+        <code>figures</code>, <code>correct</code> and <code>lbl</code>, each
+        announcing how long it took. On 316 SPIRou exposures the fit, the
+        report and the correction take twenty to thirty minutes, and LBL about
+        half an hour per object.
       </p>
       <p>
-        <code>domain.smart_dv: true</code> takes the grid step from the data
-        rather than from the file: the finest pixel in the first spectrum,
-        sampled at 70% of its own width, which is all a resampling has to
-        guarantee. SPIRou pixels are about 2.27&nbsp;km/s, so 955 to
-        2500&nbsp;nm goes from 577,002 samples at <code>dv: 0.5</code> to
-        182,596, and every array the run allocates with it. With it on,
-        <code>domain.dv</code> is not read at all, and the run says so on the
-        line where it announces the domain.
+        <code>output.fits_directory</code> keeps a run's products on another
+        disk: the run folder, and every LBL folder but the one made of
+        symlinks, become links to it before anything is written, and a run
+        stops rather than write locally when that disk is not there.
       </p>
     </section>
 
@@ -206,70 +311,39 @@ conda activate pca2d-preclean</code></pre>
     domain:
       wave_min: 955.0
       wave_max: 2500.0
-      wave0: 955.0</code></pre>
+      wave0: 955.0
+    lbl:
+      instrument: SPIROU
+      data_source: CADC</code></pre>
       <p>
         The wavelength solution comes from the extension, never from header
         polynomials, and the blaze from the blaze extension of the same file.
+        LBL's name for the spectrograph goes with it: LBL calls NIRPS
+        <code>NIRPS_HA</code> or <code>NIRPS_HE</code> by the mode it was
+        observed in, and the wrong one raises no error.
       </p>
     </section>
 
     <section class="card span-3">
-      <h2>What comes out, and what it is for</h2>
-      <p>
-        A run leaves three things, and the third is the deliverable.
-      </p>
+      <h2>What comes out</h2>
       <ul class="runbox">
-        <li><strong>outputs/&lt;object&gt;/&lt;M&gt;-&lt;N&gt;/&lt;object&gt;_&lt;M&gt;-&lt;N&gt;.pdf</strong>
-            &mdash; one multipage document, the resolved parameters as
-            selectable text first, then every figure, with bookmarks. On
-            TOI-2120 that is 35 pages.</li>
-        <li><strong>outputs/&lt;object&gt;/&lt;M&gt;-&lt;N&gt;/</strong> &mdash;
-            the bases and coefficients as <code>fit.npz</code> and
-            <code>twoframe_components.fits</code>, the coefficients as CSV, and
-            <code>resolved_config.yaml</code>: exactly what ran, sitting next to
-            what it produced.</li>
-        <li><strong>outputs/&lt;object&gt;/&lt;M&gt;-&lt;N&gt;/corrected/</strong>
-            &mdash; the corrected spectra, one per input file.</li>
-        <li><strong>outputs/&lt;object&gt;/&lt;M&gt;-&lt;N&gt;/run_lbl.py</strong>
-            and <strong>lbl_config.yaml</strong> &mdash; LBL set up on
-            <em>both</em> sets of spectra, ready to run.</li>
+        <li><strong>outputs/&lt;object&gt;/&lt;tag&gt;/&lt;object&gt;_&lt;tag&gt;.pdf</strong>:
+            one multipage document, the resolved parameters as selectable text
+            first, then every figure, with bookmarks.</li>
+        <li><strong>fit.npz</strong>, <strong>twoframe_components.fits</strong>,
+            the coefficients as CSV, and <strong>resolved_config.yaml</strong>:
+            exactly what ran, next to what it produced.</li>
+        <li><strong>corrected/</strong>: the corrected spectra, one per input
+            file, each saying in its header what was divided out of it and
+            carrying every amplitude the fit has.</li>
+        <li><strong>star_template.fits</strong>, <strong>lbl_config.yaml</strong>
+            and <strong>run_lbl.py</strong>: LBL set up on both sets of
+            spectra, the corrected ones against the fit's own star.</li>
       </ul>
       <p>
-        <strong>Those corrected files are meant to be fed to
-        <a href="https://github.com/njcuk9999/lbl" target="_blank">LBL</a></strong>,
-        the line-by-line radial velocity code. They are still t.fits: the flux
-        has been divided by the observer-frame model and every other extension,
-        including the wavelength solution and the blaze, is copied through
-        untouched. LBL reads them exactly as it reads the originals, with the
-        same instrument class, so the comparison that matters is one command
-        apart: the velocities before, the velocities after, and it is one
-        command apart in the same environment, since LBL is installed in it.
-      </p>
-      <p>
-        The <code>lbl</code> stage makes that command. It never sets LBL up on
-        the corrected files alone: it puts <strong>two objects</strong> side by
-        side in one LBL tree, <code>TOI-2120</code> symlinked to the spectra as
-        delivered and <code>TOI-2120_PCA2D_2-7</code> to what the run
-        corrected, each building its own template, and writes the two files
-        that run them &mdash; <code>lbl_config.yaml</code> in LBL's own keys and
-        <code>run_lbl.py</code>, an ordinary wrap script with both objects in
-        its <code>rparams</code>. The corrected name carries the component
-        counts because LBL globs a science folder, so two corrections in one
-        folder would be measured as one series without a word. Running LBL is
-        hours, so the stage prepares and says what to run;
-        <code>lbl.run: true</code> or <code>--run-lbl</code> has it run.
-        Which LBL instrument a spectrograph is comes from its block in
-        <code>config.yaml</code>: LBL calls NIRPS <code>NIRPS_HA</code> or
-        <code>NIRPS_HE</code> by the mode it was observed in, and the wrong one
-        raises no error, it returns another instrument's velocities.
-      </p>
-      <p>
-        Only the observer block is divided out. The star components stay in,
-        deliberately: with no median template the first star component
-        <em>is</em> the star, and dividing it out would flatten the very
-        spectrum LBL is about to measure. Samples the airglow drowned are set
-        to NaN rather than left in, so LBL is never handed data the model never
-        saw.
+        The tag is the number of star and observer components, and
+        <code>v</code> when the velocity term was fitted: <code>1-3v</code>
+        above.
       </p>
     </section>
 

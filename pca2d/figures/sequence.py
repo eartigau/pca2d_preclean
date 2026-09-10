@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Every step from the file to the corrected spectrum, on one page per window.
 
-    python diagnostics/sequence.py --cube <cube> --fit <fit.npz> \
+    python -m pca2d.figures.sequence --cube <cube> --fit <fit.npz> \
         --windows 1267:2 1669.5:5 --out sequence.pdf
 
 The other figures each show one stage. This shows the chain, in the order the
@@ -10,13 +10,15 @@ what each stage removed is the difference between two panels the eye can put
 side by side.
 
     1  the high pass: ln(f) minus a Savitzky-Golay of ln(f), and nothing else
-    2  the reconstruction, M star + N observer components
+    2  the reconstruction: both blocks and the observer frame's parity mean
+       (and the star frame's too, under --mean iterate)
     3  minus the OBSERVER block: what a corrected file holds
-    4  minus everything: what nobody explained
+    4  minus the STAR block: everything that is not the star
+    5  minus everything: what nobody explained
 
-Panel 3 is the product. The correction removes the observer block and nothing
-else, because with no stellar template the first star component IS the star and
-dividing it out would flatten the spectrum LBL is about to measure.
+Panel 3 is the product. The correction removes the observer block, its mean
+per parity included, and nothing else: the star block, its own per-parity mean
+and components, is the spectrum LBL is about to measure.
 
 Everything is in the STAR'S rest frame with the rows ordered by barycentric
 velocity, so a stellar feature is vertical and anything anchored to the Earth
@@ -35,13 +37,19 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pca2d.logger import log  # noqa: E402
-from pca2d.plotting import (live_mask, nan_cmap, raw_log_flux_block,  # noqa: E402
-                                 sample_source_file, window_parity)
-from pca2d.twoframe import (LanczosShifter, fit_means, load_cube,  # noqa: E402
-                                 mean_rows, row_parity, star_model)
+from pca2d.grids import parse_window, pixel_shift, window_block  # noqa: E402
+from pca2d.plotting import (live_mask, nan_cmap, raw_log_flux_window,  # noqa: E402
+                            sample_source_file, window_parity)
+from pca2d.twoframe import (LanczosShifter, cube_grid, fit_means,  # noqa: E402
+                            load_cube, mean_rows, row_parity, star_model,
+                            carried_means, fit_templates)
+
+
+#: before and after in the flux traces: slots 1 and 2 of a validated
+#: colour-blind safe categorical palette (CVD delta E 24.7 between them)
+BEFORE, AFTER = "#2a78d6", "#eb6834"
 
 
 def parse_args(argv=None):
@@ -82,169 +90,217 @@ def panel(ax, image, x, scale, title, cmap=None):
     return im
 
 
-def main(argv=None):
-    args = parse_args(argv)
-    grid, data, w0, meta = load_cube(args.cube)
+def window_arrays(cube, fit, means, group, grid, dv, delta, centre, width,
+                  templates=None):
+    """The panels of one window, on the grid block around it, in the star's frame.
+
+    Everything one page needs, computed on window_block's columns alone: the
+    cube read there through a memory map, the star and observer blocks
+    evaluated there, and every panel carried there by each exposure's BERV.
+    The block is wide enough for the largest shift the Earth can produce, so
+    inside the window this is the full-grid computation it replaces; in the
+    margin around it it is not, and nothing there is drawn.
+
+    It used to be the whole grid for every panel: eight full (rows x samples)
+    arrays for a page that shows a few thousand columns, five minutes and more
+    memory than the machine had. None when the window misses the grid.
+    """
+    block = window_block(grid, centre, width, dv)
+    if block is None:
+        return None
+    a0, b0 = block
+    g, data, w0, _ = load_cube(cube, columns=np.arange(a0, b0))
     n, m = data.shape
-    parity = row_parity(meta, n)
-    berv = np.asarray(meta["berv"], dtype=float)
-    fit = np.load(args.fit)
-    dv = float(fit["dv"])
-    delta = -np.asarray(fit["berv"], dtype=float) / dv
     shifter = LanczosShifter(m, a=8, max_shift=int(np.ceil(np.abs(delta).max())) + 2)
+    offset = mean_rows(means[:, a0:b0], group, n)
+    star = star_model(fit["P"][:, a0:b0], fit["a"], shifter, delta, n, m)
+    star_mean = templates is not None and bool(np.any(templates[0][:, a0:b0]))
+    if star_mean:
+        # the star-frame mean of each row's parity is part of the star block
+        star = star + carried_means(shifter.prepare(templates[0][:, a0:b0]),
+                                    templates[1], shifter, delta, 0, n)
+    earth = fit["b"] @ fit["Q"][:, a0:b0]
+    n_star, n_earth = int(fit["P"].shape[0]), int(fit["Q"].shape[0])
 
-    # what the fit actually took out, read from the fit rather than recomputed
-    means, group = fit_means(fit, meta, n, m)
-    offset = mean_rows(means, group, n)
-    n_star = int(fit["P"].shape[0])
-    n_earth = int(fit["Q"].shape[0])
-    star = star_model(fit["P"], fit["a"], shifter, delta, n, m)
-    earth = fit["b"] @ fit["Q"]
-
-    # The flux as delivered and the fit's own input are both gone from the
-    # page. The first answered a question once, that the log of it lands on the
-    # panel below and the filter eats nothing; the second differs from that
-    # panel by an instrumental offset the eye cannot see.
+    # Panel 4 is panel 3's mirror: the star block taken out instead of the
+    # observer one, so what is left is everything that is not the star. In the
+    # star's frame that is the slanted part, the atmosphere and the instrument.
+    # Each array is built only when it is about to be carried and dropped once
+    # it has been; the carried copies are float32, several digits more than a
+    # colour map shows.
     steps = [
-        ("given", data - offset,
+        ("given", lambda: data,
          "1. the high pass: $\\ln(f)$ minus a Savitzky-Golay of $\\ln(f)$"),
-        ("model", star + earth,
-         "2. the reconstruction, %d star + %d observer" % (n_star, n_earth)),
-        ("corrected", data - offset - earth,
+        ("model", lambda: star + offset + earth,
+         "2. the reconstruction: %d star + %d observer, and %s"
+         % (n_star, n_earth, "both frames' parity means" if star_mean
+            else "the observer parity mean")),
+        ("corrected", lambda: data - offset - earth,
          "3. minus the OBSERVER block: what a corrected file holds"),
-        ("resid", data - offset - star - earth,
-         "4. minus everything: what nobody explained"),
+        ("nostar", lambda: data - star,
+         "4. minus the STAR block: everything that is not the star"),
+        ("resid", lambda: data - offset - star - earth,
+         "5. minus everything: what nobody explained"),
     ]
-
     home = {}
     alive = live_mask(shifter.rows(w0, -delta))
-    for name, arr, _ in steps:
-        z = shifter.rows(arr, -delta)
+    for name, build, _ in steps:
+        z = shifter.rows(build(), -delta)
         z[~alive] = np.nan
-        home[name] = z
+        home[name] = z.astype(np.float32)
+        del z
+    return {"a0": a0, "b0": b0, "grid": g, "home": home, "earth": earth + offset,
+            "shifter": shifter, "titles": [(name, t) for name, _, t in steps]}
 
-    names = [os.path.basename(str(v)) for v in meta["filename"]]
-    sample_path = sample_source_file(args.cube, meta, args.source_dir)
 
-    specs = []
-    for spec in args.windows:
-        c, _, w = spec.partition(":")
-        specs.append((float(c), float(w or 2.0)))
-    margin = int(np.ceil(np.abs(delta).max())) + 16
-    blocks = {}
-    for c, w in specs:
-        j = np.where((grid >= c - 0.5 * w) & (grid <= c + 0.5 * w))[0]
-        if j.size >= 10:
-            blocks[c] = (max(0, j[0] - margin), min(m, j[-1] + 1 + margin))
-    if blocks:
-        cols = np.unique(np.concatenate([np.arange(a, b)
-                                         for a, b in blocks.values()]))
-        raw = raw_log_flux_block(args.cube, args.source_dir, names, parity,
-                                 grid, cols)
+def load_context(cube, fit_path, source_dir=None):
+    """What every page shares: the fit, its means, the rows and their BERV."""
+    fit = np.load(fit_path)
+    dv = float(fit["dv"])
+    grid = cube_grid(cube)
+    # the rows and their metadata; one column is the cheapest way to get them
+    _, _, _, meta = load_cube(cube, columns=np.arange(1))
+    n = len(meta)
+    means, group = fit_means(fit, meta, n, grid.size)
+    return {"cube": cube, "fit": fit, "dv": dv, "grid": grid,
+            "delta": -pixel_shift(np.asarray(fit["berv"], dtype=float), dv),
+            "parity": row_parity(meta, n),
+            "berv": np.asarray(meta["berv"], dtype=float),
+            "means": means, "group": group,
+            "templates": fit_templates(fit, meta, n, grid.size),
+            "names": [os.path.basename(str(v)) for v in meta["filename"]],
+            "sample_path": sample_source_file(cube, meta, source_dir),
+            "source_dir": source_dir}
+
+
+def draw_window(ctx, centre, width, n_overplot=5):
+    """One page: the five panels, then a few of the rows in flux.
+
+    Returns the figure, or None when the window has nothing to draw. The report
+    puts it in its PDF; the site saves the same figure as SVG, so the two can
+    never show different things.
+    """
+    fit, grid, dv, delta = ctx["fit"], ctx["grid"], ctx["dv"], ctx["delta"]
+    parity, berv = ctx["parity"], ctx["berv"]
+    lo, hi = centre - 0.5 * width, centre + 0.5 * width
+    arrays = window_arrays(ctx["cube"], fit, ctx["means"], ctx["group"], grid, dv,
+                           delta, centre, width, templates=ctx["templates"])
+    if arrays is None:
+        log("  %.1f-%.1f nm: outside the grid, skipped" % (lo, hi), "warn")
+        return None
+    g, home = arrays["grid"], arrays["home"]
+    win = (g >= lo) & (g <= hi)
+    if win.sum() < 10:
+        log("  %.1f-%.1f nm: too few columns, skipped" % (lo, hi))
+        return None
+    x = g[win]
+    cover = np.isfinite(home["given"][:, win]).sum(axis=1) / win.sum()
+    keep = cover > 0.5 * max(cover.max(), 1e-9)
+    own, off, ncov = (window_parity(centre, ctx["sample_path"])
+                      if ctx["sample_path"] else (None, float("nan"), 0))
+    # Where two orders reach this window, keep the one whose middle it
+    # sits nearest: the other measures the same wavelengths at an order
+    # edge, where the blaze has fallen away.
+    if own is not None and ncov > 1 and (keep & (parity == own)).sum() >= 6:
+        keep &= parity == own
+        log("  %.1f-%.1f nm: two orders reach it, drawing the one"
+              " %.2f of a half-width from its centre" % (lo, hi, off))
+    rows = np.where(keep)[0][np.argsort(berv[keep])]
+    if rows.size < 6:
+        log("  %.1f-%.1f nm: too few rows, skipped" % (lo, hi))
+        return None
+    jw = np.where(win)[0]
+    block = {k: home[k][np.ix_(rows, jw)] for k in home}
+    finite = block["given"][np.isfinite(block["given"])]
+    scale = float(np.percentile(np.abs(finite), 98)) if finite.size else 1.0
+
+    titles = arrays["titles"]
+    n_img = len(titles)
+    fig, axes = plt.subplots(n_img + 1, 1,
+                             figsize=(9.4, 1.85 * n_img + 3.0),
+                             sharex=True,
+                             gridspec_kw={"height_ratios":
+                                          [1.0] * n_img + [1.7]})
+    for r, (name, title) in enumerate(titles):
+        extra = ("" if name in ("given", "model")
+                 else "   scatter %.4f" % np.nanstd(block[name]))
+        im = panel(axes[r], block[name], x, scale, title + extra)
+
+    # the same rows in flux, before and after, from the raw flux the
+    # cube build kept around this window (see cache.py)
+    ax = axes[-1]
+    pick = min(n_overplot, rows.size)
+    spread = rows[np.linspace(0, rows.size - 1, pick).astype(int)]
+    raw = raw_log_flux_window(ctx["cube"], ctx["source_dir"], ctx["names"],
+                              parity, grid, arrays["a0"], arrays["b0"])
+    sub, earth = arrays["shifter"], arrays["earth"]
+    drawn = 0
+    for cube_row in spread:
+        blk = raw[cube_row]
+        if not np.isfinite(blk).any():
+            continue
+        ok = np.isfinite(blk)
+        lnf = sub.rows(_filled(blk[None, :], ok[None, :]),
+                       -delta[[cube_row]])[0]
+        live = sub.rows(ok.astype(float)[None, :],
+                        -delta[[cube_row]])[0] > 0.99
+        lnf = np.where(live, lnf, np.nan)
+        atm = sub.rows(earth[[cube_row]], -delta[[cube_row]])[0]
+        f_in = np.exp(lnf[jw])
+        f_out = np.exp((lnf - atm)[jw])
+        norm = np.nanmedian(f_in)
+        if not np.isfinite(norm) or norm <= 0:
+            continue
+        # the first two slots of a colour-blind safe categorical palette,
+        # validated as a pair: before blue, after orange
+        ax.plot(x, f_in / norm, lw=0.8, color=BEFORE, alpha=0.6,
+                label="before" if drawn == 0 else None)
+        ax.plot(x, f_out / norm, lw=0.8, color=AFTER, alpha=0.6,
+                label="observer block removed" if drawn == 0 else None)
+        drawn += 1
+    if drawn:
+        ax.set_ylabel("flux / its own median", fontsize=8.5)
+        ax.legend(fontsize=8, loc="lower right", framealpha=0.9)
+        ax.set_title("%d of those rows in FLUX, spread over BERV %+.1f to"
+                     " %+.1f km/s" % (drawn, berv[spread].min(),
+                                      berv[spread].max()), fontsize=8.5)
+        ax.grid(alpha=0.15)
+        ax.tick_params(labelsize=8)
     else:
-        cols, raw = np.zeros(0, dtype=int), np.zeros((n, 0))
+        ax.text(0.5, 0.5, "could not re-read the source spectra",
+                ha="center", va="center", fontsize=8,
+                transform=ax.transAxes)
+    axes[-1].set_xlabel("wavelength (nm), star frame", fontsize=9)
+    # attached to EVERY axes, the trace panel included. A colourbar
+    # steals width from the axes it is given, so leaving one out makes
+    # it wider than the rest and the wavelength axes stop lining up
+    # down the page, which is the whole point of the figure.
+    fig.colorbar(im, ax=list(axes), fraction=0.022, pad=0.015,
+                 label=r"$\ln(f/\mathrm{savgol}\,f)$")
+    fig.suptitle("%.2f-%.2f nm: every step, in order, in the STAR'S REST"
+                 " FRAME\nvertical structure belongs to the star;"
+                 " anything slanted does not" % (lo, hi), fontsize=10)
+    log("  %.1f-%.1f nm: given %.4f | corrected %.4f (%+.0f%%) |"
+          " residual %.4f"
+          % (lo, hi, np.nanstd(block["given"]),
+             np.nanstd(block["corrected"]),
+             100 * (np.nanstd(block["corrected"]) /
+                    max(np.nanstd(block["given"]), 1e-30) - 1),
+             np.nanstd(block["resid"])))
+    return fig
 
+
+def main(argv=None):
+    args = parse_args(argv)
+    ctx = load_context(args.cube, args.fit, args.source_dir)
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     with PdfPages(args.out) as pdf:
-        for centre, width in specs:
-            lo, hi = centre - 0.5 * width, centre + 0.5 * width
-            win = (grid >= lo) & (grid <= hi)
-            if win.sum() < 10:
-                log("  %.1f-%.1f nm: too few columns, skipped" % (lo, hi))
+        for centre, width in (parse_window(spec) for spec in args.windows):
+            fig = draw_window(ctx, centre, width, args.n_overplot)
+            if fig is None:
                 continue
-            x = grid[win]
-            cover = np.isfinite(home["given"][:, win]).sum(axis=1) / win.sum()
-            keep = cover > 0.5 * max(cover.max(), 1e-9)
-            own, off, ncov = (window_parity(centre, sample_path) if sample_path
-                              else (None, float("nan"), 0))
-            # Where two orders reach this window, keep the one whose middle it
-            # sits nearest: the other measures the same wavelengths at an order
-            # edge, where the blaze has fallen away. Done silently. It is not a
-            # caveat, it is simply the right order to draw.
-            if own is not None and ncov > 1 and (keep & (parity == own)).sum() >= 6:
-                keep &= parity == own
-                log("  %.1f-%.1f nm: two orders reach it, drawing the one"
-                      " %.2f of a half-width from its centre" % (lo, hi, off))
-            rows = np.where(keep)[0][np.argsort(berv[keep])]
-            if rows.size < 6:
-                log("  %.1f-%.1f nm: too few rows, skipped" % (lo, hi))
-                continue
-            jw = np.where(win)[0]
-            block = {k: home[k][np.ix_(rows, jw)] for k in home}
-            finite = block["given"][np.isfinite(block["given"])]
-            scale = float(np.percentile(np.abs(finite), 98)) if finite.size else 1.0
-
-            n_img = len(steps)
-            fig, axes = plt.subplots(n_img + 1, 1,
-                                     figsize=(9.4, 1.85 * n_img + 3.0),
-                                     sharex=True,
-                                     gridspec_kw={"height_ratios":
-                                                  [1.0] * n_img + [1.7]})
-            for r, (name, _, title) in enumerate(steps):
-                extra = ("" if name in ("given", "model")
-                         else "   scatter %.4f" % np.nanstd(block[name]))
-                im = panel(axes[r], block[name], x, scale, title + extra)
-
-            # the same rows in flux, before and after
-            ax = axes[-1]
-            pick = min(args.n_overplot, rows.size)
-            spread = rows[np.linspace(0, rows.size - 1, pick).astype(int)]
-            drawn = 0
-            if centre in blocks:
-                a0, b0 = blocks[centre]
-                sub = LanczosShifter(b0 - a0, a=8, max_shift=margin)
-                for cube_row in spread:
-                    blk = raw[cube_row, np.searchsorted(cols, np.arange(a0, b0))]
-                    if not np.isfinite(blk).any():
-                        continue
-                    ok = np.isfinite(blk)
-                    lnf = sub.rows(_filled(blk[None, :], ok[None, :]),
-                                   -delta[[cube_row]])[0]
-                    live = sub.rows(ok.astype(float)[None, :],
-                                    -delta[[cube_row]])[0] > 0.99
-                    lnf = np.where(live, lnf, np.nan)
-                    atm = sub.rows(earth[[cube_row], a0:b0], -delta[[cube_row]])[0]
-                    f_in = np.exp(lnf[jw - a0])
-                    f_out = np.exp((lnf - atm)[jw - a0])
-                    norm = np.nanmedian(f_in)
-                    if not np.isfinite(norm) or norm <= 0:
-                        continue
-                    ax.plot(x, f_in / norm, lw=0.8, color="#d62728", alpha=0.5,
-                            label="before" if drawn == 0 else None)
-                    ax.plot(x, f_out / norm, lw=0.8, color="#2ca02c", alpha=0.5,
-                            label="observer block removed" if drawn == 0 else None)
-                    drawn += 1
-            if drawn:
-                ax.set_ylabel("flux / its own median", fontsize=8.5)
-                ax.legend(fontsize=8, loc="lower right", framealpha=0.9)
-                ax.set_title("%d of those rows in FLUX, spread over BERV %+.1f to"
-                             " %+.1f km/s" % (drawn, berv[spread].min(),
-                                              berv[spread].max()), fontsize=8.5)
-                ax.grid(alpha=0.15)
-                ax.tick_params(labelsize=8)
-            else:
-                ax.text(0.5, 0.5, "could not re-read the source spectra",
-                        ha="center", va="center", fontsize=8,
-                        transform=ax.transAxes)
-            axes[-1].set_xlabel("wavelength (nm), star frame", fontsize=9)
-            # attached to EVERY axes, the trace panel included. A colourbar
-            # steals width from the axes it is given, so leaving one out makes
-            # it wider than the rest and the wavelength axes stop lining up
-            # down the page, which is the whole point of the figure.
-            fig.colorbar(im, ax=list(axes), fraction=0.022, pad=0.015,
-                         label=r"$\ln(f/\mathrm{savgol}\,f)$")
-            fig.suptitle("%.2f-%.2f nm: every step, in order, in the STAR'S REST"
-                         " FRAME\nvertical structure belongs to the star;"
-                         " anything slanted does not" % (lo, hi), fontsize=10)
             pdf.savefig(fig)
             plt.close(fig)
-            log("  %.1f-%.1f nm: given %.4f | corrected %.4f (%+.0f%%) |"
-                  " residual %.4f"
-                  % (lo, hi, np.nanstd(block["given"]),
-                     np.nanstd(block["corrected"]),
-                     100 * (np.nanstd(block["corrected"]) /
-                            max(np.nanstd(block["given"]), 1e-30) - 1),
-                     np.nanstd(block["resid"])))
     log("wrote %s" % args.out)
     return None
 

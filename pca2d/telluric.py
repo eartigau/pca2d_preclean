@@ -40,15 +40,15 @@ import os
 
 import numpy as np
 
+from .grids import doppler
 from .logger import log
 
 C_KMS = 299792.458
 
 
 def _cache_path(config, key):
-    directory = config["output"]["cache_directory"]
-    os.makedirs(directory, exist_ok=True)
-    return os.path.join(directory, "telluric_%s.npz" % key)
+    from . import cache as _cache
+    return os.path.join(_cache.ensure(config), "telluric_%s.npz" % key)
 
 
 def build_tau_map(config, cache_suffix=""):
@@ -122,7 +122,7 @@ def build_tau_map(config, cache_suffix=""):
 
 def transmission_for(grid, tau_grid, tau, target_grid, berv, target_berv, airmass):
     """Transmission of one exposure, sampled on the cube's grid."""
-    wave_obs = target_grid * (1.0 + target_berv / C_KMS) / (1.0 + berv / C_KMS)
+    wave_obs = target_grid * doppler(target_berv) / doppler(berv)
     tau_here = np.interp(wave_obs, tau_grid, tau, left=0.0, right=0.0)
     if not np.isfinite(airmass):
         airmass = 1.0

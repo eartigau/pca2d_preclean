@@ -39,6 +39,7 @@ import numpy as np
 from astropy.io import fits
 
 from . import preprocess as prep
+from .grids import doppler
 from .io import header_float, robust_open
 from .logger import log
 
@@ -357,7 +358,7 @@ def resample_exposure(payload: dict, grid: np.ndarray, config: dict):
     flux, wave = payload["flux"], payload["wave"]
     blaze, recon = payload["blaze"], payload["recon"]
 
-    shift = (1.0 + berv / C_KMS) / (1.0 + target / C_KMS)
+    shift = float(doppler(berv) / doppler(target))
     last_stop = {0: -1, 1: -1}
     n_written = 0
 
@@ -453,3 +454,21 @@ def resample_exposure(payload: dict, grid: np.ndarray, config: dict):
         n_written += 1
 
     return values, sigma, trans, good, n_written
+
+
+def raw_block(payload: dict, grid: np.ndarray, a0: int, b0: int, config: dict):
+    """ln(flux) with no high-pass, on grid[a0:b0], one row per order parity.
+
+    The figures draw the spectrum as it sits in the file, which the cube does
+    not hold, the cube being high-passed. This is the cube's own resampling,
+    onto one contiguous block of the same grid, with the high-pass switched
+    off, and it is exact inside the block: the spline is built on the native
+    pixels and only evaluated at the block's wavelengths, and the one rule that
+    looks at neighbours, drop_isolated, treats the ends of an array as bounded
+    rather than as gaps. At most its few samples next to the block's ends can
+    differ from a full-grid resampling, inside a margin that exists for the
+    shift anyway. float32, NaN where nothing was measured.
+    """
+    cfg = dict(config, highpass=dict(config["highpass"], method="none"))
+    values, _sigma, _trans, good, _n = resample_exposure(payload, grid[a0:b0], cfg)
+    return np.where(good, values, np.nan).astype(np.float32)

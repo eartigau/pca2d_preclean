@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """Does what the model fails to remove line up with the sky's own emission?
 
-    python diagnostics/oh_residual.py --cube <cube> --fit <fit.npz> \
-        --source-dir data/TOI2120/tfiles --out outputs/TOI2120/nominal/oh_residual.pdf
+    python -m pca2d.figures.oh_residual --cube <cube> --fit <fit.npz> \
+        --source-dir data/TOI2120 --out outputs/TOI2120/1-3v/oh_residual.pdf
 
 SPIRou t.fits carry an `OHLine` extension, the model of the atmospheric OH
 airglow that was subtracted. That emission is not faint: on TOI-2120 it reaches
@@ -31,10 +31,12 @@ import numpy as np
 from astropy.io import fits
 from scipy.stats import spearmanr
 
+from pca2d.grids import pixel_shift
 from pca2d.logger import log
 from pca2d.tfits import extensions_for
 from pca2d.twoframe import (LanczosShifter, carry_template, fit_means,
-                                 load_cube, mean_rows, star_model)
+                                 load_cube, mean_rows, star_model,
+                                 fit_templates, subtract_carried)
 
 
 def parse_args(argv=None):
@@ -80,14 +82,16 @@ def main(argv=None):
     n, m = data.shape
     fit = np.load(args.fit)
     dv = float(fit["dv"])
-    delta = -np.asarray(fit["berv"], float) / dv
+    delta = -pixel_shift(np.asarray(fit["berv"], float), dv)
     shifter = LanczosShifter(m, a=8, max_shift=int(np.ceil(np.abs(delta).max())) + 2)
-    template = fit["template"]
+    templates, tgroup = fit_templates(fit, meta, n, m)
     means, group = fit_means(fit, meta, n, m)
-    model = ((carry_template(template, shifter, delta) if np.any(template) else 0.0)
-             + mean_rows(means, group, n)
+    model = (mean_rows(means, group, n)
              + star_model(fit["P"], fit["a"], shifter, delta, n, m)
              + fit["b"] @ fit["Q"])
+    if np.any(templates):
+        # + S_n T_g, a chunk at a time: carried whole it is rows x groups x grid
+        subtract_carried(model, -templates, tgroup, shifter, delta, 64)
     live = w > 0
     resid = np.where(live, data - model, np.nan)
     sigma = np.where(live, 1.0 / np.sqrt(np.where(live, w, 1.0)), np.nan)

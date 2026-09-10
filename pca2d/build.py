@@ -1,11 +1,9 @@
 #!/usr/bin/env python
 """Build and cache a registered data cube. No PCA, no frame choice made here.
 
-This is the only way new data enters the project. The two-frame fit in
-`pca2d/twoframe.py` (pca2refs-fit) reads a cube from `cache/` and cannot make one, so
-everything starts here:
-
-    pca2refs-cube config.yaml
+This is the only way new data enters the project, and it is the `cube` stage
+of `pca2d-preclean`. The two-frame fit in `pca2d/twoframe.py` reads a cube from
+`cache/` and cannot make one.
 
 The cube is written to `cache/cube_<format>_<hash>/`, the hash covering every
 configuration entry that changes the cube. Running twice with the same config
@@ -17,10 +15,6 @@ log-uniform grid, so the cube must not be pre-shifted. `registration.frame` is
 forced to `observer` here rather than trusted from the YAML: a barycentric cube
 would be silently wrong rather than loudly broken, since the fit would still
 converge, onto a star block anchored to a frame moving at twice the BERV.
-
-The single-frame pipeline that used to live in `run_pca.py` is in `_obsolete/`.
-It chose one frame per run and fitted five components in it; the whole point of
-the two-frame model is not to have to choose. See `outputs/PROXIMA/nominal/`.
 """
 
 from __future__ import annotations
@@ -107,7 +101,6 @@ def main(argv=None):
         # not the only thing standing between a reader and its provenance
         shutil.copy(args.config, os.path.join(cache_dir, "cube_config.yaml"))
     log("cube ready: %s" % cache_dir, "value")
-    log("next: pca2refs-fit --config <config> --cube %s" % cache_dir, "value")
     return cache_dir
 
 

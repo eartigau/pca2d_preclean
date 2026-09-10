@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 """Which parts of the spectrum actually drive the fit, and do they drive the RVs.
 
-    python diagnostics/weight_spectrum.py --cube <cube> --fit <fit.npz> \
-        --mask lbl_data/masks/LBL_Mask_TOI2120_RAW_full_spirou.fits \
-        --out outputs/TOI2120/nominal/weight_spectrum.pdf
+    python -m pca2d.figures.weight_spectrum --cube <cube> --fit <fit.npz> \
+        --mask lbl/masks/<the object's LBL mask>.fits \
+        --out outputs/TOI2120/1-3v/weight_spectrum.pdf
 
 A weighted fit is not democratic. A tenth of the columns can carry half the
 weight, and if they do, that tenth is what the components describe, whatever the
@@ -29,6 +29,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
+from pca2d.grids import pixel_shift
 from pca2d.logger import log
 from pca2d.twoframe import LanczosShifter, load_cube
 
@@ -64,7 +65,7 @@ def main(argv=None):
     fit = np.load(args.fit)
     P, Q, a, b = fit["P"], fit["Q"], fit["a"], fit["b"]
     dv = float(fit["dv"])
-    delta = -np.asarray(fit["berv"], dtype=float) / dv
+    delta = -pixel_shift(np.asarray(fit["berv"], dtype=float), dv)
     shifter = LanczosShifter(data.shape[1], a=8,
                              max_shift=int(np.ceil(np.abs(delta).max())) + 2)
 

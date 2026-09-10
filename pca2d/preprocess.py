@@ -6,18 +6,8 @@ import numpy as np
 from scipy.interpolate import InterpolatedUnivariateSpline
 from scipy.signal import savgol_filter
 
-C_KMS = 299792.458
+from .grids import doppler
 
-
-def build_grid(wave_min: float, wave_max: float, dv: float) -> np.ndarray:
-    """Synthetic log-uniform grid with a constant velocity step (nm).
-
-    Only used when the config asks for a step other than the instrument's own;
-    the default path recycles the NIRPS magic grid via io.magic_grid().
-    """
-    step = dv / C_KMS
-    n = int(np.floor(np.log(wave_max / wave_min) / step)) + 1
-    return wave_min * np.exp(step * np.arange(n))
 
 
 def _fill_gaps(y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -118,18 +108,19 @@ def register(wave_obs, values, good, berv, target_berv, grid,
     """Resample onto the common grid in the frame set by target_berv.
 
     APERO's s1d_v wavelengths are in the observer frame: a stellar feature sits
-    at lambda_obs = lambda_bary * (1 - BERV/c), i.e. a spectrum taken at high
+    at lambda_obs = lambda_bary / D(BERV), D the relativistic Doppler factor
+    sqrt((1 + v/c) / (1 - v/c)) (grids.doppler), i.e. a spectrum taken at high
     BERV has its stellar lines pushed blueward. Mapping each sample to
-        lambda_bary = lambda_obs * (1 + BERV/c)
+        lambda_bary = lambda_obs * D(BERV)
     therefore parks the star at rest. Registering to a non-zero target_berv
-    simply divides that back out.
+    simply divides D(target_berv) back out.
 
     BERV/dv is never an integer, so this is a genuine fractional-pixel
     resampling and is done with a cubic spline, not a pixel roll. The good-pixel
     mask is resampled linearly alongside; anything that picks up a contribution
     from a bad sample falls below mask_threshold and is flagged.
     """
-    shift = (1.0 + berv / C_KMS) / (1.0 + target_berv / C_KMS)
+    shift = float(doppler(berv) / doppler(target_berv))
     wave_shifted = wave_obs * shift
 
     spline = InterpolatedUnivariateSpline(

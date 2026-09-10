@@ -70,6 +70,10 @@ def parse_args(argv=None):
                    help="centre:width in nm; default is the list in the config")
     p.add_argument("--rebuild-cube", action="store_true",
                    help="ignore any cached cube for this configuration")
+    p.add_argument("--clean-cache", action="store_true",
+                   help="empty the cache first: cubes, figure snippets and"
+                        " telluric maps, everything this package rebuilds on"
+                        " its own. With --dry-run it only lists what would go")
     p.add_argument("--run-lbl", action="store_true",
                    help="have the lbl stage run LBL, not only prepare it."
                         " Hours. Same as lbl.run: true in the config")
@@ -101,7 +105,12 @@ def resolve(args):
     if args.run_lbl:
         config.setdefault("lbl", {})["run"] = True
 
-    tag = "%d-%d" % (config["twoframe"]["n_star"], config["twoframe"]["n_earth"])
+    # `v` when the velocity term is on, so a run with it and a run without it
+    # do not write into the same folder, and their LBL objects do not either.
+    # Comparing the two is the reason the knob exists at all.
+    tag = "%d-%d%s" % (config["twoframe"]["n_star"],
+                       config["twoframe"]["n_earth"],
+                       "v" if config["twoframe"].get("velocity_term", True) else "")
     # Everything this run writes hangs off one root, the corrected spectra
     # included: they used to land in a subfolder of the input directory, which
     # made the input tree both read and written and meant a shared or
@@ -180,8 +189,10 @@ def run_fit(plan):
 
 
 def run_figures(plan):
+    from .config import check_windows
     from .figures.bundle import main as bundle_main
 
+    check_windows(plan["config"]["output"]["windows"], plan["config"]["domain"])
     log("drawing %d windows and binding everything into one PDF"
         % len(plan["config"]["output"]["windows"]), "info")
     log("each figure script reads the cube once; expect a few minutes", "info")
@@ -201,15 +212,16 @@ def run_correct(plan):
         n_earth = cfg["twoframe"]["n_earth"]
     log("writing %d corrected spectra to %s"
         % (len(plan["files"]), plan["corrdir"]), "info")
-    if n_star == 0:
-        log("dividing out the observer block only, %d components: with no"
-            " template the first star component IS the star" % n_earth, "info")
+    log("dividing out the observer block, its per-parity mean and %d"
+        " components%s, and setting to NaN every sample the fit gave no weight:"
+        " exactly panel 3 of the sequence figure"
+        % (n_earth, " with %d star components" % n_star if n_star else ""), "info")
     apply_main([
         "--correct", "--all",
         "--fits", os.path.join(plan["outdir"], "twoframe_components.fits"),
         "--n-star", str(n_star), "--n-earth", str(n_earth),
         "--max-sky-ratio", str(cfg["quality"]["max_sky_ratio"] or 0),
-        "--source-dir", plan["directory"],
+        "--source-dir", plan["directory"], "--cube", plan["cube"],
         "--corrected-dir", plan["corrdir"], "--overwrite"])
 
 
@@ -228,6 +240,12 @@ def run_lbl(plan):
                          " still written; `conda env update -f"
                          " environment.yml` puts LBL in this environment."
                          % detail), "value" if ok else "warn")
+    # With output.fits_directory set, every folder LBL writes in is a link to
+    # the external disk before it starts; lbl/science stays here (storage.py)
+    from . import storage as _storage
+    for sub in _storage.LBL_FOLDERS:
+        _storage.link_dir(plan["config"],
+                          os.path.join(block.get("directory") or "lbl", sub))
     prepared = splbl.prepare(plan)
     if block.get("run", False):
         if not prepared.get("readable", True):
@@ -256,6 +274,18 @@ def main(argv=None):
     log("pca2d-preclean", "info")
     plan = resolve(args)
     announce(args, plan)
+    from . import storage as _storage
+    where = _storage.check(plan["config"], dry_run=args.dry_run)
+    if where:
+        log("kept on     %s   (output.fits_directory; %s links there)"
+            % (_storage.external(plan["config"], plan["outdir"]),
+               plan["outdir"]), "value")
+    if args.clean_cache:
+        from . import cache as _cache
+        removed, _ = _cache.clean(plan["config"], dry_run=args.dry_run)
+        if removed and not args.dry_run and "cube" not in wanted:
+            log("the cube stage is not in --stages, so the stages after it have"
+                " no cube to read until it runs again", "warn")
     if not plan["files"]:
         log("no spectra matched %s in %s"
             % (plan["config"]["input"].get("pattern"), plan["directory"]),
@@ -269,6 +299,10 @@ def main(argv=None):
     # not the one on the command line: the three layers have been merged and
     # the instrument resolved, so this is what actually ran, and it sits next
     # to the outputs it produced.
+    # With output.fits_directory set, the run folder is a link to the external
+    # disk, made now, before the first file goes into it (storage.py).
+    if where:
+        _storage.link_dir(plan["config"], plan["outdir"])
     os.makedirs(plan["outdir"], exist_ok=True)
     plan["written_config"] = os.path.join(plan["outdir"], "resolved_config.yaml")
     import yaml

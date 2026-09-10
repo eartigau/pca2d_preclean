@@ -3,15 +3,23 @@
 The point of correcting a spectrum is the velocity that comes out of it, and
 the only honest way to know whether the correction helped is to measure both.
 So this stage never runs LBL on the corrected files alone. It sets up two
-objects side by side in one LBL tree, from the same instrument profile and with
-each building its own template:
+objects side by side in one LBL tree, from the same instrument profile:
 
-    lbl/science/TOI-2120/          symlinks to the spectra as delivered
-    lbl/science/TOI-2120_PCA2D/    symlinks to what this package wrote
+    lbl/science/TOI-2120/               symlinks to the spectra as delivered
+    lbl/science/TOI-2120_PCA2D_2-3v/    symlinks to what this package wrote
 
 and LBL's own products then sit next to each other under the same names, so the
 comparison that matters is two columns of one table rather than two runs
 someone has to remember to line up.
+
+The delivered spectra are measured against the template LBL builds from them.
+The corrected ones are measured against the star as the fit sees it: its first
+star component at its mean amplitude, in LBL's template format and written by
+LBL's own writer (lbltemplate.py), so LBL's template step finds it in place and
+has nothing to do. With two or more star components, the ones past the first
+also go to LBL, as RESPROJ tables STRPCA2..N: LBL projects every line on them
+the way it does on its DTEMP gradients, and the rdb gets each exposure's
+amplitude along them.
 
 Symlinks, not copies: a few hundred t.fits are a few tens of gigabytes, they
 already exist twice (delivered and corrected), and a third copy would buy
@@ -19,10 +27,12 @@ nothing. Nothing here writes into the input tree.
 
 What it leaves beside the run's other outputs:
 
-    lbl_config.yaml   LBL's configuration, in LBL's keys and LBL's spelling,
-                      which `lbl_compute --config lbl_config.yaml` reads
-    run_lbl.py        the wrap script, the runparams dict LBL users edit, with
-                      both objects in it and ready to be run by hand
+    lbl_config.yaml     LBL's configuration, in LBL's keys and LBL's spelling,
+                        which `lbl_compute --config lbl_config.yaml` reads
+    run_lbl.py          the wrap script, one runparams dict per object, the
+                        dict LBL users know, ready to be read and run by hand
+    star_template.fits  the fit's star template, copied from here to where
+                        LBL looks for the corrected object's template
 
 Running LBL takes hours, so the stage prepares by default and runs only when
 asked: `lbl.run: true` in the config, or --run-lbl on the command line.
@@ -119,12 +129,37 @@ def resolve_teff(config: dict, files) -> tuple:
 
 
 def available():
-    """(True, version) if LBL can be imported, (False, why) if it cannot."""
+    """(True, version) if the LBL package can be imported, (False, why) if not.
+
+    This module is itself called lbl, so whenever the pca2d/ directory gets onto
+    sys.path the name `lbl` resolves to this file rather than to LBL. It did:
+    a module of the figures stage used to put it there, and the error that came
+    out, "attempted relative import with no known parent package", named
+    neither the file nor the cause. Now it says which file answered.
+    """
     try:
         import lbl
     except Exception as exc:                                  # noqa: BLE001
+        where = _what_lbl_resolves_to()
+        if where and os.path.basename(where) == "lbl.py":
+            return False, ("the name `lbl` resolves to %s, which is not the LBL"
+                           " package: its directory is on sys.path ahead of"
+                           " site-packages" % where)
         return False, str(exc)
+    if not hasattr(lbl, "__path__"):
+        return False, ("the name `lbl` resolves to %s, a single module and not"
+                       " the LBL package" % getattr(lbl, "__file__", "?"))
     return True, getattr(lbl, "__version__", "unknown")
+
+
+def _what_lbl_resolves_to():
+    """The file the name `lbl` would be imported from on the current path."""
+    import importlib.util
+    try:
+        spec = importlib.util.find_spec("lbl")
+    except (ImportError, ValueError):
+        return None
+    return getattr(spec, "origin", None) if spec else None
 
 
 def profile(config: dict) -> tuple:
@@ -156,6 +191,20 @@ def object_names(config: dict, object_name: str, tag: str) -> tuple:
     """The names the two runs go under in the LBL tree, before and after."""
     suffix = str((config.get("lbl") or {}).get("suffix") or "_PCA2D_{tag}")
     return object_name, object_name + suffix.format(tag=tag)
+
+
+def corrected_files(corrdir: str) -> list:
+    """The corrected spectra in a folder, and nothing that merely looks like one.
+
+    A name starting with a dot is skipped. The corrected folders can live on an
+    exFAT disk, where macOS writes a `._name` AppleDouble file beside anything
+    that carries extended attributes: it ends in .fits too, holds none of a
+    spectrum, and would otherwise be linked into LBL's science folder.
+    """
+    if not os.path.isdir(corrdir):
+        return []
+    return sorted(os.path.join(corrdir, name) for name in os.listdir(corrdir)
+                  if name.endswith(".fits") and not name.startswith("."))
 
 
 def link_spectra(files, target: str, mode: str = "symlink") -> tuple:
@@ -258,46 +307,74 @@ def runparams(config: dict, data_dir: str, instrument: str, data_source: str,
 
 
 RUNNER = '''#!/usr/bin/env python
-"""Run LBL on %(n)d objects: %(objects)s.
+"""Run LBL on %(object)s, as delivered and as pca2d-preclean corrected it (%(tag)s).
 
-Written by pca2d-preclean for %(object)s (%(tag)s), and left here to be read,
-edited and re-run by hand: it is an ordinary LBL wrap script, and the dict
-below is the one LBL users already know. What it measures is the same target
-twice, as delivered and as this package corrected it, so the two velocity
-series can be put side by side.
+Written by pca2d-preclean, and left here to be read, edited and re-run by
+hand: an ordinary LBL wrap script, with one of the runparams dicts LBL users
+know per object. The settings that are not about which object is which live
+in %(config)s.
 
     python %(script)s
-
-The settings that are not about which object is which live in %(config)s.
 """
 
 from lbl.recipes import lbl_wrap
+%(blocks)s
 
-rparams = %(rparams)s
 
 if __name__ == "__main__":
-    lbl_wrap.main(rparams)
+%(main)s
 '''
 
+#: what run_lbl.py says about the STRPCA dict, above it
+STRPCA_NOTE = ("The star components past the first, as LBL RESPROJ tables"
+               " STRPCA2..N. They are written in the star's rest frame, which"
+               " LBL's mask step measures, so between the mask and the"
+               " velocities.")
 
-def write_runner(path: str, params: dict, object_name: str, tag: str,
+
+def _block(name, comment, params, upper=True):
+    """One NAME = dict(...) of the runner, with its comment above it."""
+    import textwrap
+    lines = ["", "", *("# " + line for line in textwrap.wrap(comment, 76)),
+             "%s = dict(" % name]
+    for key, value in params.items():
+        lines.append("    %s=%r," % (key.upper() if upper else key, value))
+    lines.append(")")
+    return "\n".join(lines)
+
+
+def write_runner(path: str, runs: list, strpca, object_name: str, tag: str,
                  config_file: str) -> str:
-    """The wrap script, with the runparams spelled out one key per line."""
+    """The wrap script: one runparams dict per object, spelled one key a line.
+
+    `runs` is [(NAME, comment, params)], in the order they are run. `strpca`,
+    when not None, is lbltemplate.strpca_from's arguments: the object named
+    AFTER then runs its mask alone first, the tables are written in the rest
+    frame that mask measured, and its velocities are measured with them.
+    """
     # UPPER CASE, and not a style choice: lbl_wrap reads runparams['INSTRUMENT']
     # and every other key by that exact spelling, so a lower-case dict fails on
     # the first line of its own checking with "Must define key INSTRUMENT".
-    lines = ["dict("]
-    for key, value in params.items():
-        lines.append("    %s=%r," % (key.upper(), value))
-    lines.append(")")
+    blocks = [_block(name, comment, params) for name, comment, params in runs]
+    if strpca:
+        blocks.append(_block("STRPCA", STRPCA_NOTE, strpca, upper=False))
+    main = []
+    for name, _, _ in runs:
+        if name == "AFTER" and strpca:
+            main += ["    # its mask first: STRPCA is written in the rest frame"
+                     " the mask measures",
+                     "    lbl_wrap.main(dict(AFTER, RUN_LBL_COMPUTE=False,"
+                     " RUN_LBL_COMPILE=False))",
+                     "    from pca2d.lbltemplate import strpca_from",
+                     '    AFTER["RESPROJ_TABLES"] = strpca_from(**STRPCA)']
+        main.append("    lbl_wrap.main(%s)" % name)
     body = RUNNER % {
-        "n": len(params["OBJECT_SCIENCE"]),
-        "objects": ", ".join(params["OBJECT_SCIENCE"]),
         "object": object_name,
         "tag": tag,
         "script": os.path.abspath(path),
         "config": os.path.basename(config_file),
-        "rparams": "\n".join(lines),
+        "blocks": "".join(blocks),
+        "main": "\n".join(main) if main else "    pass",
     }
     with open(path, "w") as handle:
         handle.write(body)
@@ -333,8 +410,59 @@ def check_profile(instrument: str, data_source: str, config_file: str,
     return True, "reads %s" % os.path.basename(sample)
 
 
+def fit_components(outdir: str) -> int:
+    """How many star components the run's fit has; 0 when there is no fit."""
+    import numpy as np
+    path = os.path.join(outdir, "fit.npz")
+    if not os.path.exists(path):
+        return 0
+    with np.load(path) as blob:
+        return int(blob["P"].shape[0])
+
+
+def star_template(plan, config_file: str, name: str, files, place=True) -> dict:
+    """The fit's star template for `name`, made once per fit, put where LBL looks.
+
+    Made beside the run's other outputs as star_template.fits, and made again
+    only when the fit's stamp has changed (lbltemplate.fit_stamp). Copied from
+    there to LBL's template folder unless LBL built one there itself, which is
+    never replaced (lbltemplate.place). Returns the file made, LBL's paths for
+    the object's template and mask and its models folder, and what was done.
+    """
+    from . import lbltemplate as lt
+
+    fit = os.path.join(plan["outdir"], "fit.npz")
+    made = os.path.join(plan["outdir"], "star_template.fits")
+    if lt.stamp(made) != lt.fit_stamp(fit):
+        log("making the star template: the fit's first star component at its"
+            " mean amplitude, in LBL's format and by LBL's own writer", "info")
+        seen, _ = lt.build(plan["cube"], fit, config_file, name, files, made,
+                           run=plan["tag"])
+        log("star template %s, covering %.1f%% of the grid" % (made, 100 * seen),
+            "value")
+    inst = lt.lbl_instrument(config_file, name)
+    slot, mask, models = lt.lbl_paths(inst)
+    status = lt.place(made, slot) if place else "not placed"
+    if status in ("copied", "same"):
+        log("%s is measured against the fit's star template: %s"
+            % (name, slot), "value")
+    elif status == "replaced":
+        log("the star template at %s came from an earlier fit and now holds this"
+            " one. LBL's mask for %s and any velocity it already measured were"
+            " made against the old one, and LBL keeps what is done: remove %s"
+            " and lbl/lblrv/%s_%s to measure against this one."
+            % (slot, name, mask, name, name), "warn")
+    elif status == "theirs":
+        log("LBL built a template for %s itself (%s) and it stays: this package"
+            " never replaces one of LBL's. Remove it to measure %s against the"
+            " fit's star template." % (name, slot, name), "warn")
+    return {"made": made, "slot": slot, "mask": mask, "models": models,
+            "status": status}
+
+
 def prepare(plan) -> dict:
-    """Stage both objects, write LBL's config and the script that runs it."""
+    """Stage both objects, make the star template, write LBL's config and the
+    script that runs it."""
     config = plan["config"]
     block = config.get("lbl") or {}
     object_name = config["input"]["object"]
@@ -346,14 +474,11 @@ def prepare(plan) -> dict:
         % (instrument, data_source, where), "value")
 
     wanted = []
+    corrected = []
     if block.get("before", True):
         wanted.append((before, plan["directory"], plan["files"]))
     if block.get("after", True):
-        corrected = sorted(
-            os.path.join(plan["corrdir"], name)
-            for name in (os.listdir(plan["corrdir"])
-                         if os.path.isdir(plan["corrdir"]) else [])
-            if name.endswith(".fits"))
+        corrected = corrected_files(plan["corrdir"])
         if not corrected:
             log("no corrected spectra in %s yet, so LBL is set up on the"
                 " delivered ones only. Run the correct stage and this stage"
@@ -401,12 +526,60 @@ def prepare(plan) -> dict:
             " t.fits with named fibre extensions the reader is the CADC one.",
             "error")
 
-    params = runparams(config, data_dir, instrument, data_source, objects,
-                       config_file, teff)
-    script = write_runner(os.path.join(plan["outdir"], "run_lbl.py"), params,
-                          object_name, plan["tag"], config_file)
+    def params_for(name):
+        return runparams(config, data_dir, instrument, data_source, [name],
+                         config_file, teff)
 
-    if params["RUN_LBL_MASK"] and teff is None:
+    runs, star, strpca = [], None, None
+    if before in objects:
+        runs.append(("BEFORE", "The spectra as delivered, measured against the"
+                     " template LBL builds from them.", params_for(before)))
+    if after in objects:
+        n_star = fit_components(plan["outdir"])
+        # a comparison object named in lbl.template is the template, not ours
+        use_star = bool(block.get("star_template", True)) and not block.get("template")
+        use_strpca = bool(block.get("strpca", True)) and n_star >= 2
+        if (use_star or use_strpca) and not n_star:
+            log("no fit in %s, so the corrected object gets the template LBL"
+                " builds" % plan["outdir"], "warn")
+        elif (use_star or use_strpca) and not (ok and available()[0]):
+            log("the star template is written by LBL's own writer, and LBL"
+                " cannot read these spectra here; the corrected object gets"
+                " the template LBL builds", "warn")
+        elif use_star or use_strpca:
+            linked = [os.path.join(data_dir, "science", after,
+                                   os.path.basename(path)) for path in corrected]
+            star = star_template(plan, config_file, after, linked, place=use_star)
+        placed = bool(star) and star["status"] in ("copied", "same", "replaced")
+        runs.append(("AFTER", (
+            "The corrected spectra, measured against the fit's star template,"
+            " which pca2d-preclean put where LBL looks for it (%s): LBL's"
+            " template step finds it there and skips."
+            % os.path.basename(star["slot"])) if placed else (
+            "The corrected spectra, measured against the template LBL builds"
+            " from them."), params_for(after)))
+        if star and use_strpca:
+            strpca = dict(fit=os.path.abspath(os.path.join(plan["outdir"], "fit.npz")),
+                          template=os.path.abspath(star["made"]),
+                          mask=star["mask"], models_dir=star["models"],
+                          prefix=after, run=plan["tag"])
+            log("%d star components: %s go to LBL as RESPROJ tables, written"
+                " once its mask has measured the rest frame"
+                % (n_star, ", ".join("STRPCA%d" % k for k in range(2, n_star + 1))),
+                "value")
+            from .lbltemplate import resproj_divides_in_place
+            if n_star >= 3 and resproj_divides_in_place():
+                log("the LBL installed here divides the residual in place for"
+                    " each RESPROJ table (frac_diff_seg = diff_seg in"
+                    " lbl/science/general.py), so every table after the first"
+                    " is projected on a residual divided twice: STRPCA2 is"
+                    " right and STRPCA3..%d are not, until that is a copy"
+                    % n_star, "warn")
+
+    script = write_runner(os.path.join(plan["outdir"], "run_lbl.py"), runs,
+                          strpca, object_name, plan["tag"], config_file)
+
+    if runs and runs[0][2]["RUN_LBL_MASK"] and teff is None:
         log("no Teff, and the mask step is on. LBL stops on that rather than"
             " guessing, so either the spectra have to carry one of %s or"
             " lbl.teff has to be a number." % ", ".join(TEFF_KEYS), "warn")
@@ -414,7 +587,8 @@ def prepare(plan) -> dict:
     log("LBL config   %s" % config_file, "value")
     log("LBL script   %s" % script, "value")
     return {"config_file": config_file, "script": script, "objects": objects,
-            "data_dir": data_dir, "readable": ok}
+            "data_dir": data_dir, "readable": ok, "star": star,
+            "strpca": strpca is not None}
 
 
 def run(script: str) -> None:

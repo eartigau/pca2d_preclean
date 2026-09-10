@@ -56,60 +56,6 @@ def live_mask(weights, window=ISOLATED_WINDOW):
     return drop_isolated(np.asarray(weights) > 0, window)
 
 
-def drop_empty_rows(*arrays, reference=None):
-    """Remove rows that are entirely missing, rather than drawing them blank.
-
-    A spectrum that contributes nothing to the window on screen should not
-    occupy a line of the image. Left in, it draws a flat stripe that a reader
-    reasonably takes for a measurement of something; the honest picture has one
-    row per spectrum that is actually there. Returns the trimmed arrays plus the
-    boolean mask of what was kept, so a caller can report how many went.
-
-    `reference` chooses which array decides; by default the first one.
-    """
-    import numpy as np
-
-    ref = arrays[0] if reference is None else reference
-    keep = np.isfinite(np.asarray(ref)).any(axis=1)
-    return [np.asarray(a)[keep] for a in arrays] + [keep]
-
-
-def snap_to_order_centre(wavelength_nm, path):
-    """Move a requested wavelength to the centre of the echelle order nearest it.
-
-    A 2 nm window placed at an arbitrary wavelength can land on an order edge,
-    where the blaze has fallen and two orders overlap, which is the least
-    representative place in the spectrum to look. Snapping to an order centre
-    puts the window where the throughput peaks and where exactly one order
-    contributes.
-
-    Returns (snapped_nm, order_index, requested_nm). If the file cannot be read
-    the request is returned unchanged rather than raising: this is a convenience,
-    not a requirement.
-    """
-    import numpy as np
-
-    try:
-        from .io import robust_open
-        from .tfits import extensions_for
-        with robust_open(path) as hdulist:
-            # NOT a hardcoded "WaveA": on a SPIRou file that is the single-fibre
-            # wavelength map, and the order centres would be read off the wrong
-            # extension without any error
-            _, e_wave, _, _ = extensions_for(hdulist)
-            wave = np.asarray(hdulist[e_wave].data, dtype=float)
-    except Exception:                                         # noqa: BLE001
-        return float(wavelength_nm), None, float(wavelength_nm)
-
-    centres = np.array([np.nanmedian(w[np.isfinite(w) & (w > 0)])
-                        if np.isfinite(w).any() else np.nan for w in wave])
-    good = np.isfinite(centres)
-    if not good.any():
-        return float(wavelength_nm), None, float(wavelength_nm)
-    idx = np.where(good)[0][np.argmin(np.abs(centres[good] - wavelength_nm))]
-    return float(centres[idx]), int(idx), float(wavelength_nm)
-
-
 def order_bounds(path):
     """(lo, hi) in nm for every order of a file's wavelength extension.
 
@@ -186,49 +132,6 @@ def parity_from_bounds(wavelength_nm, lo, hi):
         return None, float("nan"), 0
     idx = np.where(covers)[0][np.argmin(offset[covers])]
     return int(idx % 2), float(offset[idx]), int(covers.sum())
-
-
-def raw_log_flux_block(cube_dir, source_dir, names, parities, grid, cols):
-    """ln(flux) BEFORE the high-pass, every cube row, on a slice of the grid.
-
-    The panels a fit produces all live in `ln f - savgol(ln f)`, which has no
-    flux units and no continuum. To show what the correction does to the
-    spectrum as it sits in the file, the same exposures are resampled again
-    with the high-pass switched off, which leaves ln(flux) on the same grid.
-
-    Each exposure is opened once and both of its order parities taken from that
-    read, and only the columns asked for are kept, so a page of windows costs
-    one pass over the files rather than one pass per window.
-    """
-    import os
-
-    import numpy as np
-
-    from . import tfits as sptf
-    from .config import load_config, spectra_dir
-
-    config = load_config(os.path.join(cube_dir, "cube_config.yaml"))
-    config["highpass"] = dict(config["highpass"], method="none")
-    directory = source_dir or spectra_dir(config)
-    out = np.full((len(names), cols.size), np.nan)
-    by_name = {}
-    for i, name in enumerate(names):
-        by_name.setdefault(os.path.basename(str(name)), []).append(i)
-    read = 0
-    for name, rows in by_name.items():
-        try:
-            payload = sptf.read_tfits(os.path.join(directory, name))
-            values, _sigma, _trans, good, _n = sptf.resample_exposure(
-                payload, grid, config)
-        except Exception:                                     # noqa: BLE001
-            continue
-        for i in rows:
-            p = int(parities[i])
-            out[i] = np.where(good[p][cols], values[p][cols], np.nan)
-        read += 1
-    log("  re-read %d of %d exposures without the high-pass, %d columns"
-          % (read, len(by_name), cols.size))
-    return out
 
 
 def sample_source_file(cube_path, meta=None, source_dir=None):
@@ -313,7 +216,7 @@ def water_column(filenames, source_dir):
 def source_directory(cube_path):
     """Where the t.fits behind a cube live, per the config the build copied in.
 
-    `pca2refs-cube` drops the config it used into the cache directory, so the
+    The cube stage drops the config it used into the cache directory, so the
     fit can recover the source folder without being told twice. Returns None if
     the file is absent, in which case the water row is simply omitted rather
     than the whole matrix failing.
@@ -324,9 +227,9 @@ def source_directory(cube_path):
     if not os.path.isdir(cube_path) or not os.path.exists(path):
         return None
     try:
-        import yaml
+        from .config import read_yaml
         with open(path) as fh:
-            cfg = yaml.safe_load(fh) or {}
+            cfg = read_yaml(fh) or {}
         return (cfg.get("input") or {}).get("directory")
     except Exception:                                         # noqa: BLE001
         return None
@@ -433,3 +336,49 @@ def report_correlations(rho, comps, labels, flag=0.7):
     log("  |rho| >= %.2f, i.e. a component that follows something known:" % flag)
     for _, name, label, value in sorted(strong, reverse=True):
         log("    %-4s %-22s %+.2f" % (name, label, value))
+
+
+def raw_log_flux_window(cube_dir, source_dir, names, parities, grid, a0, b0):
+    """ln(flux) before the high-pass, every cube row, on grid[a0:b0].
+
+    From the cube's snippets when they are there. The cube build writes them
+    while it has every spectrum open anyway, so a figure never reopens three
+    hundred files to draw five of them. When a block has none yet, a cube
+    built before snippets existed or a window added since, the spectra are
+    read once, resampled onto the block alone rather than onto the whole grid,
+    and the snippet is written for the next time.
+    """
+    import os
+
+    import numpy as np
+
+    from . import cache as _cache
+    from . import tfits as sptf
+    from .config import load_config, spectra_dir
+
+    out = np.full((len(names), b0 - a0), np.nan, dtype=np.float32)
+    stored = _cache.read_snippet(cube_dir, a0, b0)
+    if stored is None:
+        try:
+            config = load_config(os.path.join(cube_dir, "cube_config.yaml"))
+        except Exception as exc:                              # noqa: BLE001
+            log("  no recipe in %s to re-read the spectra with (%s)" % (cube_dir, exc),
+                "warn")
+            return out
+        directory = source_dir or spectra_dir(config)
+        stored = {}
+        for name in sorted({os.path.basename(str(v)) for v in names}):
+            try:
+                payload = sptf.read_tfits(os.path.join(directory, name))
+            except Exception:                                 # noqa: BLE001
+                continue
+            stored[name] = sptf.raw_block(payload, grid, a0, b0, config)
+        if stored:
+            path = _cache.write_snippet(cube_dir, a0, b0, stored)
+            log("  re-read %d spectra for columns %d-%d, kept in %s"
+                % (len(stored), a0, b0, path))
+    for i, name in enumerate(names):
+        block = stored.get(os.path.basename(str(name)))
+        if block is not None:
+            out[i] = block[int(parities[i])]
+    return out

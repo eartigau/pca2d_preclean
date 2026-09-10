@@ -38,6 +38,17 @@ general:
                             # resolved config, the bases, the PDF, and the
                             # corrected spectra under `corrected/`.
                             # --out-dir overrides it for one run.
+    fits_directory: /Volumes/irrisor/pca2d_preclean
+                            # where a run's products are KEPT. Each run folder
+                            # (outputs/<object>/<tag>) is ONE link to the same
+                            # path under this one, made before the run writes
+                            # anything, so the corrected spectra, the fit's
+                            # components and the figures land there directly.
+                            # So do LBL's folders, all but lbl/science: it is
+                            # made of links, and an exFAT disk cannot hold one.
+                            # null keeps everything local. If the disk is not
+                            # mounted the run STOPS, rather than quietly fill
+                            # the internal disk again.
     cache_directory: cache  # rebuildable intermediates, and deliberately not
                             # under the output root: a cube costs twenty
                             # minutes and does not depend on where a run's
@@ -140,17 +151,15 @@ general:
     min_good_fraction: 0.2
 
   twoframe:
-    n_star: 2               # components anchored in the STELLAR rest frame
-    n_earth: 7              # components anchored in the OBSERVER frame
-    template: false         # NO star-frame median template, and no
-                            # observer-frame mean either. Whatever is subtracted
-                            # before the fit is outside the model, and the
-                            # correction removes components and never a
-                            # template, so it would be fitted by nothing and
-                            # removed from nothing. Each block describes the
-                            # static content of its own frame. The only thing
-                            # still taken out is the even-minus-odd instrumental
-                            # offset, which belongs to neither.
+    n_star: 1               # components anchored in the STELLAR rest frame
+    n_earth: 3              # components anchored in the OBSERVER frame
+    mean: offset            # the static part: the one-shot per-parity
+                            # offset the reports were made with; the correction
+                            # divides it out with the observer block. (iterate:
+                            # per-parity means in both frames, re-estimated
+                            # every sweep; not converging on TOI2120 yet)
+    template: false         # the one-shot star-frame median of the older
+                            # modes; ignored by mean: iterate
     iters: 16
     order: star_first
     tie_parities: true
@@ -170,6 +179,42 @@ general:
     chunk: null
     template_berv_bin: 3000
     template_berv_min_entries: 3
+    velocity_term: true     # fit ONE VELOCITY PER EXPOSURE beside the
+                            # components, as the derivative of the reconstructed
+                            # star carried to that exposure's BERV. On a grid
+                            # uniform in velocity that derivative is a plain
+                            # np.gradient, which is one more reason the grid is
+                            # built that way.
+                            #
+                            # It is there to keep the star's own motion OUT of
+                            # the observer block. The star is never exactly
+                            # where the BERV alone puts it: it has a planet and
+                            # it has activity, and the carry leaves a residual
+                            # of its own. That residual has one shape, f', and
+                            # seven free vectors with an amplitude per exposure
+                            # will describe it. Dividing that block back out
+                            # then moves the star's lines, and when the star has
+                            # a real signal the correction subtracts the very
+                            # thing it was run to reveal.
+                            #
+                            # Fitted, never divided out: taking it out of the
+                            # data would erase the signal. The amplitude is
+                            # written to the corrected files as PCASTR_V.
+    velocity_min_transmission: 0.95
+                            # WHERE the shift is measured: only on columns that
+                            # are inside a photometric band AND whose telluric
+                            # transmission stays above this in 90% of the
+                            # exposures, read from the Recon the cube carries on
+                            # its own grid. Both halves matter. The bands come
+                            # from `domain.bands`, which is per instrument, so
+                            # NIRPS drops K by not defining it rather than by
+                            # anyone remembering to. And a column whose
+                            # transmission collapses on a bad night is a column
+                            # where the flux is atmosphere: a velocity fitted
+                            # there is fitted to the wrong thing. Measured
+                            # against LBL, the unmasked term came out 1.8 times
+                            # too large. 0 keeps the band cut and drops the
+                            # transmission one.
 
   lbl:                      # running LBL on the result, which is the point of
                             # correcting anything. Both objects are set up, the
@@ -180,7 +225,7 @@ general:
     prepare: true           # write lbl_config.yaml and run_lbl.py beside the
                             # run's other outputs, and symlink both sets of
                             # spectra into LBL's science folders
-    run: false              # and actually run LBL. That is hours, so it is
+    run: true               # and actually run LBL. That is hours, so it is
                             # asked for: `true` here, or --run-lbl for one run.
     directory: lbl          # LBL's DATA_DIR. Its own tree, shared by every
                             # object and every run, so it sits beside outputs
@@ -196,7 +241,16 @@ general:
     before: true            # measure the delivered spectra too. Leaving this
                             # off measures the correction against nothing.
     after: true
-    teff: auto              # the target's effective temperature, which LBL
+    star_template: true     # the corrected object's LBL template is the fit's
+                            # first star component at its mean amplitude,
+                            # written by LBL's own writer where LBL looks for
+                            # it, so LBL's template step finds it and skips.
+                            # One LBL built for that object is never replaced.
+    strpca: true            # with two or more star components, the ones past
+                            # the first go to LBL as RESPROJ tables STRPCA2..N,
+                            # the way its DTEMP gradients do: the rdb gets each
+                            # exposure's projection on them, and its error.
+    teff: auto             # the target's effective temperature, which LBL
                             # needs to choose the stellar model its mask comes
                             # from, and stops without. `auto` reads it from the
                             # spectra: APERO writes it as OBJTEMP on the

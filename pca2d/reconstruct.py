@@ -1,15 +1,16 @@
 #!/usr/bin/env python
-"""Rebuild one exposure's fitted signal on its own wavelength grid.
+"""Rebuild or correct an exposure from a two-frame fit, on its own wavelengths.
 
-Reads `twoframe_components.fits` from a two-frame run and puts the model back
-where the data came from: order by order, on the t.fits file's native
-wavelengths, with each order taking the observer-frame mean of *its own
+The `correct` stage of `pca2d-preclean`. Reads `twoframe_components.fits` and
+puts the model back where the data came from: order by order, on the t.fits
+file's native wavelengths, with each order taking the means of *its own
 parity*.
 
-    pca2refs-apply \
-        --fits outputs/PROXIMA/nominal/twoframe_components.fits \
-        --file data/tfiles/NIRPS.2024-09-05T23:47:12.345t.fits \
-        --out model.fits --plot model.pdf
+    python -m pca2d.reconstruct --fits outputs/TOI2120/1-3v/twoframe_components.fits \
+        --file data/TOI2120/2811170t.fits --out model.fits --plot model.pdf
+    python -m pca2d.reconstruct --correct --all --cube cache/cube_tfits_<key> \
+        --fits outputs/TOI2120/1-3v/twoframe_components.fits \
+        --source-dir data/TOI2120 --corrected-dir outputs/TOI2120/1-3v/corrected
 
 WHAT THE NUMBERS ARE. The cube was high-passed in the log, so every quantity
 here is `ln f - savgol(ln f)`: zero in the continuum, negative in a line. The
@@ -18,13 +19,20 @@ back into a flux. It is the right quantity to subtract from a fresh spectrum
 that has been through the same high-pass, and the wrong one to multiply
 anything by.
 
-THE MODEL, per exposure n:
+THE MODEL, per exposure n and order parity p:
 
-    y_n = S_n (T + P^T a_n)  +  mu_earth[parity]  +  Q^T b_n
+    y_n = S_n (T_p + P^T a_n)  +  mu[p]  +  Q^T b_n
 
 `S_n` carries the star block from the stellar rest frame into the observer
-frame, a translation of -BERV/dv samples because the grid is log-uniform. `T`
-is the star-frame median template. The Earth block and the mean do not move.
+frame, a translation of -pixel_shift(BERV) samples because the grid is
+log-uniform. `T_p` is the star-frame mean: zero by default, a median template
+with the fit's --template, one per parity with --mean iterate. The observer
+block and its mean `mu[p]` do not move.
+
+WHAT A CORRECTED FILE HOLDS is panel 3 of the sequence figure, exactly: the
+flux with the observer block and its per-parity mean divided out, and NaN
+wherever the fit gave the sample no weight (fit_weights_mask). The star block
+stays, T_p included. tests/test_panel3_is_the_correction.py holds them together.
 
 THE PARITY WRAPPING is the part that is easy to get wrong. A t.fits row set is
 split into even and odd orders, and `mu_earth` was fitted once per parity, so
@@ -32,7 +40,7 @@ order k must take `mean_even` if k is even and `mean_odd` if it is odd. Using
 one mean for both puts a static even-minus-odd offset into every reconstructed
 order, which is exactly the artefact the two-frame fit was fixed to avoid. The
 star and Earth *components* have no parity: they are single vectors over the
-whole grid, and only the mean is per parity.
+whole grid, and only the means are per parity.
 """
 
 from __future__ import annotations
@@ -45,6 +53,7 @@ from astropy.io import fits
 from astropy.table import Table
 from scipy.interpolate import CubicSpline
 
+from .grids import pixel_shift
 from .logger import log
 from . import tfits as sptf
 from . import twoframe as _bcd
@@ -59,8 +68,8 @@ RAMP_ZERO = 0.5
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--fits", default="outputs/PROXIMA/nominal/twoframe_components.fits",
-                   help="the components file written by twoframe_bcd.py")
+    p.add_argument("--fits", required=True,
+                   help="the twoframe_components.fits the fit stage wrote")
     p.add_argument("--file", default=None,
                    help="the t.fits to act on; matched to COEFFS by basename")
     p.add_argument("--all", action="store_true",
@@ -87,7 +96,7 @@ def parse_args(argv=None):
                         " corrected files carry samples the model never saw")
     p.add_argument("--corrected-dir", default="corrected",
                    help="where the t_M-N.fits files go")
-    p.add_argument("--source-dir", default="data/tfiles",
+    p.add_argument("--source-dir", default=None,
                    help="where to find the input t.fits when using --all or"
                         " --by-night")
     p.add_argument("--refit", action="store_true",
@@ -111,6 +120,11 @@ def parse_args(argv=None):
                         " using each exposure's own BERV to place the star"
                         " basis. Nights absent from the fit are skipped")
     p.add_argument("--overwrite", action="store_true")
+    p.add_argument("--cube", default=None,
+                   help="the cube the fit was made from. With it, every sample"
+                        " the fit gave no weight to is NaN in the corrected"
+                        " file, exactly the samples panel 3 of the sequence"
+                        " figure hides")
     args = p.parse_args(argv)
     if not args.file and not args.all and not args.by_night:
         p.error("give --file, or --all for every exposure in the fit, or"
@@ -141,7 +155,22 @@ def load_model(path):
         # ordered even, odd -- the same order parity % 2 indexes
         model["means"] = {nm.split("_", 1)[1]: np.asarray(basis[nm], dtype=np.float64)
                           for nm in names}
+        # the star-frame mean of each parity, from a --mean iterate fit; None
+        # from an older one, which has the single `template` instead
+        names = [c for c in basis.columns.names if c.startswith("template_")]
+        model["templates"] = ({nm.split("_", 1)[1]:
+                               np.asarray(basis[nm], dtype=np.float64)
+                               for nm in names} or None)
     return model
+
+
+def template_for(model, parity):
+    """The star-frame mean for an order of this parity (0 even, 1 odd)."""
+    per = model.get("templates")
+    if per:
+        names = list(per.keys())
+        return per[names[parity % len(names)]]
+    return model["template"]
 
 
 def exposure_row(coeffs, filename):
@@ -165,25 +194,26 @@ def model_on_grid(model, row):
     """The full model on the magic grid, split into what moves and what does not.
 
     Returned separately because only the star half is shifted, and keeping them
-    apart is what lets the caller add the right parity mean afterwards.
+    apart is what lets the caller add the right parity's means afterwards:
+    the star-frame one (template_for) before the carry, the observer one after.
     """
     n_star, n_earth = model["n_star"], model["n_earth"]
     a = np.array([row["a%d" % (k + 1)] for k in range(n_star)])
     b = np.array([row["b%d" % (j + 1)] for j in range(n_earth)])
-    star_rest = model["template"] + a @ model["P"]
+    star_rest = a @ model["P"]           # the parity's template goes on per order
     earth = b @ model["Q"]
     return star_rest, earth, a, b
 
 
 def carry_star(star_rest, berv, dv, halfwidth=8):
-    """S_n applied to the star-frame vector: translate by -BERV/dv samples.
+    """S_n applied to the star-frame vector: translate by -pixel_shift(BERV).
 
     Exactly the operator the fit used, taken from twoframe_bcd so the two can
     never drift apart. The sign is the one NOTES 11.11 settles: a stellar
-    feature sits at lambda_bary = lambda_obs (1 + BERV/c), so star -> observer
-    is minus BERV/dv.
+    feature sits at lambda_bary = lambda_obs D(BERV), D the relativistic
+    Doppler factor, so star -> observer is minus grids.pixel_shift(BERV, dv).
     """
-    delta = np.array([-float(berv) / float(dv)])
+    delta = np.array([-float(pixel_shift(float(berv), dv))])
     shifter = _bcd.SHIFTERS["lanczos"](
         star_rest.size, a=halfwidth,
         max_shift=int(np.ceil(abs(delta[0]))) + 2)
@@ -205,14 +235,15 @@ def reconstruct(model, row, halfwidth=8, path=None):
     grid = model["grid"]
 
     star_rest, earth, _, _ = model_on_grid(model, row)
-    star_obs = carry_star(star_rest, row["berv"], model["dv"], halfwidth)
+    star_obs = [carry_star(template_for(model, p) + star_rest, row["berv"],
+                           model["dv"], halfwidth) for p in (0, 1)]
 
     names = list(model["means"].keys())          # even, odd
     recon = np.full((n_orders, n_pixels), np.nan)
     parity = np.arange(n_orders) % 2
     for order in range(n_orders):
         mean = model["means"][names[parity[order]] if len(names) > 1 else names[0]]
-        total = star_obs + earth + mean
+        total = star_obs[parity[order]] + earth + mean
         # the basis has no support where the mean is exactly zero, and that is
         # per parity, so the mask has to be rebuilt for each order's parity
         support = mean != 0.0
@@ -237,11 +268,12 @@ def reconstruct(model, row, halfwidth=8, path=None):
 def correction_on_grid(model, row, n_star=None, n_earth=None, halfwidth=8):
     """The part of the model a correction removes, on the magic grid.
 
-    The components only, never the template and never the observer-frame means.
-    `t_M-N.fits` names a pair of component counts, so that is exactly what comes
-    out: M star components and N Earth components. The template is the star's
-    mean spectrum and the means are a static instrumental offset; taking those
-    out would not be a correction, it would be a different product.
+    The components only: M star and N Earth, the pair `t_M-N.fits` is named
+    after. Never the template, the star's mean spectrum, whose removal would
+    not be a correction but a different product. The observer-frame mean the
+    fit took out of each parity is not here either, only because which one
+    applies depends on the order: order_correction adds it, order by order,
+    together with the observer components.
 
     M and N may be smaller than the fit's, which is the point of naming the file
     after them: t_5-5, t_0-5 and t_5-0 are three different corrections of the
@@ -265,6 +297,19 @@ def correction_on_grid(model, row, n_star=None, n_earth=None, halfwidth=8):
     return star_obs + earth, k, j
 
 
+def _field(row, name):
+    """row[name] as a float, None when the row has no such field.
+
+    Not `name in row`: on a FITS or astropy table row that asks whether the
+    name is one of the row's VALUES, which it never is, and the PCASTR_V card
+    it used to guard was never written to a corrected file.
+    """
+    try:
+        return float(row[name])
+    except (KeyError, ValueError, IndexError, TypeError):
+        return None
+
+
 def coefficient_cards(model, row, k, j):
     """The fit's coefficients for one exposure, as (keyword, value, comment).
 
@@ -285,6 +330,13 @@ def coefficient_cards(model, row, k, j):
     Ninety-nine components is already twice what the validator calls sane.
     """
     cards = []
+    # The velocity the fit took out of the observer block's reach. Reported and
+    # NOT applied: the corrected flux is the delivered flux with the observer
+    # components divided out, and this number is what would have been written
+    # into it had the term not been fitted.
+    vrad = _field(row, "vrad_fit")
+    if vrad is not None and np.isfinite(vrad):
+        cards.append(("PCASTR_V", vrad, "m/s, star shift the fit absorbed"))
     for prefix, letter, count, removed, frame in (
             ("PCASTR", "a", model["n_star"], k, "star"),
             ("PCAOBS", "b", model["n_earth"], j, "observer")):
@@ -311,16 +363,87 @@ def coefficient_cards(model, row, k, j):
     return cards
 
 
+def order_correction(model, correction, n_earth, order, wave):
+    """What correct_file divides out of one order, on that order's own pixels.
+
+    Returns (values, live): the model in ln f at each pixel, and where it may
+    be applied, or None when the order misses the grid. `correction` is
+    correction_on_grid's, the components. To it goes the mean the fit
+    subtracted from this order's parity before solving for them, whenever any
+    observer component is divided out: panel 3 of the sequence figure, "what a
+    corrected file holds", is the data minus that mean minus the observer
+    block, and a file that kept the mean kept a static observer-frame pattern
+    the panel shows removed (2026-09-10, the stripes at 1267 nm). It belongs
+    to the observer block, so a file that divides none of it out, t_k-0,
+    keeps it.
+    """
+    names = list(model["means"].keys())
+    grid = model["grid"]
+    mean = model["means"][names[order % 2] if len(names) > 1 else names[0]]
+    # the basis has no support where the mean is exactly zero, per parity
+    support = mean != 0.0
+    ok = np.isfinite(wave)
+    if not ok.any():
+        return None
+    lo = max(np.searchsorted(grid, np.nanmin(wave)) - 4, 0)
+    hi = min(np.searchsorted(grid, np.nanmax(wave)) + 4, grid.size)
+    if hi - lo < 4:
+        return None
+    total = correction + mean if n_earth else correction
+    seg_g, seg_s = grid[lo:hi], support[lo:hi]
+    spline = CubicSpline(seg_g, np.where(seg_s, total[lo:hi], 0.0),
+                         extrapolate=False)
+    values = spline(wave)
+    nearest = np.clip(np.searchsorted(seg_g, wave) - 1, 0, seg_s.size - 2)
+    live = ok & seg_s[nearest] & seg_s[nearest + 1] & np.isfinite(values)
+    return values, live
+
+
+def fit_weights_mask(cube):
+    """The grid samples the fit weighted, per exposure: file name -> (2, grid).
+
+    Exactly what panel 3 of the sequence figure shows and nothing else: the
+    weights the fit read from the cube (twoframe.load_cube, with the figure's
+    own defaults) and, as the figure does, not a sample stranded between gaps
+    (plotting.live_mask). Row 0 is the even orders, row 1 the odd ones.
+    """
+    from .plotting import live_mask
+    _, _, w, meta = _bcd.load_cube(cube, dtype=np.float32)
+    parity = _bcd.row_parity(meta, w.shape[0])
+    names = [os.path.basename(str(v)) for v in meta["filename"]]
+    out = {}
+    for i, name in enumerate(names):
+        out.setdefault(name, np.zeros((2, w.shape[1]), dtype=bool))
+        out[name][int(parity[i]) % 2] = live_mask(w[i:i + 1])[0]
+    return out
+
+
+def weighted_on_pixels(alive, wave, grid):
+    """Which of an order's pixels fall on grid samples the fit weighted.
+
+    A pixel counts as weighted when both grid samples around it were, the rule
+    order_correction uses for the basis support. Pixels outside the grid are
+    outside the fit altogether and come back True, since there is no panel 3
+    there to match.
+    """
+    inside = np.isfinite(wave) & (wave >= grid[0]) & (wave <= grid[-1])
+    near = np.clip(np.searchsorted(grid, np.where(inside, wave, grid[0])) - 1,
+                   0, grid.size - 2)
+    return ~inside | (alive[near] & alive[near + 1])
+
+
 def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
-                 halfwidth=8, overwrite=False, max_sky=None):
-    """Write a t.fits with the components divided out. Returns the new path.
+                 halfwidth=8, overwrite=False, max_sky=None, alive=None):
+    """Write a t.fits with the model divided out. Returns the new path.
 
     The model lives in `ln f - savgol(ln f)`, so removing it from the flux is a
     division, not a subtraction:
 
         f_corrected = f * exp(-model)
 
-    which leaves the Savitzky-Golay continuum exactly where it was. That matters:
+    with the model the components and, with any observer component, the parity
+    mean the fit removed first (order_correction). That leaves the
+    Savitzky-Golay continuum exactly where it was. That matters:
     the continuum was never part of the fit and never stored, so anything that
     claimed to reconstruct it would be inventing it.
 
@@ -331,8 +454,6 @@ def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
     the flux being unknown.
     """
     correction, k, j = correction_on_grid(model, row, n_star, n_earth, halfwidth)
-    grid = model["grid"]
-    names = list(model["means"].keys())
 
     with sptf.robust_open(path) as hdulist:
         out = fits.HDUList([h.copy() for h in hdulist])
@@ -343,24 +464,20 @@ def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
     wave = np.asarray(out[e_wave].data, dtype=np.float64)
     n_orders = flux.shape[0]
     touched = 0
+    blanked = 0
     for order in range(n_orders):
-        mean = model["means"][names[order % 2] if len(names) > 1 else names[0]]
-        support = mean != 0.0
-        w = wave[order]
-        ok = np.isfinite(w)
-        if not ok.any():
+        got = order_correction(model, correction, j, order, wave[order])
+        if got is None:
             continue
-        lo = max(np.searchsorted(grid, np.nanmin(w)) - 4, 0)
-        hi = min(np.searchsorted(grid, np.nanmax(w)) + 4, grid.size)
-        if hi - lo < 4:
-            continue
-        seg_g, seg_s = grid[lo:hi], support[lo:hi]
-        spline = CubicSpline(seg_g, np.where(seg_s, correction[lo:hi], 0.0),
-                             extrapolate=False)
-        values = spline(w)
-        nearest = np.clip(np.searchsorted(seg_g, w) - 1, 0, seg_s.size - 2)
-        live = ok & seg_s[nearest] & seg_s[nearest + 1] & np.isfinite(values)
+        values, live = got
         flux[order] = np.where(live, flux[order] * np.exp(-values), flux[order])
+        if alive is not None:
+            # NaN wherever the fit gave the sample no weight: exactly the
+            # samples panel 3 of the sequence figure hides. The model there was
+            # constrained by nothing, and a flux corrected by it is not one.
+            bad = ~weighted_on_pixels(alive[order % 2], wave[order], model["grid"])
+            blanked += int((bad & np.isfinite(flux[order])).sum())
+            flux[order][bad] = np.nan
         touched += int(live.sum())
 
     # Propagate the sky mask: samples the airglow drowned were excluded from
@@ -387,11 +504,15 @@ def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
     head["PCA2REF"] = (True, "two-frame PCA correction applied")
     head["PCA2BERV"] = (float(row["berv"]), "km/s used to carry the star basis")
     head["PCA2NPIX"] = (touched, "samples corrected")
+    head["PCA2MEAN"] = (bool(j), "observer-frame parity mean divided out")
+    if alive is not None:
+        head["PCA2WNAN"] = (blanked, "samples the fit gave no weight, set to NaN")
     head["PCA2REJ"] = (bool(row["rejected"]), "exposure was MAD-rejected")
     for key, value, comment in coefficient_cards(model, row, k, j):
         head[key] = (value, comment)
     head.add_history("two-frame PCA: %d star-frame + %d observer-frame"
-                     " components divided out" % (k, j))
+                     " components%s divided out"
+                     % (k, j, " and the parity mean" if j else ""))
     head.add_history("f_corrected = f * exp(-model), model in ln f - savgol(ln f)")
 
     stem = os.path.basename(path)
@@ -538,15 +659,21 @@ def refit_row(model, path, config, shifter, base_row):
     for parity in (0, 1):
         data[parity] -= model["means"][names[parity % len(names)]]
     berv = float(payload["meta"]["berv"])
-    delta = np.full(2, -berv / model["dv"])
-    template = model["template"]
-    if np.any(template):
-        data -= _bcd.carry_template(template, shifter, delta)
+    delta = np.full(2, -float(pixel_shift(berv, model["dv"])))
+    for parity in (0, 1):
+        template = template_for(model, parity)
+        if template is not None and np.any(template):
+            data[parity] -= _bcd.carry_template(template, shifter,
+                                                delta[parity:parity + 1])[0]
     data[w <= 0] = 0.0
 
     tie = np.zeros(2, dtype=int)          # the two parities are one exposure
-    a, b, _ = _bcd.joint_coeffs(data, w, model["P"], model["Q"], shifter,
-                                delta, exposure=tie)
+    # No velocity column here on purpose: this path re-solves ONE exposure
+    # against a basis the fit already fixed, and the shift it would find has
+    # nowhere to go. What the fit found is in the COEFFS row, and that is what
+    # the header reports.
+    a, b, _, _ = _bcd.joint_coeffs(data, w, model["P"], model["Q"], shifter,
+                                   delta, exposure=tie)
     if base_row is None:
         return None
     # a plain dict, not a Table Row: a Row is a view into its table, so writing
@@ -566,6 +693,9 @@ def refit_row(model, path, config, shifter, base_row):
 
 def correct_many(model, args):
     """--correct over one file or over every exposure in the fit."""
+    if (args.all or args.by_night) and not args.source_dir:
+        raise SystemExit("--source-dir is required with --all or --by-night:"
+                         " where the delivered t.fits are")
     if args.by_night:
         pairs, missing = rows_by_night(model, args)
         log("  %d exposures matched to a fitted night, %d skipped"
@@ -595,6 +725,15 @@ def correct_many(model, args):
               " coefficients. The sky is not constant over a night; --refit"
               " solves for each exposure's own amplitudes")
 
+    alive_by_file = None
+    if getattr(args, "cube", None):
+        log("  reading the fit's weights from %s: every sample the fit gave no"
+            " weight to will be NaN, as panel 3 of the sequence figure hides it"
+            % args.cube)
+        alive_by_file = fit_weights_mask(args.cube)
+    else:
+        log("  no --cube: samples the fit gave no weight to keep their flux,"
+            " which panel 3 of the sequence figure does not show", "warn")
     written = skipped = refitted = 0
     progress = _bar(pairs, desc="correcting", unit="file")
     for path, preset in progress:
@@ -611,9 +750,12 @@ def correct_many(model, args):
                 continue
             row = fresh
             refitted += 1
+        alive = (alive_by_file.get(os.path.basename(path))
+                 if alive_by_file is not None else None)
         new, touched, total = correct_file(
             model, row, path, args.corrected_dir, args.n_star, args.n_earth,
-            args.kernel_halfwidth, args.overwrite, max_sky=args.max_sky_ratio)
+            args.kernel_halfwidth, args.overwrite, max_sky=args.max_sky_ratio,
+            alive=alive)
         written += 1
         # onto the bar, not onto its own line: three hundred of these scroll
         # the narration off the screen and say nothing a total cannot

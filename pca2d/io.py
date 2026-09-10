@@ -9,9 +9,9 @@ import time
 import numpy as np
 from astropy.io import fits
 
+from .grids import doppler
 from .logger import log
 
-C_KMS = 299792.458
 
 # Header keys pulled into the metadata table. Missing keys become NaN / ''.
 META_KEYS = {
@@ -119,28 +119,6 @@ def band_snr(header, wave_min: float, wave_max: float) -> float:
     return np.nan
 
 
-def _band_snr_from_polynomials(header, wave_min: float, wave_max: float) -> float:
-    """The old implementation, kept only as the record of what was removed.
-
-    Not called. Do not call it: it reads WAVE0000... from the header.
-    """
-    n_orders = header.get("WAVEORDN")
-    degree = header.get("WAVEDEGN")
-    if n_orders is None or degree is None:
-        return np.nan
-    starts = np.array(
-        [header_float(header, "WAVE%04d" % (o * (degree + 1))) for o in range(n_orders)]
-    )
-    snr = np.array([header_float(header, "EXTSN%03d" % o) for o in range(n_orders)])
-    snr[snr <= 0] = np.nan
-    # an order starting just below wave_min still covers part of the band
-    keep = np.isfinite(starts) & np.isfinite(snr)
-    keep &= (starts > wave_min - 30.0) & (starts < wave_max)
-    if not np.any(keep):
-        return np.nan
-    return float(np.median(snr[keep]))
-
-
 def recon_path_for(path: str) -> str | None:
     """Path of the reconstructed-telluric file paired with a tcorr spectrum.
 
@@ -166,7 +144,7 @@ def read_transmission(path: str, wave_min: float, wave_max: float,
     with robust_open(path) as hdulist:
         data = hdulist[1].data
         wave_all = np.asarray(data["wavelength"], dtype=np.float64)
-        pad = 1.0 + pad_kms / C_KMS
+        pad = float(doppler(pad_kms))
         keep = (wave_all > wave_min / pad) & (wave_all < wave_max * pad)
         return np.asarray(data["flux"], dtype=np.float64)[keep]
 
@@ -183,7 +161,7 @@ def read_spectrum(path: str, wave_min: float, wave_max: float, pad_kms: float = 
         header = hdulist[0].header
         data = hdulist[1].data
         wave_all = np.asarray(data["wavelength"], dtype=np.float64)
-        pad = 1.0 + pad_kms / C_KMS
+        pad = float(doppler(pad_kms))
         keep = (wave_all > wave_min / pad) & (wave_all < wave_max * pad)
         wave = wave_all[keep]
         flux = np.asarray(data["flux"], dtype=np.float64)[keep]
@@ -225,13 +203,6 @@ def magic_grid(path: str, wave_min: float, wave_max: float) -> np.ndarray:
             % (wave_min, wave_max, wave[0], wave[-1])
         )
     return wave[keep]
-
-
-def native_dv(path: str) -> float:
-    """Velocity step of the s1d_v grid, in km/s."""
-    with fits.open(path, memmap=False) as hdulist:
-        wave = np.asarray(hdulist[1].data["wavelength"][:64], dtype=np.float64)
-    return float(np.median(np.diff(np.log(wave))) * C_KMS)
 
 
 def check_common_grid(files: list[str], n_check: int = 5) -> bool:

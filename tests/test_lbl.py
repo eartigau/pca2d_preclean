@@ -227,6 +227,26 @@ def test_the_corrected_header_names_every_component_the_fit_has():
     assert dict((k, v) for k, v, _ in cards)["PCASTR01"] == -0.5
 
 
+def test_the_fit_velocity_is_written_from_a_real_table_row(tmp_path):
+    """`"vrad_fit" in row` asks a FITS row about its values, not its columns.
+
+    The tests above hand coefficient_cards a dict, where `in` means keys, so
+    they passed while every corrected file went out without PCASTR_V.
+    """
+    from astropy.io import fits
+    from astropy.table import Table
+    from pca2d.reconstruct import coefficient_cards
+
+    table = Table({"a1": [0.5], "b1": [0.1], "vrad_fit": [12.5]})
+    table.write(tmp_path / "coeffs.fits")
+    model = {"n_star": 1, "n_earth": 1}
+    for row in (fits.getdata(tmp_path / "coeffs.fits", 1)[0], table[0]):
+        values = {key: value for key, value, _ in coefficient_cards(model, row, 0, 1)}
+        assert values["PCASTR_V"] == 12.5
+    without = Table({"a1": [0.5], "b1": [0.1]})[0]
+    assert "PCASTR_V" not in {key for key, _, _ in coefficient_cards(model, without, 0, 1)}
+
+
 def test_the_counts_say_how_many_cards_follow():
     """And are not the same number as how many were divided out."""
     from pca2d.reconstruct import coefficient_cards
@@ -302,3 +322,43 @@ def test_the_header_spells_the_two_frames_one_way_only():
         assert len(key) <= 8, key
         assert "EAR" not in key and "STA" not in key, (
             "%s does not use the STR / OBS spelling the amplitude cards use" % key)
+
+
+# ---------------------------------------- the name `lbl` must mean LBL -------
+def test_nothing_in_the_package_edits_sys_path():
+    """A package directory on the path turns every module in it into a top-level
+    name. pca2d/lbl.py then shadows LBL, and pca2d/io.py the standard io."""
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parent.parent / "pca2d"
+    offenders = [str(p.relative_to(root.parent)) for p in root.rglob("*.py")
+                 if re.search(r"sys\.path\.(insert|append|extend)", p.read_text())]
+    assert not offenders, "edits sys.path: %s" % ", ".join(offenders)
+
+
+def test_lbl_is_still_found_after_the_figures_stage():
+    """The order of a full run: the figures stage imports bundle in-process,
+    and the lbl stage comes after it. It used to find pca2d/lbl.py instead."""
+    pytest.importorskip("lbl", reason="LBL is in environment.yml")
+    import pathlib
+    import subprocess
+    import sys
+
+    code = ("import pca2d.figures.bundle\n"
+            "from pca2d import lbl as stage\n"
+            "ok, why = stage.available()\n"
+            "assert ok, why\n")
+    repo = pathlib.Path(__file__).resolve().parent.parent
+    result = subprocess.run([sys.executable, "-c", code], cwd=repo,
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr[-600:]
+
+
+def test_an_appledouble_file_is_not_a_corrected_spectrum(tmp_path):
+    """exFAT puts `._name.fits` beside files; it holds no spectrum."""
+    (tmp_path / "2811170t_0-7.fits").write_bytes(b"x")
+    (tmp_path / "._2811170t_0-7.fits").write_bytes(b"y")
+    (tmp_path / "notes.txt").write_text("z")
+    found = [os.path.basename(p) for p in splbl.corrected_files(str(tmp_path))]
+    assert found == ["2811170t_0-7.fits"]
+    assert splbl.corrected_files(str(tmp_path / "absent")) == []

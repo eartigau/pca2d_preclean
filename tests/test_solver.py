@@ -23,7 +23,7 @@ def shifter(problem):
 
 def test_joint_coeffs_recovers_the_truth(problem, shifter):
     """Given the true basis, the solve must return the true coefficients."""
-    a, b, cond = joint_coeffs(problem["data"], problem["w"], problem["P"],
+    a, b, _alpha, cond = joint_coeffs(problem["data"], problem["w"], problem["P"],
                               problem["Q"], shifter, problem["delta"], chunk=8)
     assert np.all(np.isfinite(cond)), "the normal matrix was singular somewhere"
     assert a.shape == problem["a"].shape
@@ -41,7 +41,7 @@ def test_tying_forces_one_answer_per_exposure(problem, shifter):
     """
     n = problem["data"].shape[0]
     exposure = np.repeat(np.arange(n // 2), 2)   # rows 0,1 are one exposure
-    a, b, _ = joint_coeffs(problem["data"], problem["w"], problem["P"],
+    a, b, _alpha, _ = joint_coeffs(problem["data"], problem["w"], problem["P"],
                            problem["Q"], shifter, problem["delta"], chunk=8,
                            exposure=exposure)
     for e in np.unique(exposure):
@@ -56,7 +56,7 @@ def test_zero_weight_rows_get_zero_coefficients(problem, shifter):
     """A row with no weight constrains nothing and must not invent a signal."""
     w = problem["w"].copy()
     w[3] = 0.0
-    a, b, _ = joint_coeffs(problem["data"], w, problem["P"], problem["Q"],
+    a, b, _alpha, _ = joint_coeffs(problem["data"], w, problem["P"], problem["Q"],
                            shifter, problem["delta"], chunk=8)
     assert np.allclose(a[3], 0.0), "a fully masked row produced star coefficients"
     assert np.allclose(b[3], 0.0), "a fully masked row produced Earth coefficients"
@@ -88,7 +88,7 @@ def test_iteration_reduces_the_residual(problem, shifter):
     d, w = problem["data"], problem["w"]
     P = problem["P"] + 0.3 * np.roll(problem["P"], 5, axis=1)   # perturbed start
     Q = problem["Q"].copy()
-    a, b, _ = joint_coeffs(d, w, P, Q, shifter, problem["delta"], chunk=8)
+    a, b, _alpha, _ = joint_coeffs(d, w, P, Q, shifter, problem["delta"], chunk=8)
 
     def chi2(P_, Q_, a_, b_):
         m = star_model(P_, a_, shifter, problem["delta"], d.shape[0],
@@ -99,14 +99,14 @@ def test_iteration_reduces_the_residual(problem, shifter):
     for _ in range(5):
         P = update_star(d, w, P, Q, a, b, shifter, problem["delta"], 8)
         Q = update_earth(d, w, P, Q, a, b, shifter, problem["delta"], 8)
-        a, b, _ = joint_coeffs(d, w, P, Q, shifter, problem["delta"], chunk=8)
+        a, b, _alpha, _ = joint_coeffs(d, w, P, Q, shifter, problem["delta"], chunk=8)
     after = chi2(P, Q, a, b)
     assert after < before, ("five iterations did not reduce chi2: %.6g -> %.6g"
                             % (before, after))
 
 
 def test_block_power_is_non_negative(problem, shifter):
-    a, b, _ = joint_coeffs(problem["data"], problem["w"], problem["P"],
+    a, b, _alpha, _ = joint_coeffs(problem["data"], problem["w"], problem["P"],
                            problem["Q"], shifter, problem["delta"], chunk=8)
     # block_power takes a CALLABLE (start, stop) -> vectors, because the star
     # block's vectors differ per spectrum and materialising them all at once

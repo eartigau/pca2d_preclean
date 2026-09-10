@@ -1,21 +1,21 @@
 #!/usr/bin/env python
-"""Two-frame (star + Earth) weighted PCA -- block coordinate descent prototype.
+"""Two-frame (star + observer) weighted PCA, by block coordinate descent.
 
-The design is NOTES.md section 11. This is the stage-one build of 11.7: the
-blocks are updated one at a time (star first), with the coefficients of both
-blocks solved *jointly* per spectrum so the fit can decide which frame a feature
-belongs to. It is a benchmark and a behaviour check, not production code: the
-means are handled by a plain observer-frame subtraction rather than the
-component-zero trick of 11.1, and nothing is written out but numbers.
+The `fit` stage of `pca2d-preclean`. The blocks are updated one at a time, with
+the coefficients of both solved *jointly* per spectrum, so the fit decides which
+frame a feature belongs to rather than the analyst choosing a registration. The
+design history is section 11 of NOTES.md in spectropca_per_obj.
 
-    pca2refs-fit --iters 6
-    python pca2d/twoframe.py --order earth_first     # the losing order
+    python -m pca2d.twoframe --cube cache/cube_tfits_<key> \
+        --outdir outputs/<object>/<M>-<N> --config <resolved_config.yaml>
+    python -m pca2d.twoframe --replot --outdir outputs/<object>/<M>-<N>
 
 Working frame is the OBSERVER frame, so the weights (photon noise, telluric
-ramp) never move. The star basis is carried into each spectrum's frame by a
-Fourier phase ramp: on the log-uniform magic grid a Doppler shift is a pure
-translation, so the operator is exact and unitary and its adjoint is simply the
-opposite shift (NOTES.md 11.3).
+ramp) never move. The star basis is carried into each spectrum's frame by an
+exact Lanczos translation: on the log-uniform grid a Doppler shift is a
+translation of atanh(v/c) / (dv/c) samples (grids.pixel_shift), and the
+operator's adjoint is the same taps scattered rather than gathered (NOTES.md
+11.3).
 """
 
 from __future__ import annotations
@@ -30,6 +30,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from .logger import log
 from .progress import bar as _bar
+from .progress import set_label as _set_label
+from .grids import pixel_shift, shift_velocity
 import numpy as np
 from astropy.io import fits
 from astropy.table import Table
@@ -49,7 +51,7 @@ def parse_args(argv=None):
                         " below. Anything given on the command line wins over"
                         " it, and anything in neither falls back to"
                         " pca2d/config.py:DEFAULTS")
-    p.add_argument("--cube", default="cache/cube_06b3ec43de9f.npz",
+    p.add_argument("--cube", default=None,
                    help="observer-frame cube, log_sub high-pass (build with registration.frame: observer)")
     p.add_argument("--order", choices=["star_first", "earth_first"], default=None,
                    help="which block is updated first; star_first for a reason, see 11.7")
@@ -60,6 +62,15 @@ def parse_args(argv=None):
                    help="N, components in the OBSERVER frame")
     p.add_argument("--leakage", action="store_true", default=None,
                    help="report the cross-block leakage matrix at the end (slow)")
+    p.add_argument("--velocity-min-transmission", type=float, default=None,
+                   help="measure the shift only where the telluric transmission"
+                        " stays above this; 0 keeps the band cut alone")
+    p.add_argument("--no-velocity-term", dest="velocity_term",
+                   action="store_false", default=None,
+                   help="do not fit one velocity per exposure. The observer"
+                        " block then describes the star's own motion and the"
+                        " correction divides it out of the flux; kept only so"
+                        " the two can be compared")
     p.add_argument("--shift", choices=["lanczos", "fft"], default=None,
                    help="shift operator; fft is kept only for comparison (NOTES 11.3)")
     p.add_argument("-a", "--kernel-halfwidth", type=int, default=None,
@@ -76,22 +87,23 @@ def parse_args(argv=None):
                    help="drop spectra below this fraction of the median band SNR")
     p.add_argument("--clip", type=float, default=None,
                    help="soft-clip threshold in sigma; 0 disables")
-    p.add_argument("--mean", choices=("offset", "full"), default="offset",
-                   help="how much of the observer-frame mean to take out"
-                        " before the fit. 'offset' (default) removes only the"
-                        " even-minus-odd half-difference, the instrumental"
-                        " term of NOTES 13.9, and leaves the part both"
-                        " parities share in the data so the Earth block can"
-                        " describe it and the correction can remove it."
-                        " 'full' removes the whole mean per parity, which is"
-                        " what every fit before 2026-09-09 did; the static"
-                        " atmosphere is then outside the model and survives"
-                        " the correction untouched")
+    p.add_argument("--mean", choices=("iterate", "offset", "full"), default=None,
+                   help="the static part of the model. 'offset' (default) and"
+                        " 'full' are observer-frame means taken out once"
+                        " before the fit, and put back into the correction:"
+                        " 'offset' the even-minus-odd half-difference, 'full'"
+                        " the whole mean per parity. 'iterate', experimental:"
+                        " one mean per order parity in EACH frame, the star's"
+                        " and the observer's, re-estimated at every sweep from"
+                        " the residual of everything else, the components"
+                        " centred so static content can live only in the"
+                        " means. It converges on synthetic data and on a"
+                        " 70 nm slice, and did not on a whole TOI-2120 cube")
     p.add_argument("--no-template", dest="template", action="store_false", default=None,
                    help="skip the star-frame median template. The star block"
                         " then spends its first component rebuilding the mean"
                         " spectrum instead of describing variability")
-    p.add_argument("--outdir", default="_obsolete/outputs/PROXIMA/twoframe",
+    p.add_argument("--outdir", default=None,
                    help="where to write coefficients.csv and coefficients_vs_time.pdf")
     p.add_argument("--dtype", choices=("float64", "float32"), default=None,
                    help="storage for the two (rows, pixels) arrays the fit"
@@ -136,7 +148,8 @@ def parse_args(argv=None):
 CONFIGURABLE = ("n_star", "n_earth", "iters", "order", "tie_parities", "max_mad",
                 "template_berv_bin", "template_berv_min_entries",
                 "max_mad_rounds", "clip", "min_snr_frac", "template", "shift",
-                "kernel_halfwidth", "gap_guard", "leakage", "chunk", "dtype")
+                "kernel_halfwidth", "gap_guard", "leakage", "chunk", "dtype",
+                "velocity_term", "velocity_min_transmission", "mean")
 
 
 def _resolve(args):
@@ -353,8 +366,113 @@ SHIFTERS = {"fft": FourierShifter, "lanczos": LanczosShifter}
 # --------------------------------------------------------------------------
 # the three steps
 # --------------------------------------------------------------------------
-def joint_coeffs(data, w, P, Q, shifter, delta, chunk=64, exposure=None):
-    """Step 1 of 11.2: solve [a_n ; b_n] together, per spectrum.
+def clean_columns(path, threshold=0.95, quantile=0.1, chunk=20000):
+    """Grid columns whose telluric transmission stays above `threshold`.
+
+    Read from the cube's own trans.npy, which is the Recon extension carried
+    through the identical resampling, so it is already on the magic grid and no
+    t.fits has to be reopened.
+
+    Reduced to one boolean vector at load time and never held per exposure: the
+    full array is (rows x samples) and 2.9 GB on a campaign cube, which is the
+    same reason load_cube folds it into the weights and drops it. Read in
+    column blocks through a memory map so the reduction costs a few hundred MB
+    rather than the whole thing.
+
+    A column counts as clean when it is above the threshold in 90% of the
+    exposures, not in the median one: telluric depth follows airmass and water,
+    so a column that sits at 0.96 on a good night can be half absorbed on a bad
+    one, and the median would call it clean. The 10th percentile asks the
+    question the velocity term needs answered, which is whether the column is
+    reliably stellar rather than usually stellar.
+    """
+    if not os.path.isdir(path):
+        return None
+    full = os.path.join(path, "trans.npy")
+    if not os.path.exists(full):
+        return None
+    trans = np.load(full, mmap_mode="r")
+    out = np.zeros(trans.shape[1], dtype=bool)
+    for start in range(0, trans.shape[1], chunk):
+        stop = min(start + chunk, trans.shape[1])
+        block = np.asarray(trans[:, start:stop], dtype=np.float64)
+        with np.errstate(invalid="ignore"):
+            low = np.nanquantile(block, quantile, axis=0)
+        out[start:stop] = low > threshold
+    return out
+
+
+def equilibrated_solve(amat, bvec, ridge=1e-12):
+    """Solve amat c = bvec with the columns put on the same scale first.
+
+    The design's columns do not have comparable norms. P and Q are orthonormal,
+    so theirs are 1; the velocity column is d/dpix of the reconstructed star,
+    whose amplitude is the star's own divided by the width of a line, which on
+    SPIRou is a factor of ten away. The normal matrix then has diagonal entries
+    spread over two decades and a condition number to match, without a single
+    pair of columns being collinear: it is a scaling problem, not a degeneracy.
+
+    So each column is scaled to unit diagonal, the system is solved, and the
+    scaling is undone on the coefficients. In exact arithmetic that is the same
+    solution to the digit; in floating point it is the difference between a
+    condition number of 400 and one of 8. It also makes the ridge mean the same
+    thing for every column, which it did not when one column dominated the
+    trace.
+    """
+    diag = np.diag(amat).copy()
+    scale = np.sqrt(np.where(diag > 0, diag, 1.0))
+    inv = 1.0 / scale
+    scaled = amat * np.outer(inv, inv)
+    # the diagonal is now 1 wherever the column is constrained, so the ridge is
+    # a fixed fraction of every column rather than of the largest one
+    scaled.flat[:: scaled.shape[0] + 1] += ridge
+    try:
+        y = np.linalg.solve(scaled, bvec * inv)
+    except np.linalg.LinAlgError:
+        y = np.linalg.lstsq(scaled, bvec * inv, rcond=None)[0]
+    return y * inv, float(np.linalg.cond(scaled))
+
+
+def velocity_column(star_row, mask=None):
+    """d(star model)/d(pixel): the shape a small shift of the star has.
+
+    First order, and exact at first order: f(x + eps) = f + eps f'(x). On the
+    magic grid a pixel IS a velocity, dv km/s of it, so the amplitude that
+    multiplies this column is a shift in pixels and alpha * dv is a velocity in
+    km/s. It is also why d/d(ln lambda) needs nothing but np.gradient: the grid
+    is uniform in ln lambda by construction, which is the whole reason it was
+    built that way.
+
+    WHAT IS HANDED IN HERE IS ALWAYS A RECONSTRUCTION, the carried a.P of one
+    exposure, and never a measured spectrum. The reconstruction is the sum of
+    every exposure that went into the basis, so its derivative is as clean as
+    the basis; np.gradient of a single observed spectrum would be a derivative
+    of its noise, and at SPIRou SNR per sample that is most of what it would
+    be. The column would then be noise, alpha would fit noise against noise,
+    and the term would inject exactly the velocity error it exists to prevent.
+
+    WHERE IT IS ALLOWED TO SPEAK. With `mask` given the column is zero outside
+    it, which is how the shift is estimated from clean stellar lines only: the
+    columns inside a photometric band whose telluric transmission stays high
+    across the campaign. Estimating it anywhere else means fitting the star's
+    velocity to a place where the flux is mostly atmosphere and the star model
+    is least trustworthy, and it showed: against LBL the unmasked term came out
+    1.8 times too large.
+
+    Masked in the model too, and not only in the solve. A term fitted under one
+    model and removed under another is how a residual acquires a shape nobody
+    put there.
+    """
+    column = np.gradient(star_row)
+    if mask is not None:
+        column = column * mask
+    return column
+
+
+def joint_coeffs(data, w, P, Q, shifter, delta, chunk=64, exposure=None,
+                 velocity_from=None, velocity_mask=None, desc=None,
+                 star_mean=None):
+    """Step 1 of 11.2: solve [a_n ; b_n ; alpha_n] together, per spectrum.
 
     B_n = [ S_n P^T , Q^T ] is M x (K+J); the off-diagonal blocks of
     B_n^T W_n B_n are the cross-frame overlaps and are the whole point.
@@ -387,29 +505,74 @@ def joint_coeffs(data, w, P, Q, shifter, delta, chunk=64, exposure=None):
 
     NOTE what is and is not per parity. The components are not: P and Q are
     single vectors over the whole grid, and there is no such thing as an even
-    component or an odd one. Only the observer-frame mean is fitted per parity,
-    because the even-minus-odd offset is a static property of the instrument,
+    component or an odd one. Only the means are per parity, both of them with
+    --mean iterate, the star's and the observer's: the two parities see the
+    same lines at different resolutions, a static property of the instrument,
     and only the weights know which columns a row covers.
+
+    THE VELOCITY COLUMN. With `velocity_from` given the design gains one more
+    column per spectrum, the derivative of the star model those coefficients
+    describe, carried into this exposure's frame. It is there to keep a
+    velocity OUT of the observer block.
+
+    The star is never exactly where the BERV alone would put it: it has its own
+    motion, the planet and the activity, and the carry operator leaves a
+    residual of its own. Whatever the cause, that residual has one shape, f',
+    and the observer block has seven free vectors and an amplitude per exposure
+    with which to describe it. It does. Dividing that block out of the flux
+    then moves the star's lines, which is a velocity written into the corrected
+    spectrum by the correction itself; measured on TOI2120 it accounts for 41%
+    of the variance of what the correction changed in LBL's velocities. And
+    when the star has a real signal, the observer block absorbs the planet and
+    the correction subtracts it: the thing being looked for, removed by the
+    tool meant to clear the way to it.
+
+    So the shift gets a name and a column of its own. It is FITTED and it is
+    never divided out. The term exists to keep the velocity out of Q, not to
+    take it out of the data; taking it out of the data would erase exactly the
+    signal the pipeline is for.
+
+    Tied by exposure like everything else here, because a velocity is a
+    property of the exposure and not of a detector parity.
+
+    With `star_mean` = (T, group), the derivative is of T_g + a_n P, the whole
+    star: with --mean iterate the star's static part lives in its per-parity
+    mean and the components hold only its variations, so a derivative of the
+    components alone would be the derivative of almost nothing.
     """
     n_spectra = data.shape[0]
     n_star, n_earth = P.shape[0], Q.shape[0]
-    n_tot = n_star + n_earth
+    n_vel = 1 if velocity_from is not None else 0
+    n_tot = n_star + n_earth + n_vel
     coeffs = np.zeros((n_spectra, n_tot))
     cond = np.zeros(n_spectra)
     eye = np.eye(n_tot)
     Pf = shifter.prepare(P)
+    Tf = (shifter.prepare(star_mean[0])
+          if n_vel and star_mean is not None else None)
     B = np.empty((n_tot, data.shape[1]))
     Bw = np.empty((n_tot, data.shape[1]))
     tied = exposure is not None
     amats = np.zeros((n_spectra, n_tot, n_tot)) if tied else None
     bvecs = np.zeros((n_spectra, n_tot)) if tied else None
-    for start in range(0, n_spectra, chunk):
+    steps = range(0, n_spectra, chunk)
+    for start in (_bar(steps, desc=desc, unit="chunk") if desc else steps):
         stop = min(start + chunk, n_spectra)
         SP = shifter.carry(Pf, delta[start:stop])
+        TT = (carried_means(Tf, star_mean[1], shifter, delta, start, stop)
+              if Tf is not None else None)
         for i in range(stop - start):
             n = start + i
             B[:n_star] = SP[i]
-            B[n_star:] = Q
+            B[n_star:n_star + n_earth] = Q
+            if n_vel:
+                # linearised around the star model the previous solve found: a
+                # lagged Jacobian, which converges with the sweeps like every
+                # other block here
+                star_row = velocity_from[n] @ SP[i]
+                if TT is not None:
+                    star_row = star_row + TT[i]
+                B[-1] = velocity_column(star_row, velocity_mask)
             # into a buffer allocated once: B * w[n] is (K+J, n_pixels), 34 MB
             # at these sizes, and allocating it per row is 11% of the loop
             np.multiply(B, w[n], out=Bw)
@@ -418,26 +581,25 @@ def joint_coeffs(data, w, P, Q, shifter, delta, chunk=64, exposure=None):
             if tied:
                 amats[n], bvecs[n] = amat, bvec
                 continue
-            trace = np.trace(amat)
-            if trace <= 0:
+            if np.trace(amat) <= 0:
                 continue
-            cond[n] = np.linalg.cond(amat)
-            coeffs[n] = np.linalg.solve(amat + 1e-12 * trace * eye, bvec)
+            coeffs[n], cond[n] = equilibrated_solve(amat, bvec)
     if tied:
         exposure = np.asarray(exposure)
         for value in np.unique(exposure):
             rows = np.where(exposure == value)[0]
             amat = amats[rows].sum(axis=0)
-            trace = np.trace(amat)
-            if trace <= 0:
+            if np.trace(amat) <= 0:
                 continue
-            cond[rows] = np.linalg.cond(amat)
-            # the ridge is 1e-12 of the trace: far below any real curvature, but
-            # enough to keep the solve finite when a component is unconstrained
-            # for this exposure, which happens when its support is fully masked
-            coeffs[rows] = np.linalg.solve(amat + 1e-12 * trace * eye,
-                                           bvecs[rows].sum(axis=0))
-    return coeffs[:, :n_star], coeffs[:, n_star:], cond
+            # the ridge is 1e-12 of each column after equilibration: far below
+            # any real curvature, but enough to keep the solve finite when a
+            # component is unconstrained for this exposure, which happens when
+            # its support is fully masked
+            solved, cond_value = equilibrated_solve(amat, bvecs[rows].sum(axis=0))
+            coeffs[rows] = solved
+            cond[rows] = cond_value
+    alpha = coeffs[:, -1] if n_vel else np.zeros(n_spectra)
+    return coeffs[:, :n_star], coeffs[:, n_star:n_star + n_earth], alpha, cond
 
 
 def gap_guard(w, delta, a, verbose=True):
@@ -494,17 +656,70 @@ def gap_guard(w, delta, a, verbose=True):
     return w
 
 
-def star_model(P, a, shifter, delta, n_spectra, n_pixels, chunk=64, desc=None):
-    """sum_k a_nk (S_n P_k), never materialising S_n P^T for all n at once."""
+def star_model(P, a, shifter, delta, n_spectra, n_pixels, chunk=64, desc=None,
+               alpha=None, velocity_mask=None, star_mean=None):
+    """sum_k a_nk (S_n P_k), never materialising S_n P^T for all n at once.
+
+    With `alpha` given, each row also gets alpha_n times its own derivative:
+    the whole star-side model, shift included, which is what the observer block
+    must be shown the residual of.
+
+    With `star_mean` the derivative is of the whole star, its carried
+    per-parity mean included; the mean itself is not in what comes back, which
+    is the components' model.
+    """
     out = np.zeros((n_spectra, n_pixels))
     Pf = shifter.prepare(P)
+    Tf = (shifter.prepare(star_mean[0])
+          if alpha is not None and star_mean is not None else None)
     steps = range(0, n_spectra, chunk)
     for start in (_bar(steps, desc=desc, unit="chunk") if desc else steps):
         stop = min(start + chunk, n_spectra)
-        out[start:stop] = np.einsum(
+        block = np.einsum(
             "nk,nkm->nm", a[start:stop], shifter.carry(Pf, delta[start:stop])
         )
+        if alpha is not None:
+            TT = (carried_means(Tf, star_mean[1], shifter, delta, start, stop)
+                  if Tf is not None else None)
+            # row by row: np.gradient over a whole chunk would allocate a
+            # second (chunk x samples) array beside the one we just built
+            for i in range(stop - start):
+                if alpha[start + i]:
+                    whole = block[i] if TT is None else block[i] + TT[i]
+                    block[i] += alpha[start + i] * velocity_column(whole,
+                                                                  velocity_mask)
+        out[start:stop] = block
     return out
+
+
+def deflate_velocity(resid, P, a, alpha, shifter, delta, chunk=64, desc=None,
+                    velocity_mask=None, star_mean=None):
+    """resid -= alpha_n d/dpix(S_n P a_n), in place and a chunk at a time.
+
+    In place for the same reason star_model is chunked: the residual is a
+    (rows x samples) array and there is no room for a second one.
+
+    Why the star basis update needs this at all: the velocity term lives in the
+    star's frame, so a residual that still contains it teaches P the derivative
+    of its own first component. P would then describe the shift, alpha would
+    describe it too, and the two would trade amplitude from sweep to sweep.
+    """
+    if alpha is None or not np.any(alpha):
+        return resid
+    Pf = shifter.prepare(P)
+    Tf = shifter.prepare(star_mean[0]) if star_mean is not None else None
+    steps = range(0, resid.shape[0], chunk)
+    for start in (_bar(steps, desc=desc, unit="chunk") if desc else steps):
+        stop = min(start + chunk, resid.shape[0])
+        SP = shifter.carry(Pf, delta[start:stop])
+        TT = (carried_means(Tf, star_mean[1], shifter, delta, start, stop)
+              if Tf is not None else None)
+        for i in range(stop - start):
+            n = start + i
+            if alpha[n]:
+                whole = a[n] @ SP[i] if TT is None else a[n] @ SP[i] + TT[i]
+                resid[n] -= alpha[n] * velocity_column(whole, velocity_mask)
+    return resid
 
 
 def mstep(residual, weights, coeffs, basis, floor_frac=1e-2):
@@ -561,7 +776,8 @@ def mstep(residual, weights, coeffs, basis, floor_frac=1e-2):
     return basis
 
 
-def update_star(data, w, P, Q, a, b, shifter, delta, chunk):
+def update_star(data, w, P, Q, a, b, shifter, delta, chunk, alpha=None,
+                velocity_mask=None, star_mean=None):
     """Step 3: deflate the Earth model, carry the weighted residual home.
 
     The normal equation wants sum_n c^2 S_n^T W_n S_n; we use its diagonal. With
@@ -575,6 +791,10 @@ def update_star(data, w, P, Q, a, b, shifter, delta, chunk):
     resid = b @ Q
     resid *= -1.0
     resid += data
+    deflate_velocity(resid, P, a, alpha, shifter, delta, chunk,
+                     desc="star basis, taking the shift out" if alpha is not None
+                     and np.any(alpha) else None, velocity_mask=velocity_mask,
+                     star_mean=star_mean)
     resid *= w
     resid_star = shifter.adjoint(resid, delta,
                                  desc="star basis, carrying home")
@@ -587,17 +807,24 @@ def update_star(data, w, P, Q, a, b, shifter, delta, chunk):
     return mstep(resid_star, w_star, a, P)
 
 
-def update_earth(data, w, P, Q, a, b, shifter, delta, chunk):
-    """Step 2: deflate the star model. No shifting of the weights at all."""
+def update_earth(data, w, P, Q, a, b, shifter, delta, chunk, alpha=None,
+                 velocity_mask=None, star_mean=None):
+    """Step 2: deflate the star model, shift included. No shifting of weights.
+
+    `alpha` is what keeps the velocity out of Q: the residual this hands to the
+    basis update no longer contains the star's shift, so there is nothing of
+    that shape left for an observer component to describe.
+    """
     model = star_model(P, a, shifter, delta, data.shape[0], data.shape[1], chunk,
-                       desc="observer basis, carrying the star out")
+                       desc="observer basis, carrying the star out", alpha=alpha,
+                       velocity_mask=velocity_mask, star_mean=star_mean)
     model *= -1.0
     model += data                       # in place: data - model
     return mstep(model, w, b, Q)
 
 
 # --------------------------------------------------------------------------
-def read_cube_files(path, dtype=np.float64):
+def read_cube_files(path, dtype=np.float64, columns=None):
     """Read a cached cube, in either of the two formats `cube.py` has written.
 
     Until 2026-08-26 the cache was a single compressed `.npz`. It is now a
@@ -607,29 +834,56 @@ def read_cube_files(path, dtype=np.float64):
     float32 noise and does not compress. Both are read here so the older caches
     on disk stay usable.
     """
+    # With `columns`, only those grid columns are read, through a memory map:
+    # a figure of one window then reads its few thousand columns rather than
+    # the whole cube, 79 MB for the eight windows of a campaign against 4.4 GB.
+    mmap = "r" if columns is not None else None
     if os.path.isdir(path):
         def _load(name, required=True):
             full = os.path.join(path, name)
             if os.path.exists(full):
-                return np.load(full)
+                return np.load(full, mmap_mode=mmap)
             if required:
                 raise FileNotFoundError("%s has no %s" % (path, name))
             return None
         grid = _load("grid.npy")
-        data = np.asarray(_load("data.npy"), dtype=dtype)
-        sigma = np.asarray(_load("sigma.npy"), dtype=dtype)
+        data = _load("data.npy")
+        sigma = _load("sigma.npy")
         trans = _load("trans.npy", required=False)
         meta = Table.read(os.path.join(path, "meta.fits"))
     else:
         blob = np.load(path, allow_pickle=True)
         grid = blob["grid"]
-        data = np.asarray(blob["data"], dtype=dtype)
-        sigma = np.asarray(blob["sigma"], dtype=dtype)
+        data = blob["data"]
+        sigma = blob["sigma"]
         trans = blob["trans"] if "trans" in blob.files else None
         meta = Table(blob["meta"])
+    if columns is not None:
+        columns = np.asarray(columns)
+        grid = np.asarray(grid)[columns]
+        data, sigma = data[:, columns], sigma[:, columns]
+        if trans is not None:
+            trans = trans[:, columns]
+    grid = np.asarray(grid)
+    data = np.asarray(data, dtype=dtype)
+    sigma = np.asarray(sigma, dtype=dtype)
     if trans is not None:
         trans = np.asarray(trans, dtype=dtype)
     return grid, data, sigma, trans, meta
+
+
+def cube_grid_size(path):
+    """Columns of a cached cube's grid, without reading anything else."""
+    if os.path.isdir(path):
+        return int(np.load(os.path.join(path, "grid.npy"), mmap_mode="r").shape[0])
+    return int(np.load(path, allow_pickle=True)["grid"].shape[0])
+
+
+def cube_grid(path):
+    """A cached cube's wavelength grid, and nothing else from it."""
+    if os.path.isdir(path):
+        return np.load(os.path.join(path, "grid.npy"))
+    return np.asarray(np.load(path, allow_pickle=True)["grid"])
 
 
 def row_parity(meta, n_rows):
@@ -705,6 +959,24 @@ def fit_means(blob, meta, n_rows, n_pixels):
     return np.atleast_2d(mean), np.zeros(n_rows, dtype=int)
 
 
+def fit_templates(blob, meta, n_rows, n_pixels):
+    """The star-frame means a saved fit holds, as (templates, group_per_row).
+
+    One per parity from a --mean iterate fit (`templates`); from an older fit
+    the single `template`, zero unless its one-shot median was used, as one
+    group, so a caller needs no special case.
+    """
+    files = list(getattr(blob, "files", []))
+    if "templates" in files:
+        templates = np.atleast_2d(blob["templates"])
+        parity = np.asarray(blob["parity"], dtype=int) if "parity" in files else None
+        if parity is None or parity.size != n_rows:
+            parity = row_parity(meta, n_rows)
+        return templates, np.searchsorted(np.unique(parity), parity)
+    template = blob["template"] if "template" in files else np.zeros(n_pixels)
+    return np.atleast_2d(template), np.zeros(n_rows, dtype=int)
+
+
 def mean_rows(means, group, n_rows):
     """`means[group]` as a broadcast view when there is only one group.
 
@@ -728,8 +1000,188 @@ def subtract_means(data, means, group):
     return data
 
 
+def carried_means(prepared, group, shifter, delta, start, stop):
+    """S_n T_g for rows start..stop, each row carrying the mean of its parity.
+
+    `prepared` is shifter.prepare(T) for the (groups, samples) array T, so a
+    caller looping over chunks prepares it once.
+    """
+    out = shifter.carry(prepared, delta[start:stop])        # (rows, groups, M)
+    return out[np.arange(stop - start), np.asarray(group)[start:stop]]
+
+
+def subtract_carried(data, T, group, shifter, delta, chunk, w=None):
+    """data -= S_n T_g, a chunk of rows at a time; zero again where w <= 0."""
+    Tf = shifter.prepare(np.atleast_2d(T))
+    for start in range(0, data.shape[0], chunk):
+        stop = min(start + chunk, data.shape[0])
+        data[start:stop] -= carried_means(Tf, group, shifter, delta, start, stop)
+        if w is not None:
+            data[start:stop][w[start:stop] <= 0] = 0.0
+    return data
+
+
+#: alternations of the two means, before any component exists
+MEAN_INIT_ROUNDS = 3
+#: alternations of the two means per sweep, on that sweep's residual
+MEAN_SWEEP_ROUNDS = 1
+#: what the star-frame step divides by: "diag", the diagonal of
+#: sum_n S_n^T W_n S_n as update_star uses it, or "lumped", its row sums,
+#: sum_n S_n^T w_n, exact for a smooth feature and smaller than any step that
+#: could overshoot for a sharp one
+MEAN_STAR_NORMAL = "diag"
+#: where the means start. "template": the star-frame median of each parity
+#: first and the observer mean of what it leaves, component zero of each block
+#: as NOTES 11.13 found it has to be; "zero": the observer mean alone. Measured
+#: on the synthetic cube of tests/test_parity_means_iterate.py on 2026-09-10:
+#: from "template" chi2 descends at every sweep, each frame's mean correlates
+#: 1.00 with its truth, the smeared star stays out of the observer mean (-0.07)
+#: and the observer component follows the telluric depth (-1.00). From "zero"
+#: the fit turns over after one sweep, the observer component follows the BERV
+#: (+0.97) and the smeared star is still in the observer mean (+0.22): the trap
+#: of NOTES 11.12 again. "diag" against "lumped", and one against three rounds
+#: per sweep, changed nothing from "template".
+MEAN_INIT = "template"
+
+
+def update_means(data, w, T, O, group, shifter, delta, chunk, resid=None,
+                 desc=None):
+    """One step of the two per-parity means: T in the star's frame, O in the
+    observer's, each from the residual of everything else.
+
+    `data` holds the cube minus S_n T_g minus O_g and is updated in place, as
+    T and O are. `resid` is the residual of the components, data minus their
+    model, and is consumed; None means nothing else is in the model yet and the
+    residual is the data itself.
+
+    The observer mean first, then the star mean on what the new observer mean
+    left: block coordinate descent, each step the weighted least-squares one
+    given the rest, up to the same diagonal of sum_n S_n^T W_n S_n that
+    update_star uses in the star's frame. Re-estimated at every sweep, which is
+    what stops the frames trading static content: a star smeared over the BERV
+    that sits in the observer mean shows up in the residual as soon as the
+    star-frame mean holds the star, and the next observer step takes it back
+    out. One mean per parity in both frames, never shared: the even and the odd
+    orders see the same star and the same sky at different resolutions, far
+    more so on NIRPS, and a shared mean would hand that difference to whichever
+    block could reach it.
+
+    Returns the rms of the two steps, which is how convergence is judged.
+    """
+    same = resid is None
+    if same:
+        resid = data
+    group = np.asarray(group)
+    n_groups, n_rows = T.shape[0], data.shape[0]
+    # ---- observer frame: a weighted mean per parity, column by column
+    num = np.zeros_like(O)
+    tot = np.zeros_like(O)
+    for start in range(0, n_rows, chunk):
+        stop = min(start + chunk, n_rows)
+        wc = np.asarray(w[start:stop], dtype=np.float64)
+        rc = wc * resid[start:stop]
+        for g in range(n_groups):
+            sel = group[start:stop] == g
+            if sel.any():
+                num[g] += rc[sel].sum(axis=0)
+                tot[g] += wc[sel].sum(axis=0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        step_o = np.where(tot > 0, num / np.where(tot > 0, tot, 1.0), 0.0)
+    # ---- star frame, on what that left: the weighted residual carried home
+    # with the adjoint, over the exact diagonal of the normal matrix
+    num = np.zeros_like(T)
+    den = np.zeros_like(T)
+    steps = range(0, n_rows, chunk)
+    for start in (_bar(steps, desc=desc, unit="chunk") if desc else steps):
+        stop = min(start + chunk, n_rows)
+        rows_g = group[start:stop]
+        data[start:stop] -= step_o[rows_g]
+        if not same:
+            resid[start:stop] -= step_o[rows_g]
+        wc = np.asarray(w[start:stop], dtype=np.float64)
+        home = shifter.adjoint(wc * resid[start:stop], delta[start:stop])
+        if MEAN_STAR_NORMAL == "lumped":
+            norm = np.maximum(shifter.adjoint(wc, delta[start:stop]), 0.0)
+        else:
+            norm = shifter.diag_normal(wc, delta[start:stop])
+        for g in range(n_groups):
+            sel = rows_g == g
+            if sel.any():
+                num[g] += home[sel].sum(axis=0)
+                den[g] += norm[sel].sum(axis=0)
+    step_t = np.zeros_like(T)
+    for g in range(n_groups):
+        positive = den[g][den[g] > 0]
+        # mstep's floor, for mstep's reason: inside a telluric gap the
+        # star-frame weight is numerical residue, and dividing by it is a spike
+        floor = 1e-2 * float(np.median(positive)) if positive.size else 0.0
+        with np.errstate(invalid="ignore", divide="ignore"):
+            step_t[g] = np.where(den[g] > floor,
+                                 num[g] / np.maximum(den[g], floor), 0.0)
+    subtract_carried(data, step_t, group, shifter, delta, chunk, w=w)
+    if not same:
+        # so that another round can start from this one's residual
+        subtract_carried(resid, step_t, group, shifter, delta, chunk)
+    O += step_o
+    T += step_t
+    return float(np.sqrt(np.mean(step_t ** 2))), float(np.sqrt(np.mean(step_o ** 2)))
+
+
+def center_blocks(data, a, b, P, Q, T, O, group, shifter, delta, chunk, rows,
+                  w=None):
+    """Move the components' average into the means. Returns the centred a, b.
+
+    Exact: the model does not change, only which block holds what. It is what
+    gives the means' re-estimation its grip. A component with a non-zero
+    average carries static content, and a static pattern in a component can
+    cancel a wrong assignment between the two means before the residual ever
+    shows it. Centred, static content has nowhere to live but the means.
+
+    One average over every good row, added to every parity's mean alike, not
+    one per parity: the two parity rows of an exposure share one coefficient
+    set (joint_coeffs, `exposure`), and per-parity averages would untie them.
+    """
+    if not np.any(rows):
+        return a, b
+    abar, bbar = a[rows].mean(axis=0), b[rows].mean(axis=0)
+    star_part, obs_part = abar @ P, bbar @ Q
+    T += star_part[None, :]
+    O += obs_part[None, :]
+    data -= obs_part[None, :]
+    subtract_carried(data, star_part, np.zeros(data.shape[0], dtype=int),
+                     shifter, delta, chunk, w=w)
+    return a - abar, b - bbar
+
+
+def restore_means(data, T, O, T_to, O_to, group, shifter, delta, chunk, w=None):
+    """Put the means back to an earlier state, the data following them."""
+    group = np.asarray(group)
+    back_o = O - O_to
+    for start in range(0, data.shape[0], chunk):
+        stop = min(start + chunk, data.shape[0])
+        data[start:stop] += back_o[group[start:stop]]
+    subtract_carried(data, T_to - T, group, shifter, delta, chunk, w=w)
+    T[:] = T_to
+    O[:] = O_to
+
+
+def count_exposures(meta, rows=None):
+    """How many distinct exposures a set of rows belongs to.
+
+    A t.fits cube has one row per order parity, so two rows per exposure, and a
+    count of rows is not a count of spectra. Every message that tells a person
+    how many were dropped, rejected or kept goes through here, so the number in
+    the log is the number of exposures, which is what they will go and count,
+    with the row count beside it.
+    """
+    names = np.asarray(meta["filename"])
+    if rows is not None:
+        names = names[np.asarray(rows)]
+    return len({str(n).strip() for n in names})
+
+
 def load_cube(path, ln_clip_low=-0.5, ramp_zero=0.5, min_snr_frac=0.5,
-              dtype=np.float64):
+              dtype=np.float64, columns=None):
     """The observer-frame cube plus the weights, condensed from cube.py.
 
     `min_snr_frac` drops spectra whose band SNR is below that fraction of the
@@ -740,16 +1192,18 @@ def load_cube(path, ln_clip_low=-0.5, ramp_zero=0.5, min_snr_frac=0.5,
     vote in the median template and contributes a row of mostly-noise
     coefficients, so it is cheaper to drop it than to carry it.
     """
-    grid, data, sigma, trans, meta = read_cube_files(path, dtype)
+    grid, data, sigma, trans, meta = read_cube_files(path, dtype, columns)
 
     if min_snr_frac:
         snr = np.asarray(meta["snr_band"], dtype=float)
         threshold = float(min_snr_frac * np.nanmedian(snr))
         keep = np.isfinite(snr) & (snr >= threshold)
         if not keep.all():
-            log("dropping %d / %d spectra with band SNR < %.0f%% of the median"
-                  " (%.1f)" % ((~keep).sum(), keep.size, 100 * min_snr_frac,
-                               threshold))
+            log("dropping %d exposures (%d rows, one per order parity) with band"
+                " SNR below %.0f%% of the median (%.1f): %d of %d exposures left"
+                % (count_exposures(meta, ~keep), int((~keep).sum()),
+                   100 * min_snr_frac, threshold,
+                   count_exposures(meta, keep), count_exposures(meta)))
             data, sigma, meta = data[keep], sigma[keep], meta[keep]
             if trans is not None:
                 trans = trans[keep]
@@ -760,8 +1214,15 @@ def load_cube(path, ln_clip_low=-0.5, ramp_zero=0.5, min_snr_frac=0.5,
     w[data < ln_clip_low] = 0.0
     if trans is not None:
         w *= np.clip((trans - ramp_zero) / (1.0 - ramp_zero), 0.0, 1.0)
-    w[:, :EDGE] = 0.0
-    w[:, -EDGE:] = 0.0
+    # the EDGE columns of the GRID, not of whatever slice of it was read: a
+    # window in the middle of the domain must not lose its own first and last
+    # 64 columns because they happen to be the ends of the array it came in
+    if columns is None:
+        w[:, :EDGE] = 0.0
+        w[:, -EDGE:] = 0.0
+    else:
+        cols = np.asarray(columns)
+        w[:, (cols < EDGE) | (cols >= cube_grid_size(path) - EDGE)] = 0.0
     data = np.where(w > 0, data, 0.0)
     return grid, data, w, meta
 
@@ -926,7 +1387,7 @@ def plot_variance(power_star, power_earth, chi2_null, chi2_best, path):
     says nothing about the model. The headline number is the RMS of the residual
     against the RMS of that median-subtracted cube.
 
-    DO NOT read these bars against the single-frame runs in `_obsolete/outputs/`.
+    DO NOT read these bars against a single-frame PCA's.
     Neither half of the fraction is the same quantity. The numerator here is
     `block_power`, a component's own weighted power, which that pipeline used
     only to *rank* components; the bars it plotted were the incremental chi2
@@ -986,7 +1447,7 @@ def write_components_fits(path, grid, P, Q, template, means, power_star,
                           power_earth, chi2_null, chi2_best, table, dv,
                           tied=True, max_mad=0.0, frame="observer",
                           highpass="log_sub", weights=None, parity=None,
-                          min_fraction=0.2):
+                          min_fraction=0.2, templates=None, mean_mode=None):
     """Everything needed to rebuild a spectrum, in one file.
 
     Three extensions. BASIS carries the magic grid, the star-frame template,
@@ -1000,7 +1461,7 @@ def write_components_fits(path, grid, P, Q, template, means, power_star,
     The quantity is the *high-passed* log flux, ln f - savgol(ln f), because
     that is what the cube holds and therefore all the fit ever saw. The
     Savitzky-Golay continuum is not stored anywhere, so nothing here can be
-    turned back into a flux; see pca2d/reconstruct.py (pca2refs-apply).
+    turned back into a flux; see pca2d/reconstruct.py.
     """
     n_star, n_earth = P.shape[0], Q.shape[0]
     primary = fits.PrimaryHDU()
@@ -1010,6 +1471,7 @@ def write_components_fits(path, grid, P, Q, template, means, power_star,
     h["NSTAR"] = (n_star, "star-frame components")
     h["NEARTH"] = (n_earth, "observer-frame components")
     h["NPARITY"] = (means.shape[0], "means stored, one per order parity")
+    h["MEANMODE"] = (str(mean_mode or "offset"), "static part: iterate, offset or full")
     h["FRAME"] = (frame, "frame the cube was registered in")
     h["HIGHPASS"] = (highpass, "high-pass mode")
     h["WAVE0"] = (float(grid[0]), "nm, first sample of the magic grid")
@@ -1029,6 +1491,12 @@ def write_components_fits(path, grid, P, Q, template, means, power_star,
     names = PARITY_NAMES if means.shape[0] == 2 else ["all"]
     for i, nm in enumerate(names[:means.shape[0]]):
         cols.append(fits.Column(name="mean_%s" % nm, format="D", array=means[i]))
+    if templates is not None:
+        # the star-frame mean of each parity, from --mean iterate; `template`
+        # above is then zero and a reader takes these (reconstruct.template_for)
+        for i, nm in enumerate(names[:templates.shape[0]]):
+            cols.append(fits.Column(name="template_%s" % nm, format="D",
+                                    array=templates[i]))
     for k in range(n_star):
         cols.append(fits.Column(name="star_pc%d" % (k + 1), format="D", array=P[k]))
     for j in range(n_earth):
@@ -1294,7 +1762,8 @@ def clip_weights(w0, residual, clip=3.0, min_spectra=20):
 
 
 def coefficient_errors(data, w, P, Q, shifter, delta, a, b, chunk=64,
-                       exposure=None):
+                       exposure=None, alpha=None, velocity_mask=None,
+                       star_mean=None):
     """Per-spectrum 1-sigma errors on the coefficients, two flavours.
 
     The coefficient step is a weighted least squares, so under "the weights are
@@ -1330,12 +1799,19 @@ def coefficient_errors(data, w, P, Q, shifter, delta, a, b, chunk=64,
     """
     n_spectra, n_pixels = data.shape
     n_star, n_earth = P.shape[0], Q.shape[0]
-    n_tot = n_star + n_earth
+    # the velocity column is part of the design that was fitted, so it is part
+    # of the design the covariance is taken from; leaving it out would report
+    # the errors of a model that was not the one solved, and its own diagonal
+    # is a 1-sigma on the shift, which is a formal RV uncertainty for free
+    n_vel = 1 if alpha is not None else 0
+    n_tot = n_star + n_earth + n_vel
     eye = np.eye(n_tot)
     var = np.full((n_spectra, n_tot), np.nan)
     chi2_red = np.full(n_spectra, np.nan)
-    coeffs = np.hstack([a, b])
+    coeffs = np.hstack([a, b] + ([alpha[:, None]] if n_vel else []))
     Pf = shifter.prepare(P)
+    Tf = (shifter.prepare(star_mean[0])
+          if n_vel and star_mean is not None else None)
     B = np.empty((n_tot, n_pixels))
     tied = exposure is not None
     amats = np.zeros((n_spectra, n_tot, n_tot)) if tied else None
@@ -1344,10 +1820,15 @@ def coefficient_errors(data, w, P, Q, shifter, delta, a, b, chunk=64,
     for start in range(0, n_spectra, chunk):
         stop = min(start + chunk, n_spectra)
         SP = shifter.carry(Pf, delta[start:stop])
+        TT = (carried_means(Tf, star_mean[1], shifter, delta, start, stop)
+              if Tf is not None else None)
         for i in range(stop - start):
             n = start + i
             B[:n_star] = SP[i]
-            B[n_star:] = Q
+            B[n_star:n_star + n_earth] = Q
+            if n_vel:
+                whole = a[n] @ SP[i] if TT is None else a[n] @ SP[i] + TT[i]
+                B[-1] = velocity_column(whole, velocity_mask)
             wn = w[n]
             amat = (B * wn) @ B.T
             resid = data[n] - coeffs[n] @ B
@@ -1385,7 +1866,16 @@ def coefficient_errors(data, w, P, Q, shifter, delta, a, b, chunk=64,
                 chi2_red[rows] = chi2_rows[rows].sum() / dof
     sigma_formal = np.sqrt(var)
     sigma_scaled = sigma_formal * np.sqrt(chi2_red)[:, None]
-    return sigma_formal, sigma_scaled, chi2_red
+    # The velocity sigma travels on its own and NOT as one more column of the
+    # matrix. Every caller slices [:, n_star:] for the observer block, and an
+    # extra column on the end silently becomes an eighth observer error bar:
+    # it did, and the run died two hours in with "could not broadcast (8,) into
+    # (7,)" from the plotting, after the fit had already been paid for.
+    sigma_vel = sigma_scaled[:, -1] if n_vel else None
+    if n_vel:
+        sigma_formal = sigma_formal[:, :-1]
+        sigma_scaled = sigma_scaled[:, :-1]
+    return sigma_formal, sigma_scaled, chi2_red, sigma_vel
 
 
 def mad_outliers(coeffs, parity, threshold, already=None):
@@ -1464,7 +1954,7 @@ def replot(outdir, cube=None):
     path = os.path.join(outdir, "fit.npz")
     fit = np.load(path)
     n_star = fit["a"].shape[1]
-    log("re-plotting %s: %d star + %d Earth components, %d spectra, iterate %d"
+    log("re-plotting %s: %d star + %d Earth components, %d rows, iterate %d"
           % (path, n_star, fit["b"].shape[1], fit["bjd"].size, fit["best_iter"]))
     sigma = fit["sigma_scaled"]
     chi2_null = float(fit["chi2_null"])
@@ -1472,7 +1962,7 @@ def replot(outdir, cube=None):
     keep = ~fit["rejected"] if "rejected" in fit.files else np.ones(
         fit["bjd"].size, dtype=bool)
     if not keep.all():
-        log("  %d of %d spectra were rejected by the MAD cut and are not"
+        log("  %d of %d rows were rejected by the MAD cut and are not"
               " plotted" % (int((~keep).sum()), keep.size))
     plot_coeffs(fit["bjd"][keep], fit["a"][keep], fit["b"][keep],
                 fit["power_star"], fit["power_earth"], chi2_null,
@@ -1518,9 +2008,14 @@ def replot(outdir, cube=None):
 
 def main(argv=None):
     args = parse_args(argv)
+    if not args.outdir:
+        raise SystemExit("--outdir is required: where the fit's products go")
     if args.replot:
         replot(args.outdir, args.cube)
         return None                  # exit status, not a value; see below
+    if not args.cube:
+        raise SystemExit("--cube is required: the cache/cube_<format>_<key>"
+                         " directory the cube stage wrote")
     # float32 halves the two (rows, pixels) arrays the fit lives in, and the
     # two temporaries the model costs with them. On 321 individual exposures of
     # TOI-2120 that is the difference between 11.9 GB and 6 GB, which is the
@@ -1547,16 +2042,17 @@ def main(argv=None):
     # delta is the STAR -> OBSERVER shift in samples, i.e. what S_n applies.
     #
     # APERO's s1d_v wavelengths are in the observer frame, and a stellar feature
-    # sits at lambda_bary = lambda_obs * (1 + BERV/c). On a log-uniform grid that
-    # is a translation of +BERV/dv samples, so observer -> star is +BERV/dv and
-    # the inverse, star -> observer, is **minus** BERV/dv.
+    # sits at lambda_bary = lambda_obs * D(BERV), D the relativistic Doppler
+    # factor (grids.doppler). On a log-uniform grid that is a translation of
+    # +atanh(BERV/c) / (dv/c) samples (grids.pixel_shift), so observer -> star
+    # is +pixel_shift(BERV) and the inverse, star -> observer, is **minus** it.
     #
     # This had the wrong sign until 2026-08-24 and the error was silent: the fit
     # still converged, to a "star" block anchored to a mirror frame moving at
     # -BERV, which corresponds to nothing physical. See NOTES.md 11.11. Verified
     # against the pipeline's own barycentric cube: rows(observer, +BERV/dv)
     # reproduces it to 1.4% of the data rms, rows(observer, -BERV/dv) does not.
-    delta = -np.asarray(meta["berv"], dtype=np.float64) / dv
+    delta = -pixel_shift(np.asarray(meta["berv"], dtype=np.float64), dv)
     shifter = SHIFTERS[args.shift](
         n_pixels, a=args.kernel_halfwidth,
         max_shift=int(np.ceil(np.abs(delta).max())) + 2,
@@ -1575,7 +2071,7 @@ def main(argv=None):
     # also why threading carry() helps and why the tap loop was rewritten as a
     # single contraction over a sliding-window view.
     chunk = args.chunk or max(4, int(128e6 / (8 * n_max * n_pixels)))
-    log("carry chunk %d spectra -> %.0f MB per (chunk, K, M) buffer"
+    log("carry chunk %d rows -> %.0f MB per (chunk, K, M) buffer"
           % (chunk, 8 * chunk * n_max * n_pixels / 1e6))
     log("cube %s: N=%d M=%d dv=%.3f km/s  shifts %.1f..%.1f pix"
           % (os.path.basename(args.cube), n_spectra, n_pixels, dv,
@@ -1590,7 +2086,12 @@ def main(argv=None):
     chi2_raw = float(chi2_raw_rows.sum())
     w0 = w.copy()          # modified only when the MAD cut retires a spectrum
 
-    if args.template:
+    iterate = args.mean == "iterate"
+    if args.template and iterate:
+        log("the one-shot star-frame template is not used with --mean iterate:"
+            " a star-frame mean per parity replaces it, re-estimated at every"
+            " sweep", "warn")
+    if args.template and not iterate:
         template = star_frame_template(
             data, w, shifter, delta,
             berv=np.asarray(meta["berv"], dtype=float),
@@ -1620,21 +2121,54 @@ def main(argv=None):
     # reason above. The part the two parities SHARE is whatever is static in
     # the observer's frame, which is the atmosphere: the airglow emission that
     # sits at the same wavelength every night lands in it at full amplitude.
-    # Subtracting that before the fit hides it from the components, and since
-    # `reconstruct.correction_on_grid` removes the components and never the
-    # means, it is then never removed from anything. Leaving it in costs one
-    # observer component and lets the correction reach it.
+    # Subtracting that before the fit hid it from the components, and while the
+    # correction removed the components and never the means it was then never
+    # removed from anything: hence leaving it in, at the cost of one observer
+    # component. Since 2026-09-10 the correction divides out the parity mean as
+    # well (reconstruct.order_correction), so what is subtracted here comes out
+    # of the corrected files too.
+    templates = np.zeros_like(means)
+    star_mean = None
+    if iterate:
+        # Component zero of each block before any component exists (NOTES
+        # 11.13). With MEAN_INIT "template", the star-frame median of each
+        # parity first and the observer mean of what it leaves; with "zero",
+        # the observer mean alone. Then alternations between the two frames,
+        # so the components start on data whose static content each frame
+        # already holds.
+        if MEAN_INIT == "template":
+            berv_rows = np.asarray(meta["berv"], dtype=float)
+            for g in range(templates.shape[0]):
+                rows_g = group == g
+                templates[g] = star_frame_template(
+                    data[rows_g], w[rows_g], shifter, delta[rows_g],
+                    berv=berv_rows[rows_g], berv_bin=args.template_berv_bin,
+                    berv_min_entries=args.template_berv_min_entries)
+            subtract_carried(data, templates, group, shifter, delta, chunk, w=w)
+            means, _ = parity_means(data, w, parity)
+        subtract_means(data, means, group)
+        data[w <= 0] = 0.0
+        for _ in range(MEAN_INIT_ROUNDS):
+            step_t, step_o = update_means(data, w, templates, means, group,
+                                          shifter, delta, chunk,
+                                          desc="per-parity means, both frames")
+        star_mean = (templates, group)
+        log("one mean per order parity in EACH frame, re-estimated at every"
+            " sweep with the components centred; after %d alternations the"
+            " last moved the star-frame mean by %.2e and the observer-frame one"
+            " by %.2e rms" % (MEAN_INIT_ROUNDS, step_t, step_o), "value")
     common = means.mean(axis=0)
     if args.mean == "offset":
         means = means - common
-    subtract_means(data, means, group)
-    data[w <= 0] = 0.0
+    if not iterate:
+        subtract_means(data, means, group)
+        data[w <= 0] = 0.0
     if args.mean == "offset":
         live_any = w.sum(axis=0) > 0
         log("left the shared part of the observer-frame mean IN the data,"
               " %.4g rms, for the Earth block to describe"
               % float(np.std(common[live_any])))
-    if means.shape[0] > 1:
+    if means.shape[0] > 1 and not iterate:
         both = np.ones(n_pixels, dtype=bool)
         for i, value in enumerate(parity_groups):
             both &= w[parity == value].sum(axis=0) > 0
@@ -1643,8 +2177,9 @@ def main(argv=None):
               % (float(np.std((means[0] - means[1])[both])) if both.any() else np.nan,
                  int(both.sum())))
     chi2_null = float(np.sum(w * data ** 2, dtype=np.float64))
-    log("after the observer-frame mean as well:      %.4f of the raw"
-          " weighted variance left" % (chi2_null / chi2_raw))
+    log("after the %s as well: %.4f of the raw weighted variance left"
+        % ("per-parity means of both frames" if iterate
+           else "observer-frame mean", chi2_null / chi2_raw))
     if args.clip > 0:
         log("soft clip at %.1f sigma, local per wavelength column" % args.clip)
 
@@ -1659,6 +2194,56 @@ def main(argv=None):
     Q = np.linalg.qr(rng.normal(size=(n_pixels, args.n_earth)))[0].T.copy()
     log("starting from a random orthonormal basis, seed fixed so a rerun on the"
         " same cube reproduces it")
+
+    # The velocity column of joint_coeffs. `a_lin` is the star model it is
+    # linearised around, so there is none to build on the very first solve and
+    # the term joins from the second one on, which is also when there is
+    # anything for it to describe. With the term off it stays None throughout
+    # and every solve is the one this package had before.
+    velocity_term = bool(getattr(args, "velocity_term", True))
+    a_lin = None
+    alpha = np.zeros(n_spectra)
+    alpha_prev = alpha
+    velocity_mask = None
+    if velocity_term:
+        # Where the shift is allowed to be measured: inside a photometric band
+        # and clear of tellurics. Both halves matter. The bands are per
+        # instrument, so NIRPS drops K by simply not defining it rather than by
+        # anyone remembering to; and a column whose transmission collapses on a
+        # bad night is a column where the flux is atmosphere, the star model is
+        # least trustworthy, and a velocity fitted there is fitted to the wrong
+        # thing.
+        from . import grids as _grids
+        from .config import DEFAULTS as _D
+        cfg_dom = {}
+        if args.config:
+            from .config import load_config as _load
+            cfg_dom = (_load(args.config).get("domain") or {})
+        bands = cfg_dom.get("bands") or _D["domain"]["bands"]
+        band_ok, used = _grids.band_mask(grid, bands)
+        threshold = float(getattr(args, "velocity_min_transmission", 0.95) or 0)
+        clean = clean_columns(args.cube, threshold) if threshold > 0 else None
+        velocity_mask = band_ok if clean is None else (band_ok & clean)
+        live = w0.sum(axis=0) > 0
+        log("shift measured on %d of %d columns: bands %s%s, and %.0f%% of the"
+            " grid survives both"
+            % (int((velocity_mask & live).sum()), int(live.sum()),
+               "+".join(used),
+               ", transmission above %.2f in 90%% of exposures" % threshold
+               if clean is not None else " (no transmission in the cube)",
+               100.0 * (velocity_mask & live).sum() / max(int(live.sum()), 1)),
+            "value")
+        velocity_mask = velocity_mask.astype(np.float64)
+    if velocity_term:
+        log("fitting one velocity per exposure alongside the components, as the"
+            " derivative of the reconstructed star: it keeps the star's own"
+            " motion out of the observer block, which would otherwise describe"
+            " it and the correction would then divide it back out of the flux",
+            "info")
+    else:
+        log("velocity term OFF: whatever the star's own motion leaves in the"
+            " residual is free to end up in the observer block, and to be"
+            " divided out of the corrected flux with it", "warn")
     log("each sweep solves the coefficients of both blocks jointly, then"
         " updates each basis; on %d rows x %d samples that is minutes, and one"
         " line is printed at the end of each" % (n_spectra, n_pixels))
@@ -1674,15 +2259,17 @@ def main(argv=None):
     for mad_round in range(int(args.max_mad_rounds) + 1):
         best = None
         worse = 0
+        prev_chi2, flat = None, 0
         hit = 0.0
         a_prev = b_prev = None      # carried between iterations, see the clip step
-        # A sweep on a few hundred exposures takes minutes and used to print
-        # nothing until it finished. Each phase now says it has started, so a
-        # slow sweep and a wedged one no longer look the same.
-        sweeps = _bar(total=args.iters, desc="fitting", unit="sweep")
+        # A sweep on a few hundred exposures takes minutes. There is no bar
+        # over the sweeps: each phase INSIDE a sweep has its own, labelled
+        # "sweep N: <phase>", which vanishes when the phase ends, and the
+        # sweep's one-line summary is printed once they are all gone, so
+        # nothing draws over it. A slow sweep and a wedged one still look
+        # different, which is what the bars are for.
         for iteration in range(args.iters):
-            if hasattr(sweeps, "set_postfix_str"):
-                sweeps.set_postfix_str("re-weighting")
+            _set_label("sweep %d" % iteration)
             # Re-weight before fitting, using the model as it stands. Iteration 0 has
             # no model yet, so the residual is the data itself, which is the right
             # thing: it catches cosmics and flares against the template before the
@@ -1695,10 +2282,16 @@ def main(argv=None):
                 # expensive call in the loop. Only iteration 0 has nothing to
                 # reuse.
                 if a_prev is None:
-                    a_prev, b_prev, _ = joint_coeffs(data, w, P, Q, shifter,
-                                                     delta, chunk=chunk,
-                                                     exposure=tie)
-                model_prev = star_model(P, a_prev, shifter, delta, n_spectra, n_pixels, chunk) \
+                    a_prev, b_prev, alpha_prev, _ = joint_coeffs(
+                        data, w, P, Q, shifter, delta, chunk=chunk,
+                        exposure=tie, velocity_from=a_lin,
+                        velocity_mask=velocity_mask, star_mean=star_mean,
+                        desc="re-weighting, coefficients")
+                model_prev = star_model(P, a_prev, shifter, delta, n_spectra,
+                                        n_pixels, chunk, alpha=alpha_prev,
+                                        velocity_mask=velocity_mask,
+                                        star_mean=star_mean,
+                                        desc="re-weighting, model") \
                     + b_prev @ Q
                 w, hit = clip_weights(w0, data - model_prev, clip=args.clip)
 
@@ -1708,14 +2301,14 @@ def main(argv=None):
             # basis and the fixed Earth basis, and it is exactly what lets the
             # fit attribute a feature to one frame rather than the other. Solve
             # the blocks separately and each one claims whatever it can reach.
-            if hasattr(sweeps, "set_postfix_str"):
-                sweeps.set_postfix_str("coefficients")
             tick = time.time()
-            a, b, cond = joint_coeffs(data, w, P, Q, shifter, delta, chunk=chunk,
-                                 exposure=tie)
+            a, b, alpha, cond = joint_coeffs(data, w, P, Q, shifter, delta,
+                                             chunk=chunk, exposure=tie,
+                                             velocity_from=a_lin,
+                                             velocity_mask=velocity_mask, star_mean=star_mean,
+                                             desc="coefficients")
+            a_lin = a if velocity_term else None
             t_coeff = time.time() - tick
-            if hasattr(sweeps, "set_postfix_str"):
-                sweeps.set_postfix_str("bases")
 
             # ---- M-step: one basis, then re-solve, then the other -----------
             # The re-solve in the middle is not optional. update_earth needs the
@@ -1724,47 +2317,110 @@ def main(argv=None):
             # that no longer exists, and the alternation stops descending.
             tick = time.time()
             if args.order == "star_first":
-                P = update_star(data, w, P, Q, a, b, shifter, delta, chunk)
-                a, b, _ = joint_coeffs(data, w, P, Q, shifter, delta, chunk=chunk,
-                                 exposure=tie)
-                Q = update_earth(data, w, P, Q, a, b, shifter, delta, chunk)
+                P = update_star(data, w, P, Q, a, b, shifter, delta, chunk,
+                                alpha=alpha, velocity_mask=velocity_mask,
+                                star_mean=star_mean)
+                a, b, alpha, _ = joint_coeffs(data, w, P, Q, shifter, delta,
+                                              chunk=chunk, exposure=tie,
+                                              velocity_from=a_lin,
+                                             velocity_mask=velocity_mask, star_mean=star_mean,
+                                             desc="coefficients")
+                a_lin = a if velocity_term else None
+                Q = update_earth(data, w, P, Q, a, b, shifter, delta, chunk,
+                                 alpha=alpha, velocity_mask=velocity_mask,
+                                star_mean=star_mean)
             else:
-                Q = update_earth(data, w, P, Q, a, b, shifter, delta, chunk)
-                a, b, _ = joint_coeffs(data, w, P, Q, shifter, delta, chunk=chunk,
-                                 exposure=tie)
-                P = update_star(data, w, P, Q, a, b, shifter, delta, chunk)
+                Q = update_earth(data, w, P, Q, a, b, shifter, delta, chunk,
+                                 alpha=alpha, velocity_mask=velocity_mask,
+                                star_mean=star_mean)
+                a, b, alpha, _ = joint_coeffs(data, w, P, Q, shifter, delta,
+                                              chunk=chunk, exposure=tie,
+                                              velocity_from=a_lin,
+                                             velocity_mask=velocity_mask, star_mean=star_mean,
+                                             desc="coefficients")
+                a_lin = a if velocity_term else None
+                P = update_star(data, w, P, Q, a, b, shifter, delta, chunk,
+                                alpha=alpha, velocity_mask=velocity_mask,
+                                star_mean=star_mean)
             t_basis = time.time() - tick
 
-            a, b, cond = joint_coeffs(data, w, P, Q, shifter, delta, chunk=chunk,
-                                 exposure=tie)
+            a, b, alpha, cond = joint_coeffs(data, w, P, Q, shifter, delta,
+                                             chunk=chunk, exposure=tie,
+                                             velocity_from=a_lin,
+                                             velocity_mask=velocity_mask, star_mean=star_mean,
+                                             desc="coefficients")
+            a_lin = a if velocity_term else None
             # these are what the next iteration's clip step would recompute
             a_prev, b_prev = a, b
-            model = star_model(P, a, shifter, delta, n_spectra, n_pixels, chunk) + b @ Q
+            model = star_model(P, a, shifter, delta, n_spectra, n_pixels, chunk,
+                               alpha=alpha, velocity_mask=velocity_mask,
+                               star_mean=star_mean, desc="scoring") + b @ Q
             # scored on w0: the clip weights change every iteration, so scoring on
             # them would be a moving target and the monotonicity check meaningless
             chi2 = float(np.sum(w0 * (data - model) ** 2, dtype=np.float64))
+            if iterate:
+                # the components' residual, which centring leaves as it is;
+                # centred before the state is kept, so that the kept state has
+                # its static content in the means, where the next step of the
+                # means has to find it
+                model *= -1.0
+                model += data
+                good_rows = (~rejected) & (w0.sum(axis=1) > 0)
+                a, b = center_blocks(data, a, b, P, Q, templates, means, group,
+                                     shifter, delta, chunk, good_rows, w=w0)
+                a_prev, b_prev = a, b
+                a_lin = a if velocity_term else None
             flag = ""
             if best is None or chi2 < best[0]:
-                best = (chi2, P.copy(), Q.copy(), iteration)
+                best = (chi2, P.copy(), Q.copy(), iteration,
+                        templates.copy(), means.copy())
                 worse = 0
             else:
                 worse += 1
                 flag = "   <- worse than iter %d" % best[3]
+            step = ""
+            if iterate:
+                tick = time.time()
+                for _ in range(MEAN_SWEEP_ROUNDS):
+                    step_t, step_o = update_means(
+                        data, w, templates, means, group, shifter, delta,
+                        chunk, resid=model, desc="per-parity means, both frames")
+                step = "  means moved %.1e/%.1e" % (step_t, step_o)
+                t_basis += time.time() - tick
+            del model
             # `data` here is already template- and mean-subtracted, so this chi2 is
             # the residual of the *full* model and can be quoted against chi2_raw.
+            shift = ""
+            if velocity_term:
+                v = shift_velocity(alpha[~rejected], dv) * 1000.0        # m/s
+                shift = "  shift %.1f m/s rms" % (
+                    1.4826 * np.median(np.abs(v - np.median(v))) if v.size else 0.0)
             log("  iter %d  R2=%.6f  left/raw=%.4f  clipped=%.3f%%"
-                  "  cond(A) med/max %.1f/%.1f  [%.1fs coeff, %.1fs bases]%s"
+                  "  cond(A) med/max %.1f/%.1f%s%s  [%.1fs coeff, %.1fs bases]%s"
                   % (iteration, 1 - chi2 / chi2_null, chi2 / chi2_raw, 100 * hit,
-                     np.median(cond), cond.max(), t_coeff, t_basis, flag))
-            if hasattr(sweeps, "update"):
-                sweeps.update(1)
+                     np.median(cond), cond.max(), shift, step, t_coeff, t_basis,
+                     flag))
+            # With the means iterated chi2 descends and settles, rather than
+            # turning over, and a settled fit gains nothing from more sweeps
+            if iterate and prev_chi2 is not None and 0 <= prev_chi2 - chi2 < 1e-4 * chi2:
+                flat += 1
+            else:
+                flat = 0
+            prev_chi2 = chi2
+            if flat >= 2:
+                log("  chi2 has settled, less than 0.01%% per sweep twice in a"
+                    " row; stopping at iteration %d" % iteration)
+                break
             if worse >= 2:
                 log("  chi2 has turned over; stopping and keeping iteration %d" % best[3])
                 break
-        if hasattr(sweeps, "close"):
-            sweeps.close()
+        _set_label(None)
 
-        chi2, P, Q, best_iter = best
+        chi2, P, Q, best_iter = best[:4]
+        if iterate:
+            # back to the means of the kept iterate, the data following them
+            restore_means(data, templates, means, best[4], best[5], group,
+                          shifter, delta, chunk, w=w0)
         log("  best iterate: %d, R2 = %.6f, %.4f of the raw weighted variance"
               " left" % (best_iter, 1 - chi2 / chi2_null, chi2 / chi2_raw))
 
@@ -1776,38 +2432,44 @@ def main(argv=None):
         # joint_coeffs leaves their coefficients at zero of its own accord.
         if args.max_mad <= 0 or mad_round == int(args.max_mad_rounds):
             break
-        a_now, b_now, _ = joint_coeffs(data, w, P, Q, shifter, delta, chunk=chunk,
-                                 exposure=tie)
+        a_now, b_now, _, _ = joint_coeffs(data, w, P, Q, shifter, delta,
+                                          chunk=chunk, exposure=tie,
+                                          velocity_from=a_lin,
+                                          velocity_mask=velocity_mask,
+                                          star_mean=star_mean)
         fresh = mad_outliers(np.hstack([a_now, b_now]), parity, args.max_mad,
                              rejected)
         if not fresh.any():
             log("  MAD cut at %.1f sigma: nothing left to reject" % args.max_mad)
             break
         rejected |= fresh
-        log("  MAD cut at %.1f sigma: rejecting %d spectra this round, %d of %d"
-              " in total (%.1f%%); refitting"
-              % (args.max_mad, int(fresh.sum()), int(rejected.sum()), n_spectra,
-                 100 * rejected.mean()))
+        log("  MAD cut at %.1f sigma: rejecting %d rows (%d exposures) this"
+            " round, %d of %d rows in total (%.1f%%); refitting"
+            % (args.max_mad, int(fresh.sum()), count_exposures(meta, fresh),
+               int(rejected.sum()), n_spectra, 100 * rejected.mean()))
         w0[fresh] = 0.0
         w = w0.copy()
         data[fresh] = 0.0
         # the per-parity mean moved when those rows left; take out the
         # difference, and in offset mode only the part of that difference that
-        # separates the parities, so the shared term stays in as before
-        residual_means, _ = parity_means(data, w0, parity)
-        if args.mean == "offset":
-            residual_means = residual_means - residual_means.mean(axis=0)
-        subtract_means(data, residual_means, group)
-        data[w0 <= 0] = 0.0
-        means = means + residual_means
+        # separates the parities, so the shared term stays in as before. With
+        # --mean iterate the next round's sweeps re-estimate both means anyway.
+        if not iterate:
+            residual_means, _ = parity_means(data, w0, parity)
+            if args.mean == "offset":
+                residual_means = residual_means - residual_means.mean(axis=0)
+            subtract_means(data, residual_means, group)
+            data[w0 <= 0] = 0.0
+            means = means + residual_means
         chi2_raw = float(chi2_raw_rows[~rejected].sum())
         chi2_null = float(np.sum(w0 * data ** 2, dtype=np.float64))
 
-    chi2, P, Q, best_iter = best
+    chi2, P, Q, best_iter = best[:4]
     if rejected.any():
-        log("  MAD cut kept %d of %d spectra (%d rejected at %.1f sigma)"
-              % (n_spectra - int(rejected.sum()), n_spectra,
-                 int(rejected.sum()), args.max_mad))
+        log("  MAD cut kept %d of %d rows; %d rows from %d exposures rejected"
+            " at %.1f sigma"
+            % (n_spectra - int(rejected.sum()), n_spectra, int(rejected.sum()),
+               count_exposures(meta, rejected), args.max_mad))
 
     if args.leakage:
         to_earth, to_star = leakage(data, w, P, Q, shifter, delta, chunk)
@@ -1817,16 +2479,20 @@ def main(argv=None):
             % np.array2string(np.round(to_star, 4)), "value")
 
     # ------------------------------------------------------- outputs -------
-    a, b, _ = joint_coeffs(data, w, P, Q, shifter, delta, chunk=chunk,
-                                 exposure=tie)
+    a, b, alpha, _ = joint_coeffs(data, w, P, Q, shifter, delta, chunk=chunk,
+                                  exposure=tie, velocity_from=a_lin,
+                                  velocity_mask=velocity_mask,
+                                  star_mean=star_mean)
     Pf = shifter.prepare(P)
     power_star = block_power(w, a, lambda s0, s1: shifter.carry(Pf, delta[s0:s1]))
     power_earth = block_power(w, b, lambda s0, s1: Q)
     P, a, power_star = tidy_block(P, a, power_star)
     Q, b, power_earth = tidy_block(Q, b, power_earth)
 
-    sig_formal, sig_scaled, chi2_red = coefficient_errors(
-        data, w0, P, Q, shifter, delta, a, b, chunk, exposure=tie)
+    sig_formal, sig_scaled, chi2_red, sig_vel = coefficient_errors(
+        data, w0, P, Q, shifter, delta, a, b, chunk, exposure=tie,
+        alpha=alpha if velocity_term else None,
+        velocity_mask=velocity_mask, star_mean=star_mean)
     n_star = a.shape[1]
     log("  median reduced chi2 per spectrum: %.3f   (1.0 would mean the noise"
           " model of 2.2 is exactly right)" % np.nanmedian(chi2_red))
@@ -1856,6 +2522,20 @@ def main(argv=None):
     for j in range(b.shape[1]):
         table["b%d" % (j + 1)] = b[:, j]              # observer-frame block
         table["eb%d" % (j + 1)] = sig_scaled[:, n_star + j]
+    if velocity_term:
+        # the shift the fit absorbed rather than let the observer block have.
+        # In pixels because that is what the solve works in, and in m/s because
+        # that is what it means, read back through the relativistic Doppler
+        # (grids.shift_velocity). Its error is the derivative there: dv km/s
+        # per pixel, to 1e-13 at these few pixels.
+        table["alpha"] = alpha
+        table["vrad_fit"] = shift_velocity(alpha, dv) * 1000.0
+        table["evrad_fit"] = sig_vel * dv * 1000.0
+        v = shift_velocity(alpha[~rejected], dv) * 1000.0
+        log("  velocity absorbed by the shift term: %.1f m/s rms, median"
+            " %+.1f, worst %+.1f"
+            % (1.4826 * np.median(np.abs(v - np.median(v))), np.median(v),
+               v[np.argmax(np.abs(v))] if v.size else 0.0), "value")
     csv_path = os.path.join(args.outdir, "coefficients.csv")
     table.write(csv_path, format="csv", overwrite=True)
     log("  wrote %s" % csv_path)
@@ -1871,8 +2551,11 @@ def main(argv=None):
         meta, [os.path.basename(str(v)) for v in meta["filename"]],
         source_dir=source_directory(args.cube))
 
+    mean = means[0] if means.shape[0] == 1 else np.average(
+        means, axis=0, weights=[np.sum(parity == g) for g in parity_groups])
     npz_path = os.path.join(args.outdir, "fit.npz")
-    np.savez_compressed(npz_path, bjd=bjd, a=a, b=b, P=P, Q=Q,
+    np.savez_compressed(npz_path, bjd=bjd, a=a, b=b, P=P, Q=Q, alpha=alpha,
+                        velocity_term=bool(velocity_term),
                         anc_labels=np.asarray(anc_labels, dtype="U32"),
                         anc_values=np.asarray(anc_values, dtype=float),
                         power_star=power_star, power_earth=power_earth,
@@ -1885,7 +2568,9 @@ def main(argv=None):
                         max_mad=float(args.max_mad), chi2_best=chi2, grid=grid,
                         tied=bool(args.tie_parities), dv=dv,
                         filename=np.asarray(meta["filename"], dtype="U64"),
-                        berv=np.asarray(meta["berv"], dtype=float))
+                        berv=np.asarray(meta["berv"], dtype=float),
+                        mean_mode=str(args.mean),
+                        **({"templates": templates} if iterate else {}))
     log("  wrote %s (re-plot without refitting)" % npz_path)
 
     # the rejected rows carry zero weight, so their coefficients are zeros and
@@ -1909,7 +2594,9 @@ def main(argv=None):
                           chi2_null, chi2, table, dv, tied=bool(args.tie_parities),
                           max_mad=float(args.max_mad),
                           frame="observer", highpass="log_sub",
-                          weights=w0, parity=parity)
+                          weights=w0, parity=parity,
+                          templates=templates if iterate else None,
+                          mean_mode=str(args.mean))
     # Nothing, on purpose. This is a console_script entry point, so whatever it
     # returns is handed to sys.exit: returning the two bases printed a pair of
     # arrays and exited 1 on a successful fit, which is why nothing could be

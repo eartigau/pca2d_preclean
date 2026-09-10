@@ -7,8 +7,79 @@ import hashlib
 import json
 import math
 import os
+import re
 
 import yaml
+
+
+class _ConfigLoader(yaml.SafeLoader):
+    """yaml.SafeLoader without YAML 1.1's base-60 numbers.
+
+    PyYAML follows YAML 1.1, where digits separated by a colon are a number in
+    base 60: an unquoted `1267:2` is read as 1267 * 60 + 2 = 76022, and even
+    `2450:0.5` as 147000.5. The windows in output.windows are written exactly
+    that way, centre:width in nm, so three of the eight became numbers in the
+    tens of thousands, landed outside the grid, and were skipped by the figure
+    scripts without a word. Only the ones whose centre had a decimal point
+    survived, because `1200.3:2` is not a base-60 pattern.
+
+    Everything else is SafeLoader: the same ints, floats, booleans and nulls,
+    so no other value in a config changes type.
+    """
+
+
+_ConfigLoader.yaml_implicit_resolvers = {
+    first: [(tag, rx) for tag, rx in entries
+            if tag not in ("tag:yaml.org,2002:int", "tag:yaml.org,2002:float")]
+    for first, entries in yaml.SafeLoader.yaml_implicit_resolvers.items()}
+# PyYAML 6's own two patterns, each minus its base-60 alternative
+_ConfigLoader.add_implicit_resolver(
+    "tag:yaml.org,2002:int",
+    re.compile(r"""^(?:[-+]?0b[0-1_]+
+                    |[-+]?0[0-7_]+
+                    |[-+]?(?:0|[1-9][0-9_]*)
+                    |[-+]?0x[0-9a-fA-F_]+)$""", re.X),
+    list("-+0123456789"))
+_ConfigLoader.add_implicit_resolver(
+    "tag:yaml.org,2002:float",
+    re.compile(r"""^(?:[-+]?(?:[0-9][0-9_]*)\.[0-9_]*(?:[eE][-+][0-9]+)?
+                    |\.[0-9][0-9_]*(?:[eE][-+][0-9]+)?
+                    |[-+]?\.(?:inf|Inf|INF)
+                    |\.(?:nan|NaN|NAN))$""", re.X),
+    list("-+0123456789."))
+
+
+def read_yaml(stream):
+    """A YAML document, read the way this package's configs mean it."""
+    return yaml.load(stream, Loader=_ConfigLoader)
+
+
+def check_windows(windows, domain):
+    """Say out loud about any window no figure can be drawn in.
+
+    The figure scripts skip such a window in a subprocess whose output is only
+    shown when it fails, so a window that could not be drawn used to vanish from
+    the PDF with nothing said. A number where a centre:width was meant is the
+    signature of the base-60 reading above, from a config read some other way.
+    """
+    from .logger import log
+
+    lo, hi = float(domain["wave_min"]), float(domain["wave_max"])
+    for spec in windows or []:
+        centre, _, width = str(spec).partition(":")
+        try:
+            c, w = float(centre), float(width or 2.0)
+        except ValueError:
+            log("output.windows: %r is not centre:width in nm, so it is not"
+                " drawn" % (spec,), "warn")
+            continue
+        if not lo <= c <= hi:
+            hint = ("; a number here is what YAML 1.1 makes of an unquoted"
+                    " centre:width, 1267:2 being read as 76022"
+                    if isinstance(spec, (int, float)) else "")
+            log("output.windows: %s is centred at %.1f nm, outside the domain"
+                " %.1f-%.1f nm, so it is not drawn%s" % (spec, c, lo, hi, hint),
+                "warn")
 
 # Every tunable lives here; config.yaml only needs to override what differs.
 DEFAULTS = {
@@ -153,6 +224,12 @@ DEFAULTS = {
         # of a run are asked to go, so pointing --out-dir somewhere new must
         # not orphan it.
         "cache_directory": "cache",
+        # Where a run's products are kept, when that is not the internal disk:
+        # each run folder, and LBL's, is a link to its place under it, made
+        # before anything is written (storage.py).
+        # None here, so that a clone on another machine does not aim at a disk
+        # it does not have; config.yaml names the one this campaign uses.
+        "fits_directory": None,
         "use_cache": True,
         "max_memory_gb": 12.0,       # refuse to allocate a cube larger than this
                                      # rather than driving the machine to swap
@@ -191,16 +268,17 @@ DEFAULTS = {
         # every exposure possible instead of nightly means; the weighted sums
         # accumulate in float64 whatever this says.
         "dtype": "float64",
-        # False since 2026-09-09. The template was a star-frame median
-        # subtracted before the components ran, and it is the mirror of the
-        # observer-frame mean that used to be subtracted before them too. That
-        # one was removed for a reason that applies here word for word: what is
-        # taken out before the fit is outside the model, and
-        # reconstruct.correction_on_grid removes components and never a
-        # template, so it was fitted by nothing and removed from nothing. Now
-        # neither frame gets a free zeroth order and each block describes its
-        # own static content. The only thing still subtracted is the
-        # even-minus-odd instrumental offset, which belongs to neither.
+        # The static part of the model (twoframe --mean). "offset": the
+        # one-shot per-parity observer-frame offset of the fit behind the
+        # reports, which the correction divides out with the observer block.
+        # "iterate", one mean per order parity in EACH frame re-estimated at
+        # every sweep with the components centred, separates the frames on a
+        # synthetic cube but does not converge yet on TOI2120 (2026-09-10: its
+        # star-frame mean moved more at every sweep and chi2 turned over after
+        # one), so it is not the default.
+        "mean": "offset",
+        # The one-shot star-frame median of the older modes; "iterate" makes
+        # its own star-frame mean, one per parity, and ignores this.
         "template": False,
         "shift": "lanczos",
         "kernel_halfwidth": 8,
@@ -208,6 +286,22 @@ DEFAULTS = {
         "leakage": True,
         "chunk": None,
         "order": "star_first",
+        # One velocity per exposure, fitted beside the components as the
+        # derivative of the reconstructed star carried to that exposure's BERV.
+        # It exists to keep the star's own motion OUT of the observer block:
+        # without it the block describes the shift, and dividing the block out
+        # of the flux writes that velocity into the corrected spectrum. Measured
+        # on TOI2120 it accounts for 41% of the variance of what the correction
+        # did to LBL's velocities. It is fitted and never divided out, since
+        # taking it out of the data would remove the signal being looked for.
+        "velocity_term": True,
+        # The shift is measured only on columns inside a photometric band whose
+        # telluric transmission stays above this in 90% of the exposures. Zero
+        # turns the transmission cut off and keeps the band cut. Fitting the
+        # star's velocity where the flux is mostly atmosphere is fitting it to
+        # the wrong thing: unmasked, the term came out 1.8 times larger than
+        # the velocity LBL measures on the same spectra.
+        "velocity_min_transmission": 0.95,
     },
     # ---------------------------------------------------------------- lbl ---
     # Handing both sets of spectra to LBL, the delivered ones and the corrected
@@ -228,6 +322,15 @@ DEFAULTS = {
         # as OBJTEMP and PP_TEFF; a number here overrides the header.
         "teff": "auto",
         "template": None,            # OBJECT_COMPARISON; None = each its own
+        # The corrected object's template is the fit's first star component
+        # at its mean amplitude (lbltemplate.py), written by LBL's own writer
+        # where LBL looks for it, so LBL's template step finds it and skips.
+        # A template LBL made for that object is never replaced.
+        "star_template": True,
+        # With two or more star components, the ones past the first go to
+        # LBL as RESPROJ tables STRPCA2..N, in the place of its DTEMP
+        # gradients, and each exposure's projection on them is an rdb column.
+        "strpca": True,
         "steps": ["template", "mask", "compute", "compile"],
         "link": "symlink",           # 'symlink' or 'copy' into LBL's tree
         "input_file": None,          # LBL's glob inside a science folder
@@ -270,7 +373,8 @@ def measure_pixel_dv(directory: str, pattern: str = "*t.fits") -> float:
     import numpy as np
 
     from .io import robust_open
-    from .tfits import C_KMS, extensions_for
+    from .grids import velocity
+    from .tfits import extensions_for
 
     paths = sorted(glob.glob(os.path.join(directory, pattern)))
     if not paths:
@@ -283,7 +387,8 @@ def measure_pixel_dv(directory: str, pattern: str = "*t.fits") -> float:
         except Exception:                                     # noqa: BLE001
             continue
         wave = np.atleast_2d(wave)
-        step = np.diff(wave, axis=-1) / wave[:, :-1] * C_KMS
+        with np.errstate(invalid="ignore", divide="ignore"):
+            step = velocity(np.diff(np.log(wave), axis=-1))
         # a NaN, a repeated wavelength or a decreasing one is not a pixel step
         step = step[np.isfinite(step) & (step > 0)]
         if step.size:
@@ -451,7 +556,7 @@ def load_config(path: str | None, object_name: str | None = None,
         if not os.path.exists(path):
             raise FileNotFoundError("config file not found: %s" % path)
         with open(path, "r") as handle:
-            user = yaml.safe_load(handle) or {}
+            user = read_yaml(handle) or {}
 
     layered = any(k in user for k in ("general", "instruments", "objects"))
     cfg = _deep_update(DEFAULTS, user.get("general", {}) if layered else user)
@@ -567,6 +672,13 @@ def cache_key(config: dict) -> str:
                                    and v is None)}
     relevant["weights"] = {k: v for k, v in relevant["weights"].items()
                            if not (k == "empirical_noise_box" and v is None)}
+    # The Doppler shift that registers each spectrum became relativistic
+    # (grids.doppler) on 2026-09-10; it was the first-order 1 + v/c, 0.003
+    # pixel (1.5 m/s) off at a 30 km/s BERV. A cube registered the old way must
+    # not be reused, so the formula is in the key. An observer-frame cube
+    # applies no shift at all, and keeps its key and its telluric map.
+    if relevant["registration"].get("frame") != "observer":
+        relevant["doppler"] = "relativistic"
     blob = json.dumps(relevant, sort_keys=True, default=str).encode()
     return hashlib.sha1(blob).hexdigest()[:12]
 
