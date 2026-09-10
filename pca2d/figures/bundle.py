@@ -40,6 +40,7 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 
 from pca2d.config import cache_key, load_config, spectra_dir  # noqa: E402
+from pca2d.logger import log                              # noqa: E402
 
 #: default windows, the ones this campaign looks at
 WINDOWS = ["1200.3:2", "1220:4", "1267:2", "1593.6:2", "1669.5:5", "1700.5:3",
@@ -160,13 +161,20 @@ def summary(config, args, fit):
     return "\n".join("%-*s   %s" % (width, k, v) for k, v in rows)
 
 
-def run(cmd, log):
-    """Run one diagnostic, and say so if it fails rather than dying."""
+def run(cmd, failures):
+    """Run one diagnostic, and say so if it fails rather than dying.
+
+    The second argument is the list of failures to append to. It was called
+    `log` until it shadowed the logger of that name, which every call in here
+    then went through, so a failing figure raised TypeError instead of being
+    written to the bundle's last page.
+    """
     log("   " + " ".join(os.path.basename(c) if c.endswith(".py") else c
-                           for c in cmd[:4]) + " ...")
+                         for c in cmd[:4]) + " ...")
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
-        log.append((" ".join(cmd), (r.stderr or r.stdout or "").strip()[-400:]))
+        failures.append((" ".join(cmd),
+                         (r.stderr or r.stdout or "").strip()[-400:]))
         log("      failed, see the bundle's last page")
     return r.returncode == 0
 

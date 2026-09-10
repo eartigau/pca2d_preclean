@@ -34,6 +34,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from astropy.timeseries import LombScargle
 
+from pca2d.logger import log
+
 SEASONAL = [(365.25, "1 yr"), (182.6, "1/2 yr")]
 
 

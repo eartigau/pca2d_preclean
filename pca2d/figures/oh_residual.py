@@ -31,6 +31,7 @@ import numpy as np
 from astropy.io import fits
 from scipy.stats import spearmanr
 
+from pca2d.logger import log
 from pca2d.tfits import extensions_for
 from pca2d.twoframe import (LanczosShifter, carry_template, fit_means,
                                  load_cube, mean_rows, star_model)

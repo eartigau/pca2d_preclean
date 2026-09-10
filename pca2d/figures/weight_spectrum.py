@@ -29,6 +29,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
+from pca2d.logger import log
 from pca2d.twoframe import LanczosShifter, load_cube
 
 
