@@ -56,6 +56,15 @@ def parse_args(argv=None):
     p.add_argument("--order", choices=["star_first", "earth_first"], default=None,
                    help="which block is updated first; star_first for a reason, see 11.7")
     p.add_argument("--iters", type=int, default=None)
+    p.add_argument("--patience", type=int, default=None,
+                   help="sweeps in a row allowed to be worse than the best before"
+                        " the fit stops; 2 by default")
+    p.add_argument("--keep", choices=("best", "last"), default=None,
+                   help="which iterate the fit keeps: the one of lowest chi2"
+                        " (default) or the last one run. The soft clip changes"
+                        " the weights every sweep, so successive chi2 are not"
+                        " strictly comparable, and the velocity term was still"
+                        " converging when the best chi2 was reached")
     p.add_argument("-k", "--n-star", type=int, default=None,
                    help="M, components in the STELLAR rest frame")
     p.add_argument("-j", "--n-earth", type=int, default=None,
@@ -149,7 +158,8 @@ CONFIGURABLE = ("n_star", "n_earth", "iters", "order", "tie_parities", "max_mad"
                 "template_berv_bin", "template_berv_min_entries",
                 "max_mad_rounds", "clip", "min_snr_frac", "template", "shift",
                 "kernel_halfwidth", "gap_guard", "leakage", "chunk", "dtype",
-                "velocity_term", "velocity_min_transmission", "mean")
+                "velocity_term", "velocity_min_transmission", "mean",
+                "patience", "keep")
 
 
 def _resolve(args):
@@ -2309,6 +2319,7 @@ def main(argv=None):
     rejected = np.zeros(n_spectra, dtype=bool)
     for mad_round in range(int(args.max_mad_rounds) + 1):
         best = None
+        best_chi2 = best_at = None
         worse = 0
         prev_chi2, flat = None, 0
         hit = 0.0
@@ -2422,13 +2433,18 @@ def main(argv=None):
                 a_prev, b_prev = a, b
                 a_lin = a if velocity_term else None
             flag = ""
-            if best is None or chi2 < best[0]:
-                best = (chi2, P.copy(), Q.copy(), iteration,
-                        templates.copy(), means.copy())
+            if best_chi2 is None or chi2 < best_chi2:
+                best_chi2, best_at = chi2, iteration
                 worse = 0
             else:
                 worse += 1
-                flag = "   <- worse than iter %d" % best[3]
+                flag = "   <- worse than iter %d" % best_at
+            # what is kept: the iterate of lowest chi2, or, with --keep last,
+            # whichever ran last; the stopping rule counts against the best
+            # either way
+            if best_at == iteration or args.keep == "last":
+                best = (chi2, P.copy(), Q.copy(), iteration,
+                        templates.copy(), means.copy())
             step = ""
             if iterate:
                 tick = time.time()
@@ -2462,8 +2478,9 @@ def main(argv=None):
                 log("  chi2 has settled, less than 0.01%% per sweep twice in a"
                     " row; stopping at iteration %d" % iteration)
                 break
-            if worse >= 2:
-                log("  chi2 has turned over; stopping and keeping iteration %d" % best[3])
+            if worse >= int(args.patience):
+                log("  chi2 has turned over; stopping and keeping iteration %d%s"
+                    % (best[3], " (the last, --keep last)" if args.keep == "last" else ""))
                 break
         _set_label(None)
 

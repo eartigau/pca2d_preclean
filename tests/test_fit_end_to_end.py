@@ -156,6 +156,14 @@ def test_the_residual_clip_finds_a_spike_and_reads_the_cube_in_blocks(cube, tmp_
         "the noise beside the spike is left alone")
 
 
+def test_the_last_iterate_can_be_kept_rather_than_the_best(cube, tmp_path):
+    """--keep last and --patience, an experiment's options; the defaults keep
+    the lowest chi2 and stop after two worse sweeps, as before."""
+    out = tmp_path / "last"
+    run(cube, out, "--keep", "last", "--patience", "99")
+    assert int(np.load(out / "fit.npz")["best_iter"]) == 2, "the last of three sweeps"
+
+
 def test_a_count_of_rows_is_reported_as_a_count_of_exposures():
     """Two rows per exposure, one per order parity: 632 rows are 316 spectra."""
     from pca2d.twoframe import count_exposures

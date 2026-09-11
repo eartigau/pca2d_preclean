@@ -252,6 +252,10 @@ DEFAULTS = {
         "n_star": 2,
         "n_earth": 7,
         "iters": 16,
+        # sweeps in a row worse than the best before the fit stops, and which
+        # iterate it keeps: 'best' (lowest chi2) or 'last'
+        "patience": 2,
+        "keep": "best",
         "tie_parities": True,
         # Rejection threshold in ROBUST SIGMAS, 1.4826 x MAD, not in MADs:
         # 10 here is 14.83 plain MADs. `max_sigma` is the name; `max_mad` is
