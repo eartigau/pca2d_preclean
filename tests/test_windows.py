@@ -26,7 +26,12 @@ def test_the_trap_is_real_with_the_ordinary_loader():
 
 
 def test_nothing_else_in_the_real_config_changes_type():
-    """Only the base-60 windows may differ between the two loaders."""
+    """Only the base-60 windows may differ between the two loaders.
+
+    config.yaml quotes its windows since 2026-09-11, so nothing differs at all
+    any more; the claim that stays is that the package's loader changes the type
+    of nothing else. That it reads an unquoted 1220:4 as text is tested above.
+    """
     def walk(a, b, path=""):
         if isinstance(a, dict) and isinstance(b, dict):
             for key in set(a) | set(b):
@@ -42,7 +47,6 @@ def test_nothing_else_in_the_real_config_changes_type():
     with open("config.yaml") as handle:
         new = read_yaml(handle)
     differences = list(walk(old, new))
-    assert differences, "config.yaml no longer has the windows this is about"
     for path, before, after in differences:
         assert path.startswith(".general.output.windows"), (
             "%s changed from %r to %r" % (path, before, after))

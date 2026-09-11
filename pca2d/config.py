@@ -324,6 +324,11 @@ DEFAULTS = {
         # components are not, since they may carry pixel-level detector
         # structure. Per instrument in config.yaml, as LBL's APPROX_RESOLUTION.
         "star_resolution": None,
+        # How the star-side vectors are carried and updated: 'grid', samples
+        # moved by the Lanczos kernel and updated from the diagonal of the
+        # normal equations; 'spline', one cubic B-spline evaluated at every
+        # exposure's shifted positions and updated exactly (pca2d.splinestar).
+        "star_basis": "grid",
     },
     # ---------------------------------------------------------------- lbl ---
     # Handing both sets of spectra to LBL, the delivered ones and the corrected

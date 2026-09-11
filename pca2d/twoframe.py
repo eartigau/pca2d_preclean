@@ -74,6 +74,12 @@ def parse_args(argv=None):
     p.add_argument("--velocity-min-transmission", type=float, default=None,
                    help="measure the shift only where the telluric transmission"
                         " stays above this; 0 keeps the band cut alone")
+    p.add_argument("--star-basis", choices=("grid", "spline"), default=None,
+                   help="how the star-side vectors are carried and updated:"
+                        " 'grid', samples carried by the Lanczos kernel and updated"
+                        " from the normal diagonal (default); 'spline', one cubic"
+                        " B-spline evaluated at each exposure's shifted positions"
+                        " and updated exactly (pca2d.splinestar)")
     p.add_argument("--star-resolution", type=float, default=None,
                    help="the instrument's resolving power: the star's spectra and"
                         " components are smoothed to one resolution element, c/R,"
@@ -167,7 +173,7 @@ CONFIGURABLE = ("n_star", "n_earth", "iters", "order", "tie_parities", "max_mad"
                 "max_mad_rounds", "clip", "min_snr_frac", "template", "shift",
                 "kernel_halfwidth", "gap_guard", "leakage", "chunk", "dtype",
                 "velocity_term", "velocity_min_transmission", "mean",
-                "patience", "keep", "star_resolution")
+                "patience", "keep", "star_resolution", "star_basis")
 
 
 def _resolve(args):
@@ -848,6 +854,16 @@ def update_star(data, w, P, Q, a, b, shifter, delta, chunk, alpha=None,
                      desc="star basis, taking the shift out" if alpha is not None
                      and np.any(alpha) else None, velocity_mask=velocity_mask,
                      star_mean=star_mean)
+    if getattr(shifter, "spline", False):
+        # the star as one B-spline (--star-basis spline): the same residual,
+        # and the exact solution of the banded normal equations in place of
+        # their diagonal
+        from .splinestar import solve_components
+        P_new = solve_components(resid, w, a, delta, shifter.pad)
+        if star_fwhm:
+            from .resolution import smooth_rows
+            P_new = smooth_rows(P_new, star_fwhm)
+        return P_new
     resid *= w
     resid_star = shifter.adjoint(resid, delta,
                                  desc="star basis, carrying home")
@@ -2141,6 +2157,16 @@ def main(argv=None):
         n_pixels, a=args.kernel_halfwidth,
         max_shift=int(np.ceil(np.abs(delta).max())) + 2,
     )
+    if getattr(args, "star_basis", "grid") == "spline":
+        # the star side as one cubic B-spline, carried by evaluating it at each
+        # row's shifted positions and updated exactly; data and weights still
+        # go through the Lanczos kernel (pca2d.splinestar)
+        from .splinestar import SplineStar
+        shifter = SplineStar(shifter)
+        log("the star as one cubic B-spline with a knot per sample, evaluated at"
+            " each exposure's shifted positions and updated by the exact banded"
+            " normal equations; the data and weights are still carried by the"
+            " Lanczos kernel", "value")
     if args.gap_guard and getattr(shifter, "banded", False):
         # the holes are the star frame's: columns the basis cannot be
         # constrained at once every row is carried home. Twice, since dropping
@@ -2712,6 +2738,8 @@ def main(argv=None):
                         mean_mode=str(args.mean),
                         # R the star side was smoothed to; 0 when it was not
                         star_resolution=float(getattr(args, "star_resolution", None) or 0),
+                        # how the star side was carried and updated
+                        star_basis=str(getattr(args, "star_basis", None) or "grid"),
                         # the star-frame spectra per parity, from --mean iterate
                         # or --mean star; every reader takes them from here
                         **({"templates": templates} if star_mean is not None else {}))
