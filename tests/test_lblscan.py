@@ -49,9 +49,10 @@ def test_the_pages_of_a_partial_matrix_are_drawn():
     groups = [(kind, fixed, [by_tag[t] for t in members])
               for kind, fixed, members in lblscan.scan_groups(tags)]
     assert len(groups) == 3, "two observer scans and one star scan"
-    for fig in [lblscan.metrics_page(delivered, groups), lblscan.matrix_page(delivered, runs)]
-            + [lblscan.series_page(delivered, g[2], lblscan.group_name(g[0], g[1]))
-               for g in groups]:
+    figures = [lblscan.metrics_page(delivered, groups), lblscan.matrix_page(delivered, runs)]
+    figures += [lblscan.series_page(delivered, g[2], lblscan.group_name(g[0], g[1]))
+                for g in groups]
+    for fig in figures:
         assert fig is not None
         plt.close(fig)
     assert lblscan.matrix_page(delivered, runs[:3]) is None, "one star count is not a matrix"
