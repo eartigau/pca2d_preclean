@@ -119,7 +119,7 @@ def _fit(cube, out, *extra):
 
 
 def test_the_fit_runs_with_the_spline_star_and_fits_as_well(cube, tmp_path):
-    grid_fit = _fit(cube, tmp_path / "grid")
+    grid_fit = _fit(cube, tmp_path / "grid", "--star-basis", "grid")
     spline_fit = _fit(cube, tmp_path / "spline", "--star-basis", "spline")
     assert str(spline_fit["star_basis"]) == "spline"
     assert np.all(np.isfinite(spline_fit["P"]))
