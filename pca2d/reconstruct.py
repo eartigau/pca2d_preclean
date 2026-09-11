@@ -126,6 +126,12 @@ def parse_args(argv=None):
     p.add_argument("--clip-window", type=int, default=151,
                    help="the running sigma's box in grid samples; the high"
                         " pass's own window is what the pipeline passes")
+    p.add_argument("--shrink", action="store_true",
+                   help="keep each observer component at a column only as far as"
+                        " the data detect it there: Q_ji times max(0, 1 - 1/z^2),"
+                        " z its significance from every row's own weight, the"
+                        " weights scaled by the fit's reduced chi2 (pca2d.shrink)."
+                        " Needs --cube and the fit's archive")
     p.add_argument("--overwrite", action="store_true")
     p.add_argument("--cube", default=None,
                    help="the cube the fit was made from. With it, every sample"
@@ -307,7 +313,11 @@ def correction_on_grid(model, row, n_star=None, n_earth=None, halfwidth=8):
     earth = np.zeros(model["grid"].size)
     if j:
         b = np.array([row["b%d" % (i + 1)] for i in range(j)])
-        earth = b @ model["Q"][:j]
+        Q = model["Q"][:j]
+        if model.get("shrink") is not None:
+            # each component kept only as far as the data detect it (--shrink)
+            Q = Q * model["shrink"][:j]
+        earth = b @ Q
     star_obs = (carry_star(star_rest, row["berv"], model["dv"], halfwidth)
                 if k else star_rest)
     return star_obs + earth, k, j
@@ -542,6 +552,8 @@ def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
         head["PCA2RNAN"] = (n_clipped, "samples beyond it in panel 5, set to NaN")
     head["PCA2REJ"] = (bool(row["rejected"]), "exposure was MAD-rejected")
     head["PCA2RFIT"] = (bool(refit), "coefficients solved for this file, basis fixed")
+    head["PCA2SHRK"] = (model.get("shrink") is not None,
+                        "observer comps kept only where significant")
     for key, value, comment in coefficient_cards(model, row, k, j):
         head[key] = (value, comment)
     head.add_history("two-frame PCA: %d star-frame + %d observer-frame"
@@ -796,6 +808,34 @@ def correct_many(model, args):
         log("  %d grid samples beyond it, over %d exposures"
             % (sum(int(v.sum()) for v in clipped_by_file.values()),
                len(clipped_by_file)), "value")
+    if getattr(args, "shrink", False):
+        # each observer component kept at a column only as far as the data
+        # detect it there (pca2d.shrink). Held apart from Q, which a refit
+        # still solves against, and applied where the correction is built
+        from .shrink import shrink_factors
+        fit_path = os.path.join(os.path.dirname(os.path.abspath(args.fits)), "fit.npz")
+        if not getattr(args, "cube", None) or not os.path.exists(fit_path):
+            raise SystemExit("--shrink needs --cube and the fit's archive beside"
+                             " %s: %s" % (args.fits, fit_path))
+        b_rows = np.asarray(np.load(fit_path)["b"], dtype=float)
+        _, _, w_cube, _ = _bcd.load_cube(args.cube, dtype=np.float32)
+        if b_rows.shape[0] != w_cube.shape[0]:
+            raise SystemExit("--shrink: the fit has %d rows and the cube %d"
+                             % (b_rows.shape[0], w_cube.shape[0]))
+        chi2 = np.asarray(model["coeffs"]["chi2_red"], dtype=float)
+        good = np.isfinite(chi2) & (chi2 > 0)
+        scale = float(np.median(chi2[good])) if good.any() else 1.0
+        model["shrink"] = shrink_factors(model["Q"], b_rows, w_cube, chi2_scale=scale)
+        del w_cube
+        live = np.any(model["Q"] != 0, axis=0)
+        log("  observer components shrunk by their significance at each column,"
+            " the weights scaled by the fit's median reduced chi2, %.2f" % scale)
+        for j, factor in enumerate(model["shrink"]):
+            kept = factor[live]
+            log("    component %d: kept in full (factor > 0.9) at %.1f%% of the"
+                " columns, dropped (0) at %.1f%%, mean factor %.2f"
+                % (j + 1, 100 * np.mean(kept > 0.9), 100 * np.mean(kept == 0),
+                   float(kept.mean())), "value")
     written = skipped = refitted = 0
     progress = _bar(pairs, desc="correcting", unit="file")
     for path, preset in progress:
