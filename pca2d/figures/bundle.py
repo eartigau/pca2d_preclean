@@ -234,6 +234,8 @@ def main(argv=None):
             " extension, which only SPIRou writes", "warn")
     run([py, d("coeff_periodogram.py"), "--fit", fit_path,
          "--out", os.path.join(tmp, "periodogram.pdf")], failures)
+    run([py, d("ancillary_time.py"), "--cube", args.cube, "--fit", fit_path,
+         "--title", str(obj), "--out", os.path.join(tmp, "ancillary.pdf")], failures)
     # Only scripts that take --windows are used, so the cube is loaded once per
     # script and not once per window. The per-window ones cost a full cube read
     # each: on 321 exposures that is 4.1 GB and a minute and a half, and with
@@ -253,15 +255,26 @@ def main(argv=None):
         fig.text(0.5, 0.52, "%d star + %d observer components"
                  % (config["twoframe"]["n_star"], config["twoframe"]["n_earth"]),
                  fontsize=11, ha="center", color="0.3")
+        # the code that drew this report; the run's own is in its parameters
+        from ..provenance import stamp as code_stamp
+        fig.text(0.5, 0.49, "drawn by pca2d %s" % code_stamp(), fontsize=9,
+                 ha="center", color="0.5")
         pdf.savefig(fig)
         plt.close(fig)
         text_pages(pdf, "What was run", summary(config, args, fit), size=8.5)
+    params = os.path.join(tmp, "_parameters.pdf")
+    with PdfPages(params) as pdf:
         text_pages(pdf, "Parameters, as resolved (copy this back into a YAML)",
                    yaml.safe_dump(config, sort_keys=False, default_flow_style=False,
                                   width=94))
 
     # ---- bind ------------------------------------------------------------
     order = [("Front matter", front)]
+    # then the campaign itself, before any model: every quantity the
+    # correlations are measured against, over time
+    order.append(("Every quantity of the correlations, against time",
+                  os.path.join(tmp, "ancillary.pdf")))
+    order.append(("Parameters", params))
     # the whole chain first, one page per window: it is the overview every
     # other figure is a detail of
     order.append(("The sequence, step by step", os.path.join(tmp, "sequence.pdf")))

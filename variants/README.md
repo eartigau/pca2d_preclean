@@ -36,7 +36,7 @@ in m/s:
 | spl_shrsig | spl_shr, significance smoothed | 21.17 | 16.39 | 19.73 |
 | spl_shrQ23 | spl_shr, observer components 2 and 3 smoothed | 21.00 | 16.61 | 19.54 |
 | spl_ss025 | spline star smoothed to 1/4 element, shrunk | 21.48 | 15.84 | 19.98 |
-| spl_ss025s | spl_ss025, LBL template smoothed like the star | pending | | |
+| spl_ss025s | spl_ss025, LBL template smoothed like the star | 21.50 | 15.86 | 20.00 |
 | spl_ss05 | spline star smoothed to 1/2 element, shrunk | 21.91 | 16.45 | 20.35 |
 
 - **Templates built before the smoothing reached them:** star_sg, star_sg05 and spl_ss025 were measured against LBL templates built before the star smoothing propagated to the template.

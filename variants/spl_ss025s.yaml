@@ -2,7 +2,7 @@
 # LBL template smoothed like the star. Run with --stages lbl: it writes into
 # spl_ss025's folder and only the LBL object is new.
 #   pca2d-preclean --object TOI2120 --variant spl_ss025s --stages lbl
-note: "LBL pending"
+note: "LBL rms 21.50, robust 15.86, nightly 20.00 m/s; the smoothed template changes nothing (spl_ss025: 21.48, 15.84, 19.98)"
 highpass:
   window: 151
 twoframe:
