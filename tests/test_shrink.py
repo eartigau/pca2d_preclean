@@ -109,6 +109,19 @@ def test_a_smoothed_component_gains_significance_and_the_others_are_untouched():
         "smoothing and shrinking did not bring the component closer to the truth")
 
 
+def test_a_block_of_columns_gives_what_the_whole_grid_does():
+    """The sequence figure computes the correction on a window's block of
+    columns, the correct stage on the whole grid: away from the block's edges
+    they must agree, both smoothings included."""
+    from pca2d.shrink import correction_basis
+    Q, b, w = _problem()
+    whole, _ = correction_basis(Q, b, w, 2.0, True, True, [1], 9)
+    a0, b0 = 1000, 2600
+    block, _ = correction_basis(Q[:, a0:b0], b, w[:, a0:b0], 2.0, True, True, [1], 9)
+    inner = slice(100, -100)
+    assert np.allclose(block[:, inner], whole[:, a0:b0][:, inner], atol=1e-12)
+
+
 def test_the_correct_stage_is_told_what_the_config_asks():
     from pca2d.cli import shrink_args
     cfg = {"correct": {"shrink": True, "shrink_smooth": True, "smooth_components": [2, 3]},

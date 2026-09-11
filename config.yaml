@@ -157,7 +157,9 @@ general:
   twoframe:
     n_star: 1               # components anchored in the STELLAR rest frame
     n_earth: 3              # components anchored in the OBSERVER frame
-    mean: offset            # the static part: the one-shot per-parity
+    mean: star              # nominal since 2026-09-11: one star-frame spectrum
+                            # per parity and no observer-frame mean (below).
+                            # offset: the one-shot per-parity
                             # offset the reports were made with; the correction
                             # divides it out with the observer block. (iterate:
                             # per-parity means in both frames, re-estimated
@@ -297,8 +299,9 @@ general:
                             # sigmas, 1.4826 MAD over highpass.window samples.
                             # The count goes in the header as PCA2RNAN. null
                             # keeps them all.
-    shrink: false           # divide each observer component out only as far as
-                            # the data detect it at that column: Q_ji times
+    shrink: true            # nominal since 2026-09-11: divide each observer
+                            # component out only as far as the data detect it
+                            # at that column: Q_ji times
                             # max(0, 1 - 1/z^2), z its significance with every
                             # row's own weight, the weights scaled by the fit's
                             # reduced chi2 (pca2d.shrink). Where it goes to

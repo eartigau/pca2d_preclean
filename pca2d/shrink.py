@@ -87,6 +87,38 @@ def shrink_factors(Q, b, w, chi2_scale=1.0, smooth_fwhm=None):
     return james_stein(z2)
 
 
+def correction_basis(Q, b, w, chi2_scale=1.0, shrink=True, shrink_smooth=False,
+                     smooth_which=(), fwhm=None):
+    """(Q_correct, factors): the observer basis the correction divides out.
+
+    What reconstruct.correct_many divides out of the files and what panels 3
+    and 6 of the sequence figure show, from one place so the two cannot
+    differ. The components in `smooth_which` (0-based) are smoothed and shrunk
+    by the significance they then have; the others are shrunk by their own,
+    its z^2 averaged over `fwhm` samples with `shrink_smooth`, or left whole
+    when `shrink` is off. Column by column apart from those smoothings, so a
+    block of columns with a margin wider than the filter gives the columns
+    inside it exactly what the whole grid does.
+    """
+    Q = np.asarray(Q, dtype=float)
+    var = component_variance(b, w, chi2_scale)
+    out = Q.copy()
+    factors = np.ones_like(Q)
+    which = list(smooth_which or [])
+    if which:
+        smoothed, f_smooth = smoothed_components(Q, var, which, fwhm)
+        out[which] = smoothed[which]
+        factors[which] = f_smooth[which]
+    others = [j for j in range(Q.shape[0]) if j not in which]
+    if shrink and others:
+        z2 = Q[others] ** 2 / var[others]
+        if shrink_smooth:
+            z2 = np.array([smooth(row, fwhm, polyorder=0) for row in z2])
+        factors[others] = james_stein(z2)
+        out[others] = factors[others] * Q[others]
+    return out, factors
+
+
 def smoothed_components(Q, var, which, fwhm):
     """Q with the components in `which` (0-based) smoothed by LBL's template
     filter over `fwhm` samples and shrunk by the significance they then have,

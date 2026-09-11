@@ -353,10 +353,22 @@ def stamp(path):
         return None
 
 
+def star_fwhm(fit):
+    """The FWHM, in samples, the fit smoothed its star side to (fit.npz
+    star_fwhm, from twoframe.star_smooth); 0 when it did not, or when the fit
+    predates the key."""
+    files = list(getattr(fit, "files", fit.keys()))
+    return int(fit["star_fwhm"]) if "star_fwhm" in files else 0
+
+
 def template_stamp(fit_path):
     """PCA2FIT: the fit's stamp and the template rule, so that a template made
     from the same fit by an older rule is made again."""
-    return "%s t%d" % (fit_stamp(fit_path), TEMPLATE_VERSION)
+    # a template made from a smoothed star carries the width in its stamp, so
+    # one is never taken for the other and the smoothed one is made afresh
+    fwhm = star_fwhm(np.load(fit_path))
+    return "%s t%d%s" % (fit_stamp(fit_path), TEMPLATE_VERSION,
+                         " s%d" % fwhm if fwhm else "")
 
 
 def parity_split(columns):
@@ -378,6 +390,16 @@ def build(cube, fit_path, config_file, object_name, science_files, path, run="")
     fit = np.load(fit_path)
     ln_star, _, P = mean_star(fit)
     grid, count, wsum, rows, resid = star_coverage(cube, fit)
+    # Where the fit smoothed its star side (twoframe.star_smooth), the part of
+    # the template it did not fit, each parity's residual mean, goes through
+    # the same filter at the same width: added raw, it would hand LBL back
+    # exactly the structure finer than the resolution the smoothing took out
+    fwhm = star_fwhm(fit)
+    if fwhm:
+        from .resolution import smooth
+        resid = np.array([np.where(np.isfinite(r),
+                                   smooth(np.where(np.isfinite(r), r, 0.0), fwhm),
+                                   np.nan) for r in resid])
     ln_star = ln_star + np.where(np.isfinite(resid), resid, 0.0)
     columns = template_columns(ln_star, count, wsum, rows)
     inst = lbl_instrument(config_file, object_name)

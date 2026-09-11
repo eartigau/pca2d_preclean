@@ -51,10 +51,10 @@ from pca2d.twoframe import (LanczosShifter, cube_grid, fit_means,  # noqa: E402
 #: colour-blind safe categorical palette (CVD delta E 24.7 between them)
 BEFORE, AFTER = "#2a78d6", "#eb6834"
 
-#: the panels that show what is left once a block is taken out, a few times
-#: smaller than the spectrum itself: they get their own stretch, twice the
-#: width of their 5-95 percentile range, centred on zero
-RESIDUAL_PANELS = ("nostar", "resid")
+#: the panels that show what is left once a block is taken out, and the
+#: correction itself, all a few times smaller than the spectrum: they get their
+#: own stretch, twice the width of their 5-95 percentile range, centred on zero
+RESIDUAL_PANELS = ("nostar", "resid", "applied")
 
 
 def parse_args(argv=None):
@@ -67,6 +67,12 @@ def parse_args(argv=None):
     p.add_argument("--source-dir", default=None)
     p.add_argument("--n-overplot", type=int, default=5)
     p.add_argument("--out", required=True)
+    # what the correct stage divides out, so that panels 3 and 6 show exactly
+    # that; cli.shrink_args hands the same flags to both
+    p.add_argument("--shrink", action="store_true")
+    p.add_argument("--shrink-smooth", action="store_true")
+    p.add_argument("--smooth-components", default=None)
+    p.add_argument("--resolution", type=float, default=None)
     return p.parse_args(argv)
 
 
@@ -96,7 +102,7 @@ def panel(ax, image, x, scale, title, cmap=None):
 
 
 def window_arrays(cube, fit, means, group, grid, dv, delta, centre, width,
-                  templates=None):
+                  templates=None, correct=None):
     """The panels of one window, on the grid block around it, in the star's frame.
 
     Everything one page needs, computed on window_block's columns alone: the
@@ -126,6 +132,21 @@ def window_arrays(cube, fit, means, group, grid, dv, delta, centre, width,
                                     templates[1], shifter, delta, 0, n)
     earth = fit["b"] @ fit["Q"][:, a0:b0]
     n_star, n_earth = int(fit["P"].shape[0]), int(fit["Q"].shape[0])
+    # What the correct stage divides out of the files: the observer block as
+    # the fit has it, or shrunk where the data do not detect it (--shrink and
+    # its variants), by the very function reconstruct.correct_many calls.
+    # Column by column, so this block with its margin gives the window what
+    # the whole grid gives the files.
+    applied = offset + earth
+    shrunk = bool(correct) and bool(correct.get("shrink")
+                                    or correct.get("smooth_which"))
+    if shrunk:
+        from ..shrink import correction_basis
+        Q_correct, _ = correction_basis(
+            fit["Q"][:, a0:b0], fit["b"], w0, correct.get("chi2_scale", 1.0),
+            bool(correct.get("shrink")), bool(correct.get("shrink_smooth")),
+            correct.get("smooth_which") or (), correct.get("fwhm"))
+        applied = offset + fit["b"] @ Q_correct
 
     # Panel 4 is panel 3's mirror: the star block taken out instead of the
     # observer one, so what is left is everything that is not the star. In the
@@ -142,12 +163,16 @@ def window_arrays(cube, fit, means, group, grid, dv, delta, centre, width,
             ("both frames' parity means" if np.any(means[:, a0:b0])
              else "the star's spectrum per parity") if star_mean
             else "the observer parity mean")),
-        ("corrected", lambda: data - offset - earth,
+        ("corrected", lambda: data - applied,
          "3. minus the OBSERVER block: what a corrected file holds"),
         ("nostar", lambda: data - star,
          "4. minus the STAR block: everything that is not the star"),
         ("resid", lambda: data - offset - star - earth,
          "5. minus everything: what nobody explained"),
+        ("applied", lambda: applied,
+         "6. what the correction divides out%s"
+         % (": shrunk where the data do not detect it" if shrunk
+            else ", the observer block and its mean")),
     ]
     home = {}
     alive = live_mask(shifter.rows(w0, -delta))
@@ -160,10 +185,24 @@ def window_arrays(cube, fit, means, group, grid, dv, delta, centre, width,
             "shifter": shifter, "titles": [(name, t) for name, _, t in steps]}
 
 
-def load_context(cube, fit_path, source_dir=None):
-    """What every page shares: the fit, its means, the rows and their BERV."""
+def load_context(cube, fit_path, source_dir=None, shrink=False, shrink_smooth=False,
+                 smooth_components=None, resolution=None):
+    """What every page shares: the fit, its means, the rows and their BERV, and
+    how the correct stage divides the observer block out (panels 3 and 6):
+    the same options reconstruct takes, the weights scaled by the fit's median
+    reduced chi2 as it scales them."""
     fit = np.load(fit_path)
     dv = float(fit["dv"])
+    which = [int(v) - 1 for v in str(smooth_components or "").split(",") if v.strip()]
+    correct = None
+    if shrink or which:
+        from ..resolution import fwhm_samples
+        chi2 = np.asarray(fit["chi2_red"], dtype=float)
+        good = np.isfinite(chi2) & (chi2 > 0)
+        correct = {"shrink": bool(shrink), "shrink_smooth": bool(shrink_smooth),
+                   "smooth_which": which,
+                   "fwhm": fwhm_samples(resolution, dv) if resolution else None,
+                   "chi2_scale": float(np.median(chi2[good])) if good.any() else 1.0}
     grid = cube_grid(cube)
     # the rows and their metadata; one column is the cheapest way to get them
     _, _, _, meta = load_cube(cube, columns=np.arange(1))
@@ -177,7 +216,7 @@ def load_context(cube, fit_path, source_dir=None):
             "templates": fit_templates(fit, meta, n, grid.size),
             "names": [os.path.basename(str(v)) for v in meta["filename"]],
             "sample_path": sample_source_file(cube, meta, source_dir),
-            "source_dir": source_dir}
+            "source_dir": source_dir, "correct": correct}
 
 
 def draw_window(ctx, centre, width, n_overplot=5):
@@ -191,7 +230,8 @@ def draw_window(ctx, centre, width, n_overplot=5):
     parity, berv = ctx["parity"], ctx["berv"]
     lo, hi = centre - 0.5 * width, centre + 0.5 * width
     arrays = window_arrays(ctx["cube"], fit, ctx["means"], ctx["group"], grid, dv,
-                           delta, centre, width, templates=ctx["templates"])
+                           delta, centre, width, templates=ctx["templates"],
+                           correct=ctx.get("correct"))
     if arrays is None:
         log("  %.1f-%.1f nm: outside the grid, skipped" % (lo, hi), "warn")
         return None
@@ -321,7 +361,8 @@ def draw_window(ctx, centre, width, n_overplot=5):
 
 def main(argv=None):
     args = parse_args(argv)
-    ctx = load_context(args.cube, args.fit, args.source_dir)
+    ctx = load_context(args.cube, args.fit, args.source_dir, args.shrink,
+                       args.shrink_smooth, args.smooth_components, args.resolution)
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     with PdfPages(args.out) as pdf:
         for centre, width in (parse_window(spec) for spec in args.windows):

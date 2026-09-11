@@ -87,3 +87,23 @@ def test_the_samples_blanked_are_the_samples_the_fit_did_not_weight(fitted):
         assert np.array_equal(alive[str(meta["filename"][i])][int(parity[i]) % 2],
                               want), i
     assert not alive["0001t.fits"][1][700:720].any(), "the hole must be blanked"
+
+
+def test_panel_6_is_what_panel_3_took_out_and_it_shrinks(fitted):
+    """Panel 6 shows the correction the files have divided out, and panel 3 is
+    the data less exactly that, whether the correction was shrunk or not."""
+    from pca2d.figures.sequence import load_context, window_arrays
+    cube, out = fitted
+    applied = {}
+    for shrink in (False, True):
+        ctx = load_context(cube, str(out / "fit.npz"), shrink=shrink)
+        arr = window_arrays(ctx["cube"], ctx["fit"], ctx["means"], ctx["group"],
+                            ctx["grid"], ctx["dv"], ctx["delta"],
+                            float(ctx["grid"][1000]), 1.0,
+                            templates=ctx["templates"], correct=ctx["correct"])
+        home = arr["home"]
+        ok = np.isfinite(home["given"]) & np.isfinite(home["applied"])
+        assert np.allclose(home["corrected"][ok], (home["given"] - home["applied"])[ok],
+                           atol=1e-5)
+        applied[shrink] = np.abs(home["applied"][ok]).sum()
+    assert applied[True] < applied[False], "shrinking did not take anything off"

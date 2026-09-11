@@ -845,8 +845,8 @@ def correct_many(model, args):
         # over a resolution element first, their significance taken after. Held
         # apart from Q, which a refit still solves against, and applied where
         # the correction is built (correction_on_grid)
-        from .resolution import fwhm_samples, smooth
-        from .shrink import component_variance, james_stein, smoothed_components
+        from .resolution import fwhm_samples
+        from .shrink import correction_basis
         fit_path = os.path.join(os.path.dirname(os.path.abspath(args.fits)), "fit.npz")
         if not getattr(args, "cube", None) or not os.path.exists(fit_path):
             raise SystemExit("--shrink and --smooth-components need --cube and the"
@@ -859,24 +859,13 @@ def correct_many(model, args):
         chi2 = np.asarray(model["coeffs"]["chi2_red"], dtype=float)
         good = np.isfinite(chi2) & (chi2 > 0)
         scale = float(np.median(chi2[good])) if good.any() else 1.0
-        var = component_variance(b_rows, w_cube, scale)
-        del w_cube
         fwhm = (fwhm_samples(args.resolution, model["dv"])
                 if getattr(args, "resolution", None) else None)
         Q = np.asarray(model["Q"], dtype=float)
-        Q_correct = Q.copy()
-        factors = np.ones_like(Q)
-        if smooth_which:
-            smoothed, f_smooth = smoothed_components(Q, var, smooth_which, fwhm)
-            Q_correct[smooth_which] = smoothed[smooth_which]
-            factors[smooth_which] = f_smooth[smooth_which]
-        others = [j for j in range(Q.shape[0]) if j not in smooth_which]
-        if shrink and others:
-            z2 = Q[others] ** 2 / var[others]
-            if shrink_smooth:
-                z2 = np.array([smooth(row, fwhm, polyorder=0) for row in z2])
-            factors[others] = james_stein(z2)
-            Q_correct[others] = factors[others] * Q[others]
+        # the same function the sequence figure's panels 3 and 6 call
+        Q_correct, factors = correction_basis(Q, b_rows, w_cube, scale, shrink,
+                                              shrink_smooth, smooth_which, fwhm)
+        del w_cube
         model["Q_correct"] = Q_correct
         model["shrink"] = factors if shrink else None
         model["shrink_smooth"] = shrink_smooth

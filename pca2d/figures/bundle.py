@@ -216,10 +216,13 @@ def main(argv=None):
     py = sys.executable
     d = lambda name: os.path.join(HERE, name)                 # noqa: E731
     log("  building the figures")
+    # the correct stage's own options, so panels 3 and 6 show what the files
+    # actually have divided out (imported here: cli imports this module)
+    from ..cli import shrink_args
     run([py, d("sequence.py"), "--cube", args.cube, "--fit", fit_path,
          "--windows", *args.windows, "--source-dir",
          args.source_dir or spectra_dir(config),
-         "--out", os.path.join(tmp, "sequence.pdf")], failures)
+         "--out", os.path.join(tmp, "sequence.pdf"), *shrink_args(config)], failures)
     run([py, d("weight_spectrum.py"), "--cube", args.cube, "--fit", fit_path,
          "--out", os.path.join(tmp, "weights.pdf")], failures)
     src = args.source_dir or spectra_dir(config)
