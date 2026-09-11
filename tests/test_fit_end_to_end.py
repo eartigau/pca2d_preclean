@@ -133,6 +133,29 @@ def test_the_star_template_reads_the_cube_in_blocks_and_gets_the_same_numbers(cu
     assert np.isfinite(whole[4]).any(), "the residual means exist somewhere"
 
 
+def test_the_residual_clip_finds_a_spike_and_reads_the_cube_in_blocks(cube, tmp_path):
+    """A spike the fit never saw, fifty times the cube's noise, is cut and its
+    neighbours are not; and a block of columns at a time cuts exactly what the
+    whole cube does. The toy cube's lines are an ln f of -1 deep against a
+    noise of 0.01, so three sweeps leave model errors on their flanks that the
+    clip cuts too; the test looks at the spike and the samples around it."""
+    from pca2d.outliers import residual_outliers
+    run(cube, tmp_path / "fit")
+    fit = np.load(tmp_path / "fit" / "fit.npz")
+    data = np.load(os.path.join(cube, "data.npy"))
+    data[4, 1000] += 0.5
+    np.save(os.path.join(cube, "data.npy"), data)
+    whole = residual_outliers(cube, fit, 8.0, 151, block=None)
+    blocks = residual_outliers(cube, fit, 8.0, 151, block=300)
+    assert whole.keys() == blocks.keys()
+    for name in whole:
+        assert np.array_equal(whole[name], blocks[name]), name
+    row = whole["0002t.fits"][0]                  # row 4: exposure 2, even orders
+    assert row[1000]
+    assert not row[985:1000].any() and not row[1001:1016].any(), (
+        "the noise beside the spike is left alone")
+
+
 def test_a_count_of_rows_is_reported_as_a_count_of_exposures():
     """Two rows per exposure, one per order parity: 632 rows are 316 spectra."""
     from pca2d.twoframe import count_exposures

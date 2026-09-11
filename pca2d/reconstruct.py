@@ -119,6 +119,13 @@ def parse_args(argv=None):
                         " applies that night's coefficients to each of them,"
                         " using each exposure's own BERV to place the star"
                         " basis. Nights absent from the fit are skipped")
+    p.add_argument("--nsig-cut", type=float, default=None,
+                   help="also NaN every sample whose residual, panel 5 of the"
+                        " sequence figure, is beyond this many running robust"
+                        " sigmas (outliers.residual_outliers); needs --cube")
+    p.add_argument("--clip-window", type=int, default=151,
+                   help="the running sigma's box in grid samples; the high"
+                        " pass's own window is what the pipeline passes")
     p.add_argument("--overwrite", action="store_true")
     p.add_argument("--cube", default=None,
                    help="the cube the fit was made from. With it, every sample"
@@ -433,7 +440,8 @@ def weighted_on_pixels(alive, wave, grid):
 
 
 def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
-                 halfwidth=8, overwrite=False, max_sky=None, alive=None):
+                 halfwidth=8, overwrite=False, max_sky=None, alive=None,
+                 clipped=None, clip_nsig=None):
     """Write a t.fits with the model divided out. Returns the new path.
 
     The model lives in `ln f - savgol(ln f)`, so removing it from the flux is a
@@ -465,6 +473,7 @@ def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
     n_orders = flux.shape[0]
     touched = 0
     blanked = 0
+    n_clipped = 0
     for order in range(n_orders):
         got = order_correction(model, correction, j, order, wave[order])
         if got is None:
@@ -478,6 +487,13 @@ def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
             bad = ~weighted_on_pixels(alive[order % 2], wave[order], model["grid"])
             blanked += int((bad & np.isfinite(flux[order])).sum())
             flux[order][bad] = np.nan
+        if clipped is not None:
+            # NaN wherever the residual, panel 5, put a grid sample beside the
+            # pixel beyond the clip: the model explains the rest of the order
+            # and not that, whatever it is
+            cut = ~weighted_on_pixels(~clipped[order % 2], wave[order], model["grid"])
+            n_clipped += int((cut & np.isfinite(flux[order])).sum())
+            flux[order][cut] = np.nan
         touched += int(live.sum())
 
     # Propagate the sky mask: samples the airglow drowned were excluded from
@@ -507,6 +523,9 @@ def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
     head["PCA2MEAN"] = (bool(j), "observer-frame parity mean divided out")
     if alive is not None:
         head["PCA2WNAN"] = (blanked, "samples the fit gave no weight, set to NaN")
+    if clipped is not None:
+        head["PCA2RSIG"] = (float(clip_nsig or 0), "residual clip, in running robust sigma")
+        head["PCA2RNAN"] = (n_clipped, "samples beyond it in panel 5, set to NaN")
     head["PCA2REJ"] = (bool(row["rejected"]), "exposure was MAD-rejected")
     for key, value, comment in coefficient_cards(model, row, k, j):
         head[key] = (value, comment)
@@ -734,6 +753,23 @@ def correct_many(model, args):
     else:
         log("  no --cube: samples the fit gave no weight to keep their flux,"
             " which panel 3 of the sequence figure does not show", "warn")
+    clipped_by_file = None
+    if getattr(args, "nsig_cut", None):
+        if not getattr(args, "cube", None):
+            raise SystemExit("--nsig-cut needs --cube: the residual it clips is"
+                             " the cube less the model")
+        from .outliers import residual_outliers
+        fit_path = os.path.join(os.path.dirname(os.path.abspath(args.fits)), "fit.npz")
+        if not os.path.exists(fit_path):
+            raise SystemExit("--nsig-cut needs the fit's archive beside %s: %s"
+                             % (args.fits, fit_path))
+        log("  clipping the residual, panel 5, beyond %.1f running robust sigmas"
+            " over %d samples" % (args.nsig_cut, args.clip_window))
+        clipped_by_file = residual_outliers(args.cube, np.load(fit_path),
+                                            args.nsig_cut, args.clip_window)
+        log("  %d grid samples beyond it, over %d exposures"
+            % (sum(int(v.sum()) for v in clipped_by_file.values()),
+               len(clipped_by_file)), "value")
     written = skipped = refitted = 0
     progress = _bar(pairs, desc="correcting", unit="file")
     for path, preset in progress:
@@ -752,10 +788,12 @@ def correct_many(model, args):
             refitted += 1
         alive = (alive_by_file.get(os.path.basename(path))
                  if alive_by_file is not None else None)
+        clipped = (clipped_by_file.get(os.path.basename(path))
+                   if clipped_by_file is not None else None)
         new, touched, total = correct_file(
             model, row, path, args.corrected_dir, args.n_star, args.n_earth,
             args.kernel_halfwidth, args.overwrite, max_sky=args.max_sky_ratio,
-            alive=alive)
+            alive=alive, clipped=clipped, clip_nsig=getattr(args, "nsig_cut", None))
         written += 1
         # onto the bar, not onto its own line: three hundred of these scroll
         # the narration off the screen and say nothing a total cannot

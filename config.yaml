@@ -277,6 +277,12 @@ general:
                             # measure. Only what is fixed in the observer's
                             # frame comes off.
     n_earth: null           # null means every observer component the fit has
+    nsig_cut: null          # also NaN every sample whose residual (panel 5 of
+                            # the sequence figure: the data less everything the
+                            # fit models) is beyond this many running robust
+                            # sigmas, 1.4826 MAD over highpass.window samples.
+                            # The count goes in the header as PCA2RNAN. null
+                            # keeps them all.
 
 # ---------------------------------------------------------------------------
 # One block per spectrograph. The instrument is read from the INSTRUME keyword

@@ -222,7 +222,19 @@ def run_correct(plan):
         "--n-star", str(n_star), "--n-earth", str(n_earth),
         "--max-sky-ratio", str(cfg["quality"]["max_sky_ratio"] or 0),
         "--source-dir", plan["directory"], "--cube", plan["cube"],
-        "--corrected-dir", plan["corrdir"], "--overwrite"])
+        "--corrected-dir", plan["corrdir"], "--overwrite", *clip_args(cfg)])
+
+
+def clip_args(cfg):
+    """The correct stage's residual clip, when correct.nsig_cut asks for one:
+    panel 5 beyond that many running robust sigmas over the high pass's window."""
+    nsig = (cfg.get("correct") or {}).get("nsig_cut")
+    if not nsig:
+        return []
+    log("and setting to NaN every sample whose residual, panel 5, is beyond %.1f"
+        " running robust sigmas" % float(nsig), "info")
+    return ["--nsig-cut", str(float(nsig)),
+            "--clip-window", str(int(cfg["highpass"]["window"]))]
 
 
 def run_lbl(plan):
