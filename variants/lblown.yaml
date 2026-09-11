@@ -1,0 +1,14 @@
+# lblown: the corrected spectra measured against the template LBL builds from
+# them, not against the fit's star template.
+#
+# Every corrected object so far has LBL measuring lines about 20% broader than
+# in the delivered spectra (Proxima 9216 -> 11306 m/s, TOI2120 9414 -> 11010,
+# TOI4552 8584 -> 10779), whatever the variant, and its per-exposure error
+# grows with it. The one thing they share is the fit's star template. This
+# variant changes that and nothing else: correction only, on the nominal's fit,
+# with the same corrected spectra.
+reuse_fit: nominal
+note: "asks whether the fit's star template is what broadens the lines"
+lbl:
+  before: false
+  star_template: false
