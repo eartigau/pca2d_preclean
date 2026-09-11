@@ -765,6 +765,43 @@ def refit_row(model, path, config, shifter, base_row):
     return row, alive
 
 
+def shrink_model(model, fits_path, cube, shrink=True, shrink_smooth=False,
+                 smooth_which=(), resolution=None):
+    """Give the model the observer basis the correct stage divides out.
+
+    Each observer component kept at a column only as far as the data detect it
+    there (pca2d.shrink), the components asked for smoothed over a resolution
+    element first, their significance taken after. Held apart from Q, which a
+    refit still solves against, and applied where the correction is built
+    (correction_on_grid). The same function the sequence figure's panels 3 and
+    6 call. Returns (the chi2 scale, the FWHM or None, the factors).
+    """
+    from .resolution import fwhm_samples
+    from .shrink import correction_basis
+    fit_path = os.path.join(os.path.dirname(os.path.abspath(fits_path)), "fit.npz")
+    if not cube or not os.path.exists(fit_path):
+        raise SystemExit("--shrink and --smooth-components need --cube and the"
+                         " fit's archive beside %s: %s" % (fits_path, fit_path))
+    b_rows = np.asarray(np.load(fit_path)["b"], dtype=float)
+    _, _, w_cube, _ = _bcd.load_cube(cube, dtype=np.float32)
+    if b_rows.shape[0] != w_cube.shape[0]:
+        raise SystemExit("the fit has %d rows and the cube %d"
+                         % (b_rows.shape[0], w_cube.shape[0]))
+    chi2 = np.asarray(model["coeffs"]["chi2_red"], dtype=float)
+    good = np.isfinite(chi2) & (chi2 > 0)
+    scale = float(np.median(chi2[good])) if good.any() else 1.0
+    fwhm = fwhm_samples(resolution, model["dv"]) if resolution else None
+    Q = np.asarray(model["Q"], dtype=float)
+    Q_correct, factors = correction_basis(Q, b_rows, w_cube, scale, shrink,
+                                          shrink_smooth, smooth_which, fwhm)
+    del w_cube
+    model["Q_correct"] = Q_correct
+    model["shrink"] = factors if shrink else None
+    model["shrink_smooth"] = shrink_smooth
+    model["smoothed_components"] = [j + 1 for j in smooth_which]
+    return scale, fwhm, factors
+
+
 def correct_many(model, args):
     """--correct over one file or over every exposure in the fit."""
     if (args.all or args.by_night) and not args.source_dir:
@@ -840,36 +877,14 @@ def correct_many(model, args):
         raise SystemExit("--smooth-components: the fit has %d observer components"
                          % model["n_earth"])
     if shrink or smooth_which:
-        # each observer component kept at a column only as far as the data
-        # detect it there (pca2d.shrink), and the components asked for smoothed
-        # over a resolution element first, their significance taken after. Held
-        # apart from Q, which a refit still solves against, and applied where
-        # the correction is built (correction_on_grid)
-        from .resolution import fwhm_samples
-        from .shrink import correction_basis
-        fit_path = os.path.join(os.path.dirname(os.path.abspath(args.fits)), "fit.npz")
-        if not getattr(args, "cube", None) or not os.path.exists(fit_path):
-            raise SystemExit("--shrink and --smooth-components need --cube and the"
-                             " fit's archive beside %s: %s" % (args.fits, fit_path))
-        b_rows = np.asarray(np.load(fit_path)["b"], dtype=float)
-        _, _, w_cube, _ = _bcd.load_cube(args.cube, dtype=np.float32)
-        if b_rows.shape[0] != w_cube.shape[0]:
-            raise SystemExit("the fit has %d rows and the cube %d"
-                             % (b_rows.shape[0], w_cube.shape[0]))
-        chi2 = np.asarray(model["coeffs"]["chi2_red"], dtype=float)
-        good = np.isfinite(chi2) & (chi2 > 0)
-        scale = float(np.median(chi2[good])) if good.any() else 1.0
-        fwhm = (fwhm_samples(args.resolution, model["dv"])
-                if getattr(args, "resolution", None) else None)
+        # the observer basis as the files will have it divided out
+        # (shrink_model), by the function the sequence figure's panels 3 and 6
+        # call
+        scale, fwhm, factors = shrink_model(model, args.fits,
+                                            getattr(args, "cube", None), shrink,
+                                            shrink_smooth, smooth_which,
+                                            getattr(args, "resolution", None))
         Q = np.asarray(model["Q"], dtype=float)
-        # the same function the sequence figure's panels 3 and 6 call
-        Q_correct, factors = correction_basis(Q, b_rows, w_cube, scale, shrink,
-                                              shrink_smooth, smooth_which, fwhm)
-        del w_cube
-        model["Q_correct"] = Q_correct
-        model["shrink"] = factors if shrink else None
-        model["shrink_smooth"] = shrink_smooth
-        model["smoothed_components"] = [j + 1 for j in smooth_which]
         live = np.any(Q != 0, axis=0)
         log("  observer components shrunk by their significance at each column,"
             " the weights scaled by the fit's median reduced chi2, %.2f%s%s"

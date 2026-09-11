@@ -109,6 +109,39 @@ def test_panel_6_is_what_panel_3_took_out_and_it_shrinks(fitted):
     assert applied[True] < applied[False], "shrinking did not take anything off"
 
 
+def test_a_shrunk_file_divides_out_panel_6(fitted):
+    """With --shrink, what the correct stage divides out of an order is panel 6
+    as the figure computes it: from fit.npz's amplitudes and chi2 and the
+    cube's weights, where the correct stage reads the components file's
+    coefficient table and the weights in float32. Checked on a real TOI-2120
+    file on 2026-09-11 (largest difference 8e-11 in ln f); this pins it."""
+    from pca2d.reconstruct import shrink_model
+    from pca2d.shrink import correction_basis
+    cube, out = fitted
+    fit = np.load(out / "fit.npz")
+    fits_path = str(out / "twoframe_components.fits")
+    model = load_model(fits_path)
+    shrink_model(model, fits_path, cube)
+    _, _, w0, meta = load_cube(cube)
+    n, grid = len(meta), model["grid"]
+    parity = row_parity(meta, n)
+    chi2 = np.asarray(fit["chi2_red"], dtype=float)
+    scale = float(np.median(chi2[np.isfinite(chi2) & (chi2 > 0)]))
+    Q_figure, _ = correction_basis(fit["Q"], fit["b"], w0, scale, True)
+    assert not np.allclose(Q_figure, fit["Q"]), "nothing was shrunk: the test is empty"
+    means, group = fit_means(fit, meta, n, grid.size)
+    panel6 = np.asarray(mean_rows(means, group, n)) + fit["b"] @ Q_figure
+    coeffs = {str(row["filename"]): row for row in model["coeffs"]}
+    inner = slice(100, -100)
+    for i in range(n):
+        row = coeffs[str(meta["filename"][i])]
+        correction, _, j = correction_on_grid(model, row, 0, model["n_earth"])
+        values, live = order_correction(model, correction, j, int(parity[i]),
+                                        grid[inner])
+        assert live.any()
+        assert np.allclose(values[live], panel6[i][inner][live], rtol=0, atol=1e-7), i
+
+
 def test_the_figure_runs_as_the_bundle_runs_it(fitted, tmp_path):
     """The bundle runs sequence.py as a script, where a relative import fails:
     on 2026-09-11 one did, and the report came out without its sequence pages."""
