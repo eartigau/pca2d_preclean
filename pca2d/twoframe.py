@@ -74,6 +74,10 @@ def parse_args(argv=None):
     p.add_argument("--velocity-min-transmission", type=float, default=None,
                    help="measure the shift only where the telluric transmission"
                         " stays above this; 0 keeps the band cut alone")
+    p.add_argument("--star-resolution", type=float, default=None,
+                   help="the instrument's resolving power: the star's spectra and"
+                        " components are smoothed to one resolution element, c/R,"
+                        " by LBL's template filter; the observer components are not")
     p.add_argument("--velocity-term", dest="velocity_term",
                    action="store_true", default=None,
                    help="fit one velocity per exposure beside the components;"
@@ -163,7 +167,7 @@ CONFIGURABLE = ("n_star", "n_earth", "iters", "order", "tie_parities", "max_mad"
                 "max_mad_rounds", "clip", "min_snr_frac", "template", "shift",
                 "kernel_halfwidth", "gap_guard", "leakage", "chunk", "dtype",
                 "velocity_term", "velocity_min_transmission", "mean",
-                "patience", "keep")
+                "patience", "keep", "star_resolution")
 
 
 def _resolve(args):
@@ -821,7 +825,7 @@ def mstep(residual, weights, coeffs, basis, floor_frac=1e-2):
 
 
 def update_star(data, w, P, Q, a, b, shifter, delta, chunk, alpha=None,
-                velocity_mask=None, star_mean=None):
+                velocity_mask=None, star_mean=None, star_fwhm=None):
     """Step 3: deflate the Earth model, carry the weighted residual home.
 
     The normal equation wants sum_n c^2 S_n^T W_n S_n; we use its diagonal. With
@@ -829,6 +833,11 @@ def update_star(data, w, P, Q, a, b, shifter, delta, chunk, alpha=None,
     approximation to it; with the FFT it is dense and the diagonal is not (11.3).
     Either way the diagonal is now computed exactly by `diag_normal` rather than
     approximated by a shifted weight map, and needs no clipping.
+
+    With `star_fwhm`, one resolution element in samples, every updated vector is
+    smoothed to it by LBL's template filter and made orthonormal again: the star
+    has nothing finer (pca2d.resolution). update_earth has no such step, since an
+    observer component may carry pixel-level detector structure.
     """
     # built in place: `data - b @ Q`, then `w * that`, then the adjoint. Spelled
     # the obvious way this holds four N x M float64 arrays at once.
@@ -848,7 +857,11 @@ def update_star(data, w, P, Q, a, b, shifter, delta, chunk, alpha=None,
     with np.errstate(invalid="ignore", divide="ignore"):
         resid_star /= np.where(w_star > 1e-12, w_star, 1.0)
     resid_star[w_star <= 1e-12] = 0.0
-    return mstep(resid_star, w_star, a, P)
+    P_new = mstep(resid_star, w_star, a, P)
+    if star_fwhm:
+        from .resolution import smooth_rows
+        P_new = smooth_rows(P_new, star_fwhm)
+    return P_new
 
 
 def update_earth(data, w, P, Q, a, b, shifter, delta, chunk, alpha=None,
@@ -2203,6 +2216,16 @@ def main(argv=None):
     # component. Since 2026-09-10 the correction divides out the parity mean as
     # well (reconstruct.order_correction), so what is subtracted here comes out
     # of the corrected files too.
+    # the star's spectra and components smoothed to one resolution element, as
+    # LBL smooths its templates (pca2d.resolution); the observer block is not
+    star_fwhm = None
+    if getattr(args, "star_resolution", None):
+        from .resolution import fwhm_samples
+        star_fwhm = fwhm_samples(args.star_resolution, dv)
+        log("the star side smoothed to R = %.0f: one resolution element is %d"
+            " samples of %.2f km/s, LBL's template filter; the observer"
+            " components are not smoothed"
+            % (float(args.star_resolution), star_fwhm, dv), "value")
     templates = np.zeros_like(means)
     star_mean = None
     if args.mean == "star":
@@ -2224,6 +2247,9 @@ def main(argv=None):
                 data[rows_g], w[rows_g], shifter, delta[rows_g],
                 berv=berv_rows[rows_g], berv_bin=args.template_berv_bin,
                 berv_min_entries=args.template_berv_min_entries)
+            if star_fwhm:
+                from .resolution import smooth
+                templates[g] = smooth(templates[g], star_fwhm)
         subtract_carried(data, templates, group, shifter, delta, chunk, w=w)
         data[w <= 0] = 0.0
         means = np.zeros_like(means)
@@ -2425,7 +2451,7 @@ def main(argv=None):
             if args.order == "star_first":
                 P = update_star(data, w, P, Q, a, b, shifter, delta, chunk,
                                 alpha=alpha, velocity_mask=velocity_mask,
-                                star_mean=star_mean)
+                                star_mean=star_mean, star_fwhm=star_fwhm)
                 a, b, alpha, _ = joint_coeffs(data, w, P, Q, shifter, delta,
                                               chunk=chunk, exposure=tie,
                                               velocity_from=a_lin,
@@ -2447,7 +2473,7 @@ def main(argv=None):
                 a_lin = a if velocity_term else None
                 P = update_star(data, w, P, Q, a, b, shifter, delta, chunk,
                                 alpha=alpha, velocity_mask=velocity_mask,
-                                star_mean=star_mean)
+                                star_mean=star_mean, star_fwhm=star_fwhm)
             t_basis = time.time() - tick
 
             a, b, alpha, cond = joint_coeffs(data, w, P, Q, shifter, delta,
@@ -2684,6 +2710,8 @@ def main(argv=None):
                         filename=np.asarray(meta["filename"], dtype="U64"),
                         berv=np.asarray(meta["berv"], dtype=float),
                         mean_mode=str(args.mean),
+                        # R the star side was smoothed to; 0 when it was not
+                        star_resolution=float(getattr(args, "star_resolution", None) or 0),
                         # the star-frame spectra per parity, from --mean iterate
                         # or --mean star; every reader takes them from here
                         **({"templates": templates} if star_mean is not None else {}))

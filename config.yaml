@@ -332,6 +332,11 @@ instruments:
         J: [1170.0, 1330.0]
         H: [1490.0, 1780.0]
         K: [2030.0, 2370.0]
+    twoframe:
+      star_resolution: 70000  # lambda/dlambda, LBL's APPROX_RESOLUTION for
+                              # SPIRou: the star's spectra and components are
+                              # smoothed to c/R as LBL smooths its templates;
+                              # the observer components are not
 
   NIRPS:
     lbl:
@@ -356,6 +361,8 @@ instruments:
         Y: [970.0, 1070.0]
         J: [1170.0, 1330.0]
         H: [1490.0, 1780.0]
+    twoframe:
+      star_resolution: 80000  # lambda/dlambda, LBL's APPROX_RESOLUTION for NIRPS
     input:
       nightly_stack: true   # NIRPS takes three or four exposures a visit and
                             # the campaign cubes were built this way; kept

@@ -89,3 +89,36 @@ def test_the_correction_is_the_observer_block_alone_and_panel_3(fitted):
         assert live.mean() > 0.9, "no support to correct without an observer mean"
         assert np.allclose(values[live], subtracted[i][inner][live],
                            rtol=0, atol=1e-9), i
+
+
+@pytest.fixture(scope="module")
+def smoothed(fitted, tmp_path_factory):
+    """The same cube, with the star side smoothed to one resolution element of
+    5 samples (R = 120 000 at 0.5 km/s)."""
+    cube, _ = fitted
+    out = tmp_path_factory.mktemp("fit_smoothed")
+    main(["--cube", cube, "--outdir", str(out), "--iters", "3", "-k", "1",
+          "-j", "2", "--max-mad", "0", "--mean", "star",
+          "--star-resolution", "120000"])
+    return out
+
+
+def _roughness(v):
+    """rms of the second difference where the vector has support: its structure
+    at the scale of one sample."""
+    v = np.asarray(v, dtype=float)
+    live = v != 0
+    d2 = np.diff(v, 2)[live[1:-1] & live[:-2] & live[2:]]
+    return float(np.sqrt(np.mean(d2 ** 2)))
+
+
+def test_the_star_side_is_smoothed_and_the_observer_side_is_not(fitted, smoothed):
+    _, raw = fitted
+    before, after = np.load(raw / "fit.npz"), np.load(smoothed / "fit.npz")
+    for key in ("templates", "P"):
+        for row_b, row_a in zip(np.atleast_2d(before[key]), np.atleast_2d(after[key])):
+            assert _roughness(row_a) < 0.5 * _roughness(row_b), key
+    rough_before = np.mean([_roughness(r) for r in before["Q"]])
+    rough_after = np.mean([_roughness(r) for r in after["Q"]])
+    assert rough_after > 0.5 * rough_before, "the observer components were smoothed"
+    assert float(after["star_resolution"]) == 120000.0

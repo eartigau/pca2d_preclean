@@ -317,6 +317,13 @@ DEFAULTS = {
         # the wrong thing: unmasked, the term came out 1.8 times larger than
         # the velocity LBL measures on the same spectra.
         "velocity_min_transmission": 0.95,
+        # The instrument's resolving power, lambda/dlambda. When set, the star's
+        # spectra per parity (--mean star) and the star components P are
+        # smoothed to one resolution element, c/R, by LBL's own filter
+        # (pca2d.resolution): the star has nothing finer. The observer
+        # components are not, since they may carry pixel-level detector
+        # structure. Per instrument in config.yaml, as LBL's APPROX_RESOLUTION.
+        "star_resolution": None,
     },
     # ---------------------------------------------------------------- lbl ---
     # Handing both sets of spectra to LBL, the delivered ones and the corrected
