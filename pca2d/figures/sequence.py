@@ -141,7 +141,7 @@ def window_arrays(cube, fit, means, group, grid, dv, delta, centre, width,
     shrunk = bool(correct) and bool(correct.get("shrink")
                                     or correct.get("smooth_which"))
     if shrunk:
-        from ..shrink import correction_basis
+        from pca2d.shrink import correction_basis
         Q_correct, _ = correction_basis(
             fit["Q"][:, a0:b0], fit["b"], w0, correct.get("chi2_scale", 1.0),
             bool(correct.get("shrink")), bool(correct.get("shrink_smooth")),
@@ -196,7 +196,7 @@ def load_context(cube, fit_path, source_dir=None, shrink=False, shrink_smooth=Fa
     which = [int(v) - 1 for v in str(smooth_components or "").split(",") if v.strip()]
     correct = None
     if shrink or which:
-        from ..resolution import fwhm_samples
+        from pca2d.resolution import fwhm_samples
         chi2 = np.asarray(fit["chi2_red"], dtype=float)
         good = np.isfinite(chi2) & (chi2 > 0)
         correct = {"shrink": bool(shrink), "shrink_smooth": bool(shrink_smooth),

@@ -107,3 +107,24 @@ def test_panel_6_is_what_panel_3_took_out_and_it_shrinks(fitted):
                            atol=1e-5)
         applied[shrink] = np.abs(home["applied"][ok]).sum()
     assert applied[True] < applied[False], "shrinking did not take anything off"
+
+
+def test_the_figure_runs_as_the_bundle_runs_it(fitted, tmp_path):
+    """The bundle runs sequence.py as a script, where a relative import fails:
+    on 2026-09-11 one did, and the report came out without its sequence pages."""
+    import os
+    import subprocess
+    import sys
+
+    import pca2d.figures.sequence as seq
+    cube, out = fitted
+    grid = np.load(os.path.join(cube, "grid.npy"))
+    pdf = tmp_path / "sequence.pdf"
+    r = subprocess.run([sys.executable, seq.__file__, "--cube", cube,
+                        "--fit", str(out / "fit.npz"),
+                        "--windows", "%.3f:1" % grid[1000], "--out", str(pdf),
+                        "--shrink", "--shrink-smooth", "--smooth-components", "1",
+                        "--resolution", "70000"],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr[-800:]
+    assert pdf.exists()
