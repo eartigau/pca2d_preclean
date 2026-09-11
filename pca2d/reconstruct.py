@@ -168,6 +168,13 @@ def load_model(path):
         model["templates"] = ({nm.split("_", 1)[1]:
                                np.asarray(basis[nm], dtype=np.float64)
                                for nm in names} or None)
+        # where the fit had data, from its own weight sums per parity: the
+        # correction may touch a grid sample only there. It used to be read off
+        # the observer mean (mean != 0), which a fit that keeps no observer
+        # mean (--mean star) has at zero everywhere.
+        sums = [c for c in basis.columns.names if c.startswith("weight_sum_")]
+        model["support"] = (np.any([np.asarray(basis[c], dtype=np.float64) > 0
+                                    for c in sums], axis=0) if sums else None)
     return model
 
 
@@ -254,6 +261,8 @@ def reconstruct(model, row, halfwidth=8, path=None):
         # the basis has no support where the mean is exactly zero, and that is
         # per parity, so the mask has to be rebuilt for each order's parity
         support = mean != 0.0
+        if model.get("support") is not None:
+            support = support | model["support"]     # see order_correction
         w = wave[order]
         ok = np.isfinite(w)
         if not ok.any():
@@ -387,8 +396,13 @@ def order_correction(model, correction, n_earth, order, wave):
     names = list(model["means"].keys())
     grid = model["grid"]
     mean = model["means"][names[order % 2] if len(names) > 1 else names[0]]
-    # the basis has no support where the mean is exactly zero, per parity
+    # where the fit had data: its own weight sums, and, as before, wherever the
+    # observer mean is not zero. A fit that keeps no observer mean (--mean
+    # star) has one that is zero everywhere, and the mean alone would then
+    # leave nothing to correct.
     support = mean != 0.0
+    if model.get("support") is not None:
+        support = support | model["support"]
     ok = np.isfinite(wave)
     if not ok.any():
         return None

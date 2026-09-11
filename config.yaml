@@ -161,7 +161,11 @@ general:
                             # offset the reports were made with; the correction
                             # divides it out with the observer block. (iterate:
                             # per-parity means in both frames, re-estimated
-                            # every sweep; not converging on TOI2120 yet)
+                            # every sweep; not converging on TOI2120 yet.
+                            # star: one star-frame spectrum per parity, taken
+                            # out once before the fit, and no observer-frame
+                            # mean; the correction divides out the observer
+                            # block alone. Under test since 2026-09-11)
     template: false         # the one-shot star-frame median of the older
                             # modes; ignored by mean: iterate
     iters: 16

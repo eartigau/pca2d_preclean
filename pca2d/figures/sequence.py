@@ -138,7 +138,9 @@ def window_arrays(cube, fit, means, group, grid, dv, delta, centre, width,
          "1. the high pass: $\\ln(f)$ minus a Savitzky-Golay of $\\ln(f)$"),
         ("model", lambda: star + offset + earth,
          "2. the reconstruction: %d star + %d observer, and %s"
-         % (n_star, n_earth, "both frames' parity means" if star_mean
+         % (n_star, n_earth,
+            ("both frames' parity means" if np.any(means[:, a0:b0])
+             else "the star's spectrum per parity") if star_mean
             else "the observer parity mean")),
         ("corrected", lambda: data - offset - earth,
          "3. minus the OBSERVER block: what a corrected file holds"),

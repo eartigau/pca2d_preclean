@@ -100,7 +100,7 @@ def parse_args(argv=None):
                    help="drop spectra below this fraction of the median band SNR")
     p.add_argument("--clip", type=float, default=None,
                    help="soft-clip threshold in sigma; 0 disables")
-    p.add_argument("--mean", choices=("iterate", "offset", "full"), default=None,
+    p.add_argument("--mean", choices=("iterate", "offset", "full", "star"), default=None,
                    help="the static part of the model. 'offset' (default) and"
                         " 'full' are observer-frame means taken out once"
                         " before the fit, and put back into the correction:"
@@ -2205,6 +2205,34 @@ def main(argv=None):
     # of the corrected files too.
     templates = np.zeros_like(means)
     star_mean = None
+    if args.mean == "star":
+        # ONE STAR SPECTRUM PER ORDER PARITY, in the star's frame, and no mean
+        # in the observer's (2026-09-11). Where the orders overlap the two
+        # parities see the same lines at different depths (Proxima, 1201.1 nm:
+        # every line shallower in the odd orders), a difference that moves with
+        # the star and that no observer-frame mean can hold. Outside the
+        # overlaps the 'offset' mean is half of the observer-frame mean, a
+        # BERV-smeared copy of the star the observer block then has to give
+        # back; dividing out either one alone cost Proxima 46 and 48 m/s.
+        # Estimated once, before any component, from each parity's own rows
+        # (the BERV-binned median that also starts --mean iterate), carried to
+        # every row and taken out. Nothing is re-estimated afterwards.
+        berv_rows = np.asarray(meta["berv"], dtype=float)
+        for g in range(templates.shape[0]):
+            rows_g = group == g
+            templates[g] = star_frame_template(
+                data[rows_g], w[rows_g], shifter, delta[rows_g],
+                berv=berv_rows[rows_g], berv_bin=args.template_berv_bin,
+                berv_min_entries=args.template_berv_min_entries)
+        subtract_carried(data, templates, group, shifter, delta, chunk, w=w)
+        data[w <= 0] = 0.0
+        means = np.zeros_like(means)
+        star_mean = (templates, group)
+        both = np.all(templates != 0.0, axis=0)
+        log("one star spectrum per order parity, in the star's frame, and no"
+            " observer-frame mean; where both parities have one they differ by"
+            " %.4g rms" % (float(np.std((templates[0] - templates[-1])[both]))
+                           if both.any() else np.nan), "value")
     if iterate:
         # Component zero of each block before any component exists (NOTES
         # 11.13). With MEAN_INIT "template", the star-frame median of each
@@ -2244,7 +2272,7 @@ def main(argv=None):
         log("left the shared part of the observer-frame mean IN the data,"
               " %.4g rms, for the Earth block to describe"
               % float(np.std(common[live_any])))
-    if means.shape[0] > 1 and not iterate:
+    if means.shape[0] > 1 and not iterate and args.mean != "star":
         both = np.ones(n_pixels, dtype=bool)
         for i, value in enumerate(parity_groups):
             both &= w[parity == value].sum(axis=0) > 0
@@ -2255,6 +2283,7 @@ def main(argv=None):
     chi2_null = float(np.sum(w * data ** 2, dtype=np.float64))
     log("after the %s as well: %.4f of the raw weighted variance left"
         % ("per-parity means of both frames" if iterate
+           else "star's spectrum per parity" if args.mean == "star"
            else "observer-frame mean", chi2_null / chi2_raw))
     if args.clip > 0:
         log("soft clip at %.1f sigma, local per wavelength column" % args.clip)
@@ -2537,7 +2566,9 @@ def main(argv=None):
         # difference, and in offset mode only the part of that difference that
         # separates the parities, so the shared term stays in as before. With
         # --mean iterate the next round's sweeps re-estimate both means anyway.
-        if not iterate:
+        # --mean star keeps no observer mean to move, and its star spectra are
+        # a median, which a handful of retired rows does not shift
+        if not iterate and args.mean != "star":
             residual_means, _ = parity_means(data, w0, parity)
             if args.mean == "offset":
                 residual_means = residual_means - residual_means.mean(axis=0)
@@ -2653,7 +2684,9 @@ def main(argv=None):
                         filename=np.asarray(meta["filename"], dtype="U64"),
                         berv=np.asarray(meta["berv"], dtype=float),
                         mean_mode=str(args.mean),
-                        **({"templates": templates} if iterate else {}))
+                        # the star-frame spectra per parity, from --mean iterate
+                        # or --mean star; every reader takes them from here
+                        **({"templates": templates} if star_mean is not None else {}))
     log("  wrote %s (re-plot without refitting)" % npz_path)
 
     # the rejected rows carry zero weight, so their coefficients are zeros and
@@ -2678,7 +2711,7 @@ def main(argv=None):
                           max_mad=float(args.max_mad),
                           frame="observer", highpass="log_sub",
                           weights=w0, parity=parity,
-                          templates=templates if iterate else None,
+                          templates=templates if star_mean is not None else None,
                           mean_mode=str(args.mean))
     # Nothing, on purpose. This is a console_script entry point, so whatever it
     # returns is handed to sys.exit: returning the two bases printed a pair of
