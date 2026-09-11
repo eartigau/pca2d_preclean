@@ -441,7 +441,7 @@ def weighted_on_pixels(alive, wave, grid):
 
 def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
                  halfwidth=8, overwrite=False, max_sky=None, alive=None,
-                 clipped=None, clip_nsig=None):
+                 clipped=None, clip_nsig=None, refit=False):
     """Write a t.fits with the model divided out. Returns the new path.
 
     The model lives in `ln f - savgol(ln f)`, so removing it from the flux is a
@@ -527,6 +527,7 @@ def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
         head["PCA2RSIG"] = (float(clip_nsig or 0), "residual clip, in running robust sigma")
         head["PCA2RNAN"] = (n_clipped, "samples beyond it in panel 5, set to NaN")
     head["PCA2REJ"] = (bool(row["rejected"]), "exposure was MAD-rejected")
+    head["PCA2RFIT"] = (bool(refit), "coefficients solved for this file, basis fixed")
     for key, value, comment in coefficient_cards(model, row, k, j):
         head[key] = (value, comment)
     head.add_history("two-frame PCA: %d star-frame + %d observer-frame"
@@ -651,7 +652,7 @@ def refit_row(model, path, config, shifter, base_row):
     values, sigma, trans, good, n_written = sptf.resample_exposure(
         payload, grid, config)
     if not n_written or not good.any():
-        return None
+        return None, None
 
     # The SAME weights the fit used, not merely 1/sigma^2. twoframe.load_cube
     # also zeroes anything below ln_clip_low, ramps by the telluric
@@ -669,6 +670,13 @@ def refit_row(model, path, config, shifter, base_row):
         w *= np.clip((trans - RAMP_ZERO) / (1.0 - RAMP_ZERO), 0.0, 1.0)
     w[:, :_bcd.EDGE] = 0.0
     w[:, -_bcd.EDGE:] = 0.0
+    # and, as the fit does, nothing whose Lanczos taps reach a hole in the star
+    # basis: the model there is built partly from samples the fit never
+    # constrained (twoframe.gap_guard, against the support the basis has)
+    berv = float(payload["meta"]["berv"])
+    delta = np.full(2, -float(pixel_shift(berv, model["dv"])))
+    _bcd.gap_guard(w, delta, 8, verbose=False,
+                   live=np.any(np.asarray(model["P"]) != 0, axis=0))
     data = np.where(w > 0, values, 0.0)
 
     # take out exactly what the fit took out before it solved for coefficients:
@@ -694,7 +702,11 @@ def refit_row(model, path, config, shifter, base_row):
     a, b, _, _ = _bcd.joint_coeffs(data, w, model["P"], model["Q"], shifter,
                                    delta, exposure=tie)
     if base_row is None:
-        return None
+        return None, None
+    # this exposure's own no-weight mask, by the rule fit_weights_mask applies
+    # to the cube's rows: on a cube of nights those rows are not this file
+    from .plotting import live_mask
+    alive = np.vstack([live_mask(w[parity:parity + 1])[0] for parity in (0, 1)])
     # a plain dict, not a Table Row: a Row is a view into its table, so writing
     # coefficients into it would edit the fit's own coefficient table and the
     # next exposure would inherit them
@@ -707,7 +719,7 @@ def refit_row(model, path, config, shifter, base_row):
     for j in range(model["n_earth"]):
         row["b%d" % (j + 1)] = float(b[0, j])
     row["berv"] = berv
-    return row
+    return row, alive
 
 
 def correct_many(model, args):
@@ -778,22 +790,27 @@ def correct_many(model, args):
             skipped += 1
             continue
         row = preset if preset is not None else exposure_row(model["coeffs"], path)
+        own_alive = None
         if args.refit:
-            fresh = refit_row(model, path, config, shifter, row)
+            fresh, own_alive = refit_row(model, path, config, shifter, row)
             if fresh is None:
                 log("  could not resample, skipped: %s" % os.path.basename(path))
                 skipped += 1
                 continue
             row = fresh
             refitted += 1
-        alive = (alive_by_file.get(os.path.basename(path))
-                 if alive_by_file is not None else None)
+        # a refitted exposure has its own weights and so its own no-weight
+        # mask; on a cube of nights the cube's rows are not this file
+        alive = own_alive if own_alive is not None else (
+            alive_by_file.get(os.path.basename(path))
+            if alive_by_file is not None else None)
         clipped = (clipped_by_file.get(os.path.basename(path))
                    if clipped_by_file is not None else None)
         new, touched, total = correct_file(
             model, row, path, args.corrected_dir, args.n_star, args.n_earth,
             args.kernel_halfwidth, args.overwrite, max_sky=args.max_sky_ratio,
-            alive=alive, clipped=clipped, clip_nsig=getattr(args, "nsig_cut", None))
+            alive=alive, clipped=clipped, clip_nsig=getattr(args, "nsig_cut", None),
+            refit=bool(args.refit))
         written += 1
         # onto the bar, not onto its own line: three hundred of these scroll
         # the narration off the screen and say nothing a total cannot

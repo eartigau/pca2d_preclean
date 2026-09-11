@@ -1412,7 +1412,15 @@ def plot_coeffs(bjd, a, b, pa, pb, chi2_null, path, err_a=None, err_b=None):
                     transform=ax.transAxes, ha="right", va="top", fontsize=7,
                     bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="0.7",
                               lw=0.5, alpha=0.85))
-            ax.margins(y=0.18)
+            # the panel spans what this coefficient does, not the way to zero:
+            # a coefficient sitting at -6 and moving by one reads as flat when
+            # the axis has to reach zero, and the line at zero autoscales too
+            span = np.concatenate([coeffs[:, row], bc[:, row]])
+            span = span[np.isfinite(span)]
+            if span.size:
+                lo, hi = float(span.min()), float(span.max())
+                pad = 0.05 * (hi - lo) if hi > lo else 0.05 * max(abs(lo), 1.0)
+                ax.set_ylim(lo - pad, hi + pad)
             if row == 0:
                 ax.set_title(title)
                 ax.legend(fontsize=7, loc="lower left")
@@ -1463,9 +1471,12 @@ def plot_variance(power_star, power_earth, chi2_null, chi2_best, path):
     x = np.arange(power.size)
 
     fig, ax = plt.subplots(figsize=(1.0 * power.size + 3.0, 4.2))
-    ax.bar(x, share, color=colours, alpha=0.85)
+    # on a log scale: the first star component carries tens of per cent and
+    # the last observer one a few thousandths, and on a linear axis the small
+    # ones are bars nobody can see
+    ax.bar(x, share, color=colours, alpha=0.85, log=True)
     for xi, s in zip(x, share):
-        ax.text(xi, s, "%.2f" % s, ha="center", va="bottom",
+        ax.text(xi, s, "%.3g" % s, ha="center", va="bottom",
                 fontsize=6.5, color="0.25")
     ax.set_xticks(x)
     ax.set_xticklabels(labels)

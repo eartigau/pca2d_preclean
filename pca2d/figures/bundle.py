@@ -202,9 +202,6 @@ def main(argv=None):
          "--windows", *args.windows, "--source-dir",
          args.source_dir or spectra_dir(config),
          "--out", os.path.join(tmp, "sequence.pdf")], failures)
-    run([py, d("sample_before_after.py"), "--cube", args.cube, "--fit", fit_path,
-         "--windows", *args.windows, "--out",
-         os.path.join(tmp, "before_after.pdf")], failures)
     run([py, d("weight_spectrum.py"), "--cube", args.cube, "--fit", fit_path,
          "--out", os.path.join(tmp, "weights.pdf")], failures)
     src = args.source_dir or spectra_dir(config)
@@ -253,8 +250,8 @@ def main(argv=None):
     order.append(("Coefficient periodogram", os.path.join(tmp, "periodogram.pdf")))
     order.append(("Weight spectrum", os.path.join(tmp, "weights.pdf")))
     order.append(("OH residual", os.path.join(tmp, "oh.pdf")))
-    order.append(("One exposure, before and after",
-                  os.path.join(tmp, "before_after.pdf")))
+    # no "one exposure, before and after" pages any more: the sequence's own
+    # flux panel shows exposures before and after, in every window
     order.extend(per_window)
 
     writer = PdfWriter()

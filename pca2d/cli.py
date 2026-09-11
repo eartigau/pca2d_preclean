@@ -216,13 +216,44 @@ def run_correct(plan):
         " components%s, and setting to NaN every sample the fit gave no weight:"
         " exactly panel 3 of the sequence figure"
         % (n_earth, " with %d star components" % n_star if n_star else ""), "info")
+    mode = correct_mode(plan)
+    if "--refit" in mode:
+        log("the fit's rows are nights: every exposure of every fitted night is"
+            " corrected with its own coefficients, solved for that file against"
+            " the fixed basis, and its own no-weight mask", "info")
     apply_main([
-        "--correct", "--all",
+        "--correct", *mode,
         "--fits", os.path.join(plan["outdir"], "twoframe_components.fits"),
         "--n-star", str(n_star), "--n-earth", str(n_earth),
         "--max-sky-ratio", str(cfg["quality"]["max_sky_ratio"] or 0),
         "--source-dir", plan["directory"], "--cube", plan["cube"],
         "--corrected-dir", plan["corrdir"], "--overwrite", *clip_args(cfg)])
+
+
+def nightly_stacked(cube):
+    """Whether a cube's rows are nights, several exposures coadded, rather than
+    one exposure each: its meta.fits counts them in n_exposures."""
+    from astropy.table import Table
+    path = os.path.join(cube, "meta.fits")
+    if not os.path.exists(path):
+        return False
+    meta = Table.read(path)
+    return "n_exposures" in meta.colnames and int(max(meta["n_exposures"])) > 1
+
+
+def correct_mode(plan):
+    """How the correct stage picks the files and their coefficients.
+
+    A fit of single exposures has a coefficient row for every file: --all.
+    A fit of nights does not, and the night's row is not any one exposure's:
+    the sky of a night is not one sky. Then every t.fits of a fitted night is
+    corrected, each with its own amplitudes solved against the fixed basis
+    (reconstruct --by-night --refit), from the configuration the cube was
+    built with.
+    """
+    if nightly_stacked(plan["cube"]):
+        return ["--by-night", "--refit", "--config", plan["written_config"]]
+    return ["--all"]
 
 
 def clip_args(cfg):
