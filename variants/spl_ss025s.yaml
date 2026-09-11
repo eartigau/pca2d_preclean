@@ -1,0 +1,20 @@
+# spl_ss025s: spl_ss025's fit and corrected spectra measured again against an
+# LBL template smoothed like the star. Run with --stages lbl: it writes into
+# spl_ss025's folder and only the LBL object is new.
+#   pca2d-preclean --object TOI2120 --variant spl_ss025s --stages lbl
+note: "LBL pending"
+highpass:
+  window: 151
+twoframe:
+  star_basis: spline
+  star_smooth: 0.25
+  iters: 6
+  patience: 99
+  keep: last
+output:
+  directory: outputs/_spl_ss025
+lbl:
+  before: false
+  suffix: "_PCA2D_{tag}_spl_ss025s"
+correct:
+  shrink: true

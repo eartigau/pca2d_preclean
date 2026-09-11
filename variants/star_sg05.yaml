@@ -1,0 +1,17 @@
+# star_sg05: as star, the star side smoothed to half a resolution element
+# (star_resolution 140000 stands for R = 70000 at half the width). TOI-2120
+# series of 2026-09-11, see star_spl.yaml. Its LBL template was built before
+# the smoothing reached the template.
+note: "LBL rms 22.34, robust 17.76 m/s"
+highpass:
+  window: 151
+twoframe:
+  star_basis: grid
+  star_resolution: 140000
+  iters: 6
+  patience: 99
+  keep: last
+lbl:
+  before: false
+correct:
+  shrink: false

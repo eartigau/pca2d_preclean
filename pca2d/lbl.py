@@ -431,7 +431,8 @@ def star_template(plan, config_file: str, name: str, files, place=True) -> dict:
     """
     from . import lbltemplate as lt
 
-    fit = os.path.join(plan["outdir"], "fit.npz")
+    # the fit is the run's own, or the one a variant reuses (plan["fitdir"])
+    fit = os.path.join(plan.get("fitdir") or plan["outdir"], "fit.npz")
     made = os.path.join(plan["outdir"], "star_template.fits")
     if lt.stamp(made) != lt.template_stamp(fit):
         log("making the star template: the fit's star at its mean amplitude,"
@@ -537,13 +538,14 @@ def prepare(plan) -> dict:
         runs.append(("BEFORE", "The spectra as delivered, measured against the"
                      " template LBL builds from them.", params_for(before)))
     if after in objects:
-        n_star = fit_components(plan["outdir"])
+        fitdir = plan.get("fitdir") or plan["outdir"]
+        n_star = fit_components(fitdir)
         # a comparison object named in lbl.template is the template, not ours
         use_star = bool(block.get("star_template", True)) and not block.get("template")
         use_strpca = bool(block.get("strpca", True)) and n_star >= 2
         if (use_star or use_strpca) and not n_star:
             log("no fit in %s, so the corrected object gets the template LBL"
-                " builds" % plan["outdir"], "warn")
+                " builds" % fitdir, "warn")
         elif (use_star or use_strpca) and not (ok and available()[0]):
             log("the star template is written by LBL's own writer, and LBL"
                 " cannot read these spectra here; the corrected object gets"
@@ -561,7 +563,7 @@ def prepare(plan) -> dict:
             "The corrected spectra, measured against the template LBL builds"
             " from them."), params_for(after)))
         if star and use_strpca:
-            strpca = dict(fit=os.path.abspath(os.path.join(plan["outdir"], "fit.npz")),
+            strpca = dict(fit=os.path.abspath(os.path.join(fitdir, "fit.npz")),
                           template=os.path.abspath(star["made"]),
                           mask=star["mask"], models_dir=star["models"],
                           prefix=after, run=plan["tag"])

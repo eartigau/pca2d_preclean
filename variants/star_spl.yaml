@@ -1,0 +1,20 @@
+# star_spl: the star as a cubic B-spline; the base of the TOI-2120 series of
+# 2026-09-11.
+#
+# The series ran on cube a92a1b985cdd: the high pass of that day, 151 samples
+# (75 km/s at 0.5 km/s), 6 sweeps keeping the last, no shrinkage. Every file
+# of the series repeats these lines so that each one reproduces its run alone:
+#   pca2d-preclean --object TOI2120 --variant star_spl
+# outputs/_star_spl/TOI2120/1-3, LBL object TOI2120_PCA2D_1-3_star_spl.
+note: "LBL rms 20.99, robust 17.28, nightly 19.55 m/s"
+highpass:
+  window: 151
+twoframe:
+  star_basis: spline
+  iters: 6
+  patience: 99
+  keep: last
+lbl:
+  before: false
+correct:
+  shrink: false

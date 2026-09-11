@@ -2732,6 +2732,7 @@ def main(argv=None):
     mean = means[0] if means.shape[0] == 1 else np.average(
         means, axis=0, weights=[np.sum(parity == g) for g in parity_groups])
     npz_path = os.path.join(args.outdir, "fit.npz")
+    from .provenance import stamp as code_stamp
     np.savez_compressed(npz_path, bjd=bjd, a=a, b=b, P=P, Q=Q, alpha=alpha,
                         velocity_term=bool(velocity_term),
                         anc_labels=np.asarray(anc_labels, dtype="U32"),
@@ -2754,6 +2755,8 @@ def main(argv=None):
                         star_fwhm=int(star_fwhm or 0),
                         # how the star side was carried and updated
                         star_basis=str(getattr(args, "star_basis", None) or "grid"),
+                        # the pca2d commit that made the fit, + if modified
+                        pca2d_code=code_stamp(),
                         # the star-frame spectra per parity, from --mean iterate
                         # or --mean star; every reader takes them from here
                         **({"templates": templates} if star_mean is not None else {}))

@@ -1,0 +1,16 @@
+# spl_shr: star_spl's fit, the correction shrunk where the observer components
+# are not significant. Correction only: the fit is star_spl's (reuse_fit), so
+# the cube, fit and figures stages are not run. TOI-2120 series of 2026-09-11.
+reuse_fit: star_spl
+note: "LBL rms 21.05, robust 16.16, nightly 19.60 m/s"
+highpass:
+  window: 151
+twoframe:
+  star_basis: spline
+  iters: 6
+  patience: 99
+  keep: last
+lbl:
+  before: false
+correct:
+  shrink: true

@@ -1,0 +1,17 @@
+# spl_ss025: the spline star smoothed to a quarter of a resolution element
+# (3 samples, LBL's template filter), the correction shrunk. TOI-2120 series of
+# 2026-09-11, see star_spl.yaml. Its LBL template was built at 15:39, before
+# the smoothing reached the template: spl_ss025s measures it again.
+note: "LBL rms 21.48, robust 15.84, nightly 19.98 m/s (unsmoothed LBL template)"
+highpass:
+  window: 151
+twoframe:
+  star_basis: spline
+  star_smooth: 0.25
+  iters: 6
+  patience: 99
+  keep: last
+lbl:
+  before: false
+correct:
+  shrink: true

@@ -33,7 +33,7 @@ import os
 import sys
 import time
 
-from .config import cache_key, load_config, spectra_dir
+from .config import VARIANT_META, cache_key, load_config, read_yaml, spectra_dir
 from .logger import log
 from .progress import human, stage
 
@@ -77,16 +77,81 @@ def parse_args(argv=None):
     p.add_argument("--run-lbl", action="store_true",
                    help="have the lbl stage run LBL, not only prepare it."
                         " Hours. Same as lbl.run: true in the config")
+    p.add_argument("--variant", default=None, metavar="NAME",
+                   help="variants/NAME.yaml, beside the config, on top of it:"
+                        " the nominal plus what the variant changes. Its"
+                        " products go to <output root>/_NAME and its LBL object"
+                        " is <object>_PCA2D_<M-N>_NAME, unless the file says"
+                        " otherwise; with reuse_fit it corrects an existing fit")
     p.add_argument("--dry-run", action="store_true",
                    help="resolve everything, print the plan, touch nothing")
     return p.parse_args(argv)
 
 
+def load_variant(config_path, name):
+    """variants/<name>.yaml, beside the config file: the nominal plus what the
+    variant changes. None when no variant is named."""
+    if not name:
+        return None
+    path = os.path.join(os.path.dirname(os.path.abspath(config_path)),
+                        "variants", "%s.yaml" % name)
+    if not os.path.exists(path):
+        log("no variant %s: there is no %s" % (name, path), "error")
+        raise SystemExit(2)
+    with open(path, "r") as handle:
+        return read_yaml(handle) or {}
+
+
+def name_variant(config, name, variant, out_dir=None):
+    """Where a variant's products go and what its LBL object is called, unless
+    its file says: beside the nominal's, under the variant's name, the way
+    outputs/_star_spl and TOI2120_PCA2D_1-3_star_spl were named. Returns the
+    output root the nominal's runs are under, where a reused fit is found."""
+    root = config["output"]["directory"]
+    if variant is None:
+        return root
+    if not out_dir and not (variant.get("output") or {}).get("directory"):
+        config["output"]["directory"] = os.path.join(root, "_" + name)
+    if not (variant.get("lbl") or {}).get("suffix"):
+        config["lbl"]["suffix"] = "%s_%s" % (config["lbl"].get("suffix")
+                                             or "_PCA2D_{tag}", name)
+    config["variant"] = dict({"name": name},
+                             **{k: variant[k] for k in VARIANT_META if k in variant})
+    return root
+
+
+def reused_fit(root, base, object_name, tag):
+    """The run folder a correction-only variant takes its fit from: the
+    nominal's (reuse_fit: nominal) or another variant's."""
+    parent = root if base == "nominal" else os.path.join(root, "_" + str(base))
+    return os.path.join(parent, object_name, tag)
+
+
+def check_reused_fit(plan):
+    """Refuse a reused fit that is not there, or that was made from another
+    cube than the one this variant's settings give."""
+    fitdir = plan["fitdir"]
+    for name in ("fit.npz", "twoframe_components.fits", "resolved_config.yaml"):
+        if not os.path.exists(os.path.join(fitdir, name)):
+            log("this variant reuses the fit in %s, which has no %s: run the"
+                " variant it names first" % (fitdir, name), "error")
+            raise SystemExit(2)
+    base = cache_key(load_config(os.path.join(fitdir, "resolved_config.yaml")))
+    if base != plan["key"]:
+        log("the fit in %s was made from cube %s and this variant's settings"
+            " give cube %s: a variant repeats its base's cube settings"
+            % (fitdir, base, plan["key"]), "error")
+        raise SystemExit(2)
+
+
 def resolve(args):
     """The config for this object, and where its pieces will land."""
+    name = getattr(args, "variant", None)
+    variant = load_variant(args.config, name)
     config = load_config(args.config, object_name=args.object,
                          data_dir=args.data_dir, out_dir=args.out_dir,
-                         instrument=args.instrument)
+                         instrument=args.instrument, variant=variant)
+    root = name_variant(config, name, variant, args.out_dir)
     directory = spectra_dir(config)
     if not os.path.isdir(directory):
         log("no directory %s. The object names a folder under the input root,"
@@ -129,6 +194,8 @@ def resolve(args):
     plan["cube"] = os.path.join(config["output"]["cache_directory"],
                                 "cube_%s_%s" % (config["input"]["format"],
                                                 plan["key"]))
+    if variant and variant.get("reuse_fit"):
+        plan["fitdir"] = reused_fit(root, variant["reuse_fit"], args.object, tag)
     return plan
 
 
@@ -153,6 +220,11 @@ def announce(args, plan):
     log("cube        %s" % plan["cube"], "value")
     log("outputs     %s" % plan["outdir"], "value")
     log("corrected   %s" % plan["corrdir"], "value")
+    if cfg.get("variant"):
+        log("variant     %s: variants/%s.yaml on top of the config%s"
+            % (cfg["variant"]["name"], cfg["variant"]["name"],
+               "; the fit is %s's" % plan["fitdir"] if plan.get("fitdir") else ""),
+            "value")
 
 
 def run_cube(plan):
@@ -223,7 +295,8 @@ def run_correct(plan):
             " the fixed basis, and its own no-weight mask", "info")
     apply_main([
         "--correct", *mode,
-        "--fits", os.path.join(plan["outdir"], "twoframe_components.fits"),
+        "--fits", os.path.join(plan.get("fitdir") or plan["outdir"],
+                               "twoframe_components.fits"),
         "--n-star", str(n_star), "--n-earth", str(n_earth),
         "--max-sky-ratio", str(cfg["quality"]["max_sky_ratio"] or 0),
         "--source-dir", plan["directory"], "--cube", plan["cube"],
@@ -362,6 +435,15 @@ def main(argv=None):
             % (plan["config"]["input"].get("pattern"), plan["directory"]),
             "error")
         raise SystemExit(2)
+    if plan.get("fitdir"):
+        # a variant that only changes the correction: the fit, and the cube
+        # and figures that go with it, are its base's
+        check_reused_fit(plan)
+        skipped = [s for s in ("cube", "fit", "figures") if s in wanted]
+        wanted = [s for s in wanted if s not in skipped]
+        if skipped:
+            log("the fit is %s's, so %s not run for this variant"
+                % (plan["fitdir"], ", ".join(skipped)), "info")
     if args.dry_run:
         log("dry run: stopping here, nothing written", "warn")
         return None
@@ -376,6 +458,10 @@ def main(argv=None):
         _storage.link_dir(plan["config"], plan["outdir"])
     os.makedirs(plan["outdir"], exist_ok=True)
     plan["written_config"] = os.path.join(plan["outdir"], "resolved_config.yaml")
+    # and the code that ran it, so the result can be traced and made again
+    from .provenance import code_version, stamp as code_stamp
+    plan["config"]["provenance"] = dict(code_version())
+    log("code        pca2d %s" % code_stamp(plan["config"]["provenance"]), "value")
     import yaml
     with open(plan["written_config"], "w") as fh:
         yaml.safe_dump(plan["config"], fh, sort_keys=False,

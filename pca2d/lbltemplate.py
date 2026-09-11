@@ -403,10 +403,12 @@ def build(cube, fit_path, config_file, object_name, science_files, path, run="")
     ln_star = ln_star + np.where(np.isfinite(resid), resid, 0.0)
     columns = template_columns(ln_star, count, wsum, rows)
     inst = lbl_instrument(config_file, object_name)
+    from .provenance import stamp as code_stamp
     provenance = {
         PROVENANCE: (str(run)[:60], "LBL template from the pca2d star block"),
         "PCA2FIT": (template_stamp(fit_path), "the fit.npz it came from, and rule"),
         "PCA2NSTR": (int(P.shape[0]), "star components in that fit"),
+        "PCA2GIT": (code_stamp(), "pca2d commit that wrote it, + if modified"),
     }
     if os.path.exists(path):
         os.remove(path)

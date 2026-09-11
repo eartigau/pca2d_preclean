@@ -1,0 +1,18 @@
+# spl_shrQ23: as spl_shr, observer components 2 and 3 smoothed over one
+# resolution element before they are shrunk. Correction only, on star_spl's
+# fit. Kept as a record: the observer components are not to be smoothed, they
+# may hold pixel-level detector defects.
+reuse_fit: star_spl
+note: "LBL rms 21.00, robust 16.61, nightly 19.54 m/s"
+highpass:
+  window: 151
+twoframe:
+  star_basis: spline
+  iters: 6
+  patience: 99
+  keep: last
+lbl:
+  before: false
+correct:
+  shrink: true
+  smooth_components: [2, 3]

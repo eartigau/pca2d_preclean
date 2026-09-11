@@ -571,6 +571,8 @@ def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
                         "significance averaged over a resolution element")
     head["PCA2SMTH"] = (",".join(str(j) for j in model.get("smoothed_components") or []),
                         "observer comps smoothed before division")
+    from .provenance import stamp as code_stamp
+    head["PCA2GIT"] = (code_stamp(), "pca2d commit that wrote it, + if modified")
     for key, value, comment in coefficient_cards(model, row, k, j):
         head[key] = (value, comment)
     head.add_history("two-frame PCA: %d star-frame + %d observer-frame"

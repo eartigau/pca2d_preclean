@@ -525,9 +525,14 @@ def highpass_samples(width_kms, dv, polyorder=2):
     return n if n % 2 else n + 1
 
 
-def _file_highpass(user, layered, instrument=None, object_name=None):
+def _file_highpass(user, layered, instrument=None, object_name=None, variant=None):
     """The `highpass` keys the configuration FILE sets, its layers merged in
-    the order load_config applies them; the package DEFAULTS are not in it."""
+    the order load_config applies them; the package DEFAULTS are not in it.
+
+    A variant, the last layer, that gives the window in samples and not the
+    width keeps that window: the width the layers below it set is dropped,
+    the way a run saved before width_kms reads back.
+    """
     if not layered:
         layers = [user]
     else:
@@ -541,6 +546,10 @@ def _file_highpass(user, layered, instrument=None, object_name=None):
     out = {}
     for layer in layers:
         out.update((layer or {}).get("highpass") or {})
+    last = (variant or {}).get("highpass") or {}
+    if last.get("window") and "width_kms" not in last:
+        out.pop("width_kms", None)
+    out.update(last)
     return out
 
 
@@ -644,12 +653,17 @@ def detect_instrument(directory: str, pattern: str = "*t.fits") -> str:
                      % directory)
 
 
+#: the keys of a variant file that describe it rather than configure the run
+VARIANT_META = ("reuse_fit", "note")
+
+
 def load_config(path: str | None, object_name: str | None = None,
                 data_dir: str | None = None, out_dir: str | None = None,
-                instrument: str | None = None) -> dict:
+                instrument: str | None = None, variant: dict | None = None) -> dict:
     """The three layers of config.yaml, merged, with the instrument resolved.
 
     `general`, then `instruments.<INSTRUME>`, then `objects.<object_name>`,
+    then `variant`, the content of a variants/<name>.yaml if one is named,
     each winning over the last, all on top of the package DEFAULTS. The
     instrument is read from the files themselves unless one is named, and the
     extension table it carries is registered with `tfits` so every reader in
@@ -708,6 +722,10 @@ def load_config(path: str | None, object_name: str | None = None,
 
     if object_name and layered:
         cfg = _deep_update(cfg, (user.get("objects") or {}).get(object_name, {}))
+    # a variant, the nominal plus what it changes, on top of everything else
+    if variant:
+        cfg = _deep_update(cfg, {k: v for k, v in variant.items()
+                                 if k not in VARIANT_META})
     # last word to the command line: an object block may move the roots, a flag
     # passed to this run overrules it
     cfg = _apply_run_overrides(cfg, object_name, data_dir, out_dir)
@@ -741,7 +759,7 @@ def load_config(path: str | None, object_name: str | None = None,
 
     # the high pass's window from its width in km/s, now that dv is known
     cfg = resolve_highpass(cfg, _file_highpass(user, layered, instrument,
-                                               object_name))
+                                               object_name, variant))
     return cfg
 
 

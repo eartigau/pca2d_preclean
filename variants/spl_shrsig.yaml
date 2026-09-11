@@ -1,0 +1,16 @@
+# spl_shrsig: as spl_shr, each component's significance averaged over one
+# resolution element before it is shrunk. Correction only, on star_spl's fit.
+reuse_fit: star_spl
+note: "LBL rms 21.17, robust 16.39, nightly 19.73 m/s"
+highpass:
+  window: 151
+twoframe:
+  star_basis: spline
+  iters: 6
+  patience: 99
+  keep: last
+lbl:
+  before: false
+correct:
+  shrink: true
+  shrink_smooth: true

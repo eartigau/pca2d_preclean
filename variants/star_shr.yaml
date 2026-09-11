@@ -1,0 +1,15 @@
+# star_shr: star's fit (grid basis), the correction shrunk. Correction only,
+# on star's fit. TOI-2120 series of 2026-09-11.
+reuse_fit: star
+note: "LBL rms 20.35, robust 16.16, nightly 18.90 m/s"
+highpass:
+  window: 151
+twoframe:
+  star_basis: grid
+  iters: 6
+  patience: 99
+  keep: last
+lbl:
+  before: false
+correct:
+  shrink: true

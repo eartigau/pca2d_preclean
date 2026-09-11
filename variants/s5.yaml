@@ -1,0 +1,16 @@
+# s5: the one-shot per-parity offset (mean: offset) the earlier reports used,
+# the star on the grid basis. TOI-2120 series of 2026-09-11, see
+# star_spl.yaml.
+note: "LBL rms 31.74, robust 23.73 m/s"
+highpass:
+  window: 151
+twoframe:
+  mean: offset
+  star_basis: grid
+  iters: 6
+  patience: 99
+  keep: last
+lbl:
+  before: false
+correct:
+  shrink: false

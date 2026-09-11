@@ -1,0 +1,14 @@
+# star: one star spectrum per parity, the star carried by the Lanczos kernel
+# (the grid basis). TOI-2120 series of 2026-09-11, see star_spl.yaml.
+note: "LBL rms 20.36, robust 16.57, nightly 18.92 m/s"
+highpass:
+  window: 151
+twoframe:
+  star_basis: grid
+  iters: 6
+  patience: 99
+  keep: last
+lbl:
+  before: false
+correct:
+  shrink: false
