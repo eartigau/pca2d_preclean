@@ -48,6 +48,10 @@ TAG = re.compile(r"^(\d+)-(\d+)(v?)$")
 #: the numbers every run is summarised by, in the order they are shown
 METRICS = (("rms", "rms"), ("robust", "robust sigma"),
            ("nightly_rms", "nightly rms"), ("median_error", "median error"))
+#: the variants of a compilation: a colour-blind safe categorical palette
+#: (Okabe and Ito, without its yellow); the original is always neutral grey
+VARIANTS = ("#D55E00", "#0072B2", "#009E73", "#CC79A7", "#E69F00", "#56B4E9")
+ORIGINAL = "#4d4d4d"
 
 
 # ------------------------------------------------------------- the velocities
@@ -409,11 +413,100 @@ def strpca_page(runs, aliased):
     return fig
 
 
+def variant_colour(k, n):
+    """The k-th of n variants' colour: the categorical palette, or a
+    sequential map once there are more variants than it has colours."""
+    if n <= len(VARIANTS):
+        return VARIANTS[k]
+    return plt.get_cmap("viridis")(k / max(n - 1, 1))
+
+
+def compilation_figure(original, variants, title=None):
+    """RV time series of every variant against the original, in one figure.
+
+    `original` and each of `variants` carry t, v, e, stats and a "label", on
+    the same exposures (on_common). Top: the nightly means of all of them,
+    each about its own median, the original in grey and every variant in its
+    colour, with its rms and nightly rms in the legend. Below: one panel per
+    variant, its exposures in its colour over the original's in light grey.
+    """
+    n = len(variants)
+    fig, axes = plt.subplots(n + 1, 1, figsize=(11, 3.6 + 1.9 * n), sharex=True,
+                             gridspec_kw={"height_ratios": [2.3] + [1.0] * n})
+    centred = lambda run: run["v"] - np.median(run["v"])
+    top = axes[0]
+    for k, run in enumerate([original] + list(variants)):
+        colour = ORIGINAL if k == 0 else variant_colour(k - 1, n)
+        nt = nightly(run["t"], run["v"], run["e"])
+        s = run["stats"]
+        top.plot(nt[0], nt[1] - np.median(run["v"]), "o-", color=colour,
+                 ms=4.0 if k == 0 else 3.2, lw=1.1 if k == 0 else 0.8,
+                 alpha=1.0 if k == 0 else 0.9, zorder=3 if k == 0 else 2,
+                 label="%s: rms %.1f, nightly rms %.1f m/s"
+                       % (run["label"], s["rms"], s["nightly_rms"]))
+    top.axhline(0, color="0.7", lw=0.6)
+    top.set_ylabel("nightly mean - median (m/s)", fontsize=8.5)
+    top.legend(fontsize=7.5, frameon=False, loc="upper left")
+    top.grid(alpha=0.15)
+    top.tick_params(labelsize=8)
+    lim = np.percentile(np.abs(np.concatenate([centred(r) for r in [original] + list(variants)])),
+                        99.5)
+    for k, (ax, run) in enumerate(zip(axes[1:], variants)):
+        colour = variant_colour(k, n)
+        ax.errorbar(original["t"], centred(original), yerr=original["e"], fmt="o", ms=2,
+                    lw=0.4, color="0.72", ecolor="0.8", capsize=0, zorder=1)
+        ax.errorbar(run["t"], centred(run), yerr=run["e"], fmt="o", ms=2.4, lw=0.5,
+                    color=colour, ecolor=colour, alpha=0.8, capsize=0, zorder=2)
+        s = run["stats"]
+        ax.set_title("%s: rms %.2f, robust sigma %.2f, nightly rms %.2f, median error"
+                     " %.2f m/s   (the original in grey)"
+                     % (run["label"], s["rms"], s["robust"], s["nightly_rms"],
+                        s["median_error"]), fontsize=8.2)
+        ax.set_ylim(-1.15 * lim, 1.15 * lim)
+        ax.axhline(0, color="0.6", lw=0.6)
+        ax.set_ylabel("m/s", fontsize=8)
+        ax.grid(alpha=0.15)
+        ax.tick_params(labelsize=7.5)
+    axes[-1].set_xlabel("rjd (BJD - 2400000)", fontsize=9)
+    fig.suptitle(title or "LBL velocities: the original and every variant, on the same"
+                 " %d exposures" % original["t"].size, fontsize=10)
+    fig.tight_layout(rect=(0, 0, 1, 0.97))
+    return fig
+
+
+def compare_main(args):
+    """--compare: the compilation of named LBL objects against the original."""
+    rdb = lambda name: os.path.join(args.lbl_dir, "lblrdb", "lbl_%s_%s.rdb" % (name, name))
+    t, v, e, table = rdb_rows(rdb(args.object))
+    original = {"t": t, "v": v, "e": e, "table": table, "label": args.original_label}
+    variants = []
+    for item in args.compare:
+        name, _, label = item.partition("=")
+        t, v, e, table = rdb_rows(rdb(name))
+        variants.append({"t": t, "v": v, "e": e, "table": table, "label": label or name})
+    n_common = on_common(variants, original)
+    os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+    fig = compilation_figure(original, variants, args.title)
+    fig.savefig(args.out)
+    plt.close(fig)
+    log("wrote %s: %d variants on %d common exposures" % (args.out, len(variants), n_common),
+        "info")
+    for run in [original] + variants:
+        s = run["stats"]
+        log("%-44s rms %6.2f  robust sigma %6.2f  nightly rms %6.2f  median error %5.2f"
+            % (run["label"], s["rms"], s["robust"], s["nightly_rms"], s["median_error"]),
+            "value")
+
+
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--object", required=True)
-    p.add_argument("--tags", nargs="+", required=True, help="the runs, e.g. 1-3v 2-3v")
+    p.add_argument("--tags", nargs="+", default=None, help="the runs, e.g. 1-3v 2-3v")
+    p.add_argument("--compare", nargs="+", default=None, metavar="NAME=LABEL",
+                   help="instead of a scan report, the compilation of these LBL"
+                        " objects against the original (the object's own)")
+    p.add_argument("--original-label", default="original, no PCA cleanup")
     p.add_argument("--suffix", default="_PCA2D_{tag}",
                    help="the corrected objects' LBL names, as lbl.suffix spells them")
     p.add_argument("--outputs", default="outputs")
@@ -425,6 +518,10 @@ def parse_args(argv=None):
 
 def main(argv=None):
     args = parse_args(argv)
+    if args.compare:
+        return compare_main(args)
+    if not args.tags:
+        raise SystemExit("--tags, the runs of a scan, or --compare, named LBL objects")
     tags = list(dict.fromkeys(args.tags))
     delivered_rdb = os.path.join(args.lbl_dir, "lblrdb", "lbl_%s_%s.rdb"
                                  % (args.object, args.object))
@@ -444,7 +541,11 @@ def main(argv=None):
     from .lbltemplate import resproj_divides_in_place
     title = args.title or "%s: LBL velocities across component counts" % args.object
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+    delivered["label"] = args.original_label
+    for run in runs:
+        run["label"] = run["tag"]
     pages = [lambda: summary_page(delivered, runs, n_common, title),
+             lambda: compilation_figure(delivered, runs),
              lambda: metrics_page(delivered, groups) if groups else None,
              lambda: matrix_page(delivered, runs)]
     pages += [lambda g=g: series_page(delivered, g[2], group_name(g[0], g[1])) for g in groups]

@@ -58,6 +58,19 @@ def test_the_pages_of_a_partial_matrix_are_drawn():
     assert lblscan.matrix_page(delivered, runs[:3]) is None, "one star count is not a matrix"
 
 
+def test_the_compilation_draws_every_variant_against_the_original():
+    """One overlay of nightly means, then a panel per variant; the original in
+    grey, the variants in the categorical palette, a sequential map past it."""
+    import matplotlib.pyplot as plt
+    original = dict(_fake_run("0-0", 47, 99), label="original")
+    variants = [dict(_fake_run("1-3v", 26 + i, i), label="variant %d" % i) for i in range(3)]
+    fig = lblscan.compilation_figure(original, variants)
+    assert len(fig.axes) == 4
+    assert lblscan.variant_colour(0, 3) == lblscan.VARIANTS[0]
+    assert lblscan.variant_colour(8, 9) != lblscan.variant_colour(0, 9)
+    plt.close(fig)
+
+
 def test_the_numbers_are_about_the_median_and_the_nights_are_weighted():
     t = np.array([100.1, 100.2, 101.1, 101.2])
     v = np.array([10.0, 12.0, 20.0, 22.0])
