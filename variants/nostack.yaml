@@ -1,0 +1,11 @@
+# nostack: every exposure fitted on its own, no nightly stacking.
+#
+# The NIRPS default coadds a night, two to four exposures a visit, which halves
+# the rows the fit sees and makes the correct stage solve each exposure's
+# amplitudes against the fixed basis. This asks what that costs. Stacking
+# changes the cube, so this is a full run.
+note: "TOI4552, 2026-09-11: the nominal degrades the velocities, 15.86 against 12.64 m/s rms on the exposures both series have"
+input:
+  nightly_stack: false
+lbl:
+  before: false

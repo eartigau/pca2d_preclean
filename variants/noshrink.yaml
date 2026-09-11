@@ -1,0 +1,9 @@
+# noshrink: the nominal correction with every observer component divided out in
+# full, to see what the shrinkage is worth on a fit that is otherwise the same.
+# Correction only: the fit is the nominal's.
+reuse_fit: nominal
+note: "TOI4552, 2026-09-11: measured against the nominal (15.86 rms) and the original (12.64)"
+lbl:
+  before: false
+correct:
+  shrink: false

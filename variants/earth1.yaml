@@ -1,0 +1,10 @@
+# earth1: only the first observer component divided out of the files. The fit
+# is untouched and still has its three; this asks whether the damage scales
+# with how many are divided out. Correction only: the fit is the nominal's, and
+# the corrected files are named t_0-1.fits.
+reuse_fit: nominal
+note: "TOI4552, 2026-09-11: measured against the nominal (15.86 rms) and the original (12.64)"
+lbl:
+  before: false
+correct:
+  n_earth: 1
