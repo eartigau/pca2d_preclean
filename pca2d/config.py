@@ -148,6 +148,10 @@ DEFAULTS = {
         "target_berv": 0.0,          # km/s; frame the spectra are registered to
         "spline_order": 3,           # cubic spline; the BERV shift is fractional
         "mask_threshold": 0.999,     # good-pixel fraction required after resampling
+        # valid native pixels dropped on either side of every gap before the
+        # spline: it bends toward the straight line a gap is filled with, and
+        # beside an OH core that leaves sky in samples that read as valid
+        "edge_pixels": 1,
     },
     "highpass": {
         "method": "savgol",          # 'savgol' or 'none'

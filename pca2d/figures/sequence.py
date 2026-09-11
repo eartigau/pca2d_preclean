@@ -51,6 +51,11 @@ from pca2d.twoframe import (LanczosShifter, cube_grid, fit_means,  # noqa: E402
 #: colour-blind safe categorical palette (CVD delta E 24.7 between them)
 BEFORE, AFTER = "#2a78d6", "#eb6834"
 
+#: the panels that show what is left once a block is taken out, a few times
+#: smaller than the spectrum itself: they get their own stretch, twice the
+#: width of their 5-95 percentile range, centred on zero
+RESIDUAL_PANELS = ("nostar", "resid")
+
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__,
@@ -213,6 +218,10 @@ def draw_window(ctx, centre, width, n_overplot=5):
     block = {k: home[k][np.ix_(rows, jw)] for k in home}
     finite = block["given"][np.isfinite(block["given"])]
     scale = float(np.percentile(np.abs(finite), 98)) if finite.size else 1.0
+    pooled = np.concatenate([block[k][np.isfinite(block[k])]
+                             for k in RESIDUAL_PANELS if k in block] or [np.zeros(0)])
+    resid_scale = (float(np.diff(np.percentile(pooled, [5, 95]))[0])
+                   if pooled.size else scale)
 
     titles = arrays["titles"]
     n_img = len(titles)
@@ -221,10 +230,14 @@ def draw_window(ctx, centre, width, n_overplot=5):
                              sharex=True,
                              gridspec_kw={"height_ratios":
                                           [1.0] * n_img + [1.7]})
+    im = im_resid = None
     for r, (name, title) in enumerate(titles):
         extra = ("" if name in ("given", "model")
                  else "   scatter %.4f" % np.nanstd(block[name]))
-        im = panel(axes[r], block[name], x, scale, title + extra)
+        if name in RESIDUAL_PANELS:
+            im_resid = panel(axes[r], block[name], x, resid_scale, title + extra)
+        else:
+            im = panel(axes[r], block[name], x, scale, title + extra)
 
     # the same rows in flux, before and after, from the raw flux the
     # cube build kept around this window (see cache.py)
@@ -275,8 +288,22 @@ def draw_window(ctx, centre, width, n_overplot=5):
     # steals width from the axes it is given, so leaving one out makes
     # it wider than the rest and the wavelength axes stop lining up
     # down the page, which is the whole point of the figure.
-    fig.colorbar(im, ax=list(axes), fraction=0.022, pad=0.015,
-                 label=r"$\ln(f/\mathrm{savgol}\,f)$")
+    bar = fig.colorbar(im, ax=list(axes), fraction=0.022, pad=0.015,
+                       label=r"$\ln(f/\mathrm{savgol}\,f)$")
+    # laid out beside every panel so that the wavelength axes still line up;
+    # now it spans the panels it describes, and the residual stretch gets a
+    # bar of its own beside panels 4 and 5, in the same column
+    box = bar.ax.get_position()
+    span = lambda names: [axes[r].get_position() for r, (name, _) in enumerate(titles)
+                          if (name in RESIDUAL_PANELS) == names]
+    top, low = span(False), span(True)
+    if top:
+        y0, y1 = min(p.y0 for p in top), max(p.y1 for p in top)
+        bar.ax.set_position([box.x0, y0, box.width, y1 - y0])
+    if low and im_resid is not None:
+        y0, y1 = min(p.y0 for p in low), max(p.y1 for p in low)
+        fig.colorbar(im_resid, cax=fig.add_axes([box.x0, y0, box.width, y1 - y0]),
+                     label="residual, ln f")
     fig.suptitle("%.2f-%.2f nm: every step, in order, in the STAR'S REST"
                  " FRAME\nvertical structure belongs to the star;"
                  " anything slanted does not" % (lo, hi), fontsize=10)

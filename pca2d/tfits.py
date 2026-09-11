@@ -366,8 +366,14 @@ def resample_exposure(payload: dict, grid: np.ndarray, config: dict):
     last_stop = {0: -1, 1: -1}
     n_written = 0
 
+    edge = int(reg.get("edge_pixels", 1))
     for order in orders:
-        ok = order_good[order]
+        # the last valid pixel beside every gap goes before the spline sees the
+        # order: a cubic spline bends toward the straight line the gap is filled
+        # with, and beside an OH core that is sky in a sample that reads as valid
+        ok = prep.erode_edges(order_good[order], edge)
+        if not ok.any():
+            continue
         w_obs = wave[order]
         w_shift = w_obs * shift
         low, high = w_shift[ok].min(), w_shift[ok].max()

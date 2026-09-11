@@ -72,6 +72,28 @@ def lowpass(y: np.ndarray, window: int, polyorder: int) -> np.ndarray:
     return savgol_filter(filled, window, polyorder)
 
 
+def erode_edges(good, pixels=1):
+    """`good` without the last `pixels` valid samples on either side of every gap.
+
+    The spline that carries a spectrum onto the grid is fed its gaps filled by
+    a straight line, and a cubic spline's value between the last two valid
+    pixels still bends toward that fill: about a quarter of the kink in the
+    first interval, a fourteenth in the next. Beside a masked OH core that is
+    sky-dominated flux pulled into what reads as a valid sample. Dropping the
+    last valid pixel at every edge takes out the interval that carries most of
+    it. The ends of the array are not gaps.
+    """
+    good = np.asarray(good, dtype=bool)
+    out = good.copy()
+    if pixels <= 0 or good.all() or not good.any():
+        return out
+    bad = ~good
+    for k in range(1, int(pixels) + 1):
+        out[..., :-k] &= ~bad[..., k:]      # a gap k samples to the right
+        out[..., k:] &= ~bad[..., :-k]      # a gap k samples to the left
+    return out
+
+
 def drop_isolated(good, window=3):
     """Drop a valid sample that has a gap within `window` on BOTH sides.
 

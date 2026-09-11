@@ -602,8 +602,37 @@ def joint_coeffs(data, w, P, Q, shifter, delta, chunk=64, exposure=None,
     return coeffs[:, :n_star], coeffs[:, n_star:n_star + n_earth], alpha, cond
 
 
-def gap_guard(w, delta, a, verbose=True):
+def star_support(w, delta, shifter, chunk=64, floor_frac=1e-2):
+    """The star-frame columns the star basis is constrained at.
+
+    The star update's normal diagonal carried home and summed over the rows,
+    above the floor `mstep` applies to it: where it is below, mstep sets the
+    basis to zero, and that is what a hole in the basis support is. Summed a
+    chunk of rows at a time, so no (rows x samples) array is ever held.
+    """
+    total = np.zeros(w.shape[1])
+    for start in range(0, w.shape[0], chunk):
+        stop = min(start + chunk, w.shape[0])
+        total += np.asarray(shifter.diag_normal(w[start:stop], delta[start:stop])).sum(axis=0)
+    positive = total[total > 0]
+    floor = floor_frac * float(np.median(positive)) if positive.size else 0.0
+    return total > floor
+
+
+def gap_guard(w, delta, a, verbose=True, live=None):
     """Zero the weight wherever the carried star basis would reach into a hole.
+
+    `live` is the STAR frame's support, star_support. Until 2026-09-10 it was
+    taken as w.sum(axis=0) > 0, which on an observer-frame cube is the
+    observer frame's support: an OH core masked in every exposure is a hole
+    there and never one in the star frame, where the exposures at other BERVs
+    see it. The guard then cut a hole 2a wide into every row at the star
+    column equal to the OH line's observer column, mstep zeroed the basis
+    there, and the first column past it, just above mstep's floor, grew a
+    spike: the vertical lines in the report's panels 2, 4 and 5, each touching
+    an OH river at the BERV where the two frames coincide. Without `live` the
+    old rule is kept, for a cube registered in the star's frame, where the two
+    supports are the same.
 
     This is what it takes to run the two-frame model over a domain that is
     mostly holes. The M-step side is already safe: `diag_normal` reports an
@@ -627,7 +656,8 @@ def gap_guard(w, delta, a, verbose=True):
     blocks, so the rim is a fraction of a percent of the data, and the price
     would be a shift operator whose adjoint has to be rederived.
     """
-    live = w.sum(axis=0) > 0
+    if live is None:
+        live = w.sum(axis=0) > 0
     n_pixels = live.size
     window = np.lib.stride_tricks.sliding_window_view(
         np.concatenate([np.zeros(a, bool), live, np.zeros(a, bool)]), 2 * a)
@@ -2074,7 +2104,12 @@ def main(argv=None):
         max_shift=int(np.ceil(np.abs(delta).max())) + 2,
     )
     if args.gap_guard and getattr(shifter, "banded", False):
-        gap_guard(w, delta, args.kernel_halfwidth)
+        # the holes are the star frame's: columns the basis cannot be
+        # constrained at once every row is carried home. Twice, since dropping
+        # the samples beside a hole can take a column next to it under the floor
+        for _ in range(2):
+            gap_guard(w, delta, args.kernel_halfwidth,
+                      live=star_support(w, delta, shifter))
         data = np.where(w > 0, data, 0.0)
     elif args.gap_guard:
         log("gap guard skipped: it is defined for a compactly supported"
