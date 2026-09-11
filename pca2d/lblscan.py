@@ -2,25 +2,25 @@
 """LBL velocities of runs that differ only in their component counts, in one PDF.
 
     python -m pca2d.lblscan --object TOI2120 \
-        --tags 1-3v 2-3v 3-3v 2-2v 2-4v 2-5v 2-6v 2-7v \
-        --suffix _PCA2D_{tag}_P2 --star-default 2 --observer-default 3 \
-        --out outputs/TOI2120/lbl_scan.pdf
+        --tags 1-2v 1-3v 1-4v 2-2v 2-3v 2-4v 3-3v \
+        --suffix _PCA2D_{tag}_P2 --out outputs/TOI2120/lbl_scan.pdf
 
-A scan changes one count at a time. The runs at the default observer count are
-the star scan, the runs at the default star count the observer scan, and the
-run at both defaults is in each. Every run is compared on the exposures all of
-them have, and against the delivered spectra on those same exposures.
+A scan changes one count at a time, and the scans are read from the tags:
+every star count that two runs or more share is an observer scan, and every
+observer count that three runs or more share is a star scan (with two, its runs
+are already in the observer scans). Every run is compared on the exposures all
+of them have, and against the delivered spectra on those same exposures.
 
-    page 1  the numbers: rms, robust sigma, nightly rms and median error of
-            each run, and the two things that say whether its fit can be
-            trusted: how far its velocity term moved the star (rms of
-            vrad_fit) and how closely a star coefficient follows the
-            barycentric velocity
-    page 2  those numbers against the component count, one scan per row
-    page 3  the star scan, one panel of velocities per run
-    page 4  the observer scan
-    page 5  every star coefficient against the observing conditions
-    page 6  LBL's STRPCA amplitudes against the fit's own coefficients
+    the numbers   rms, robust sigma, nightly rms and median error of each run,
+                  and the two things that say whether its fit can be trusted:
+                  how far its velocity term moved the star (rms of vrad_fit)
+                  and how closely a star coefficient follows the barycentric
+                  velocity
+    the counts    those numbers against the component count, one scan per row
+    the matrix    rms and nightly rms on the grid of star by observer counts
+    each scan     one panel of velocities per run
+    the sky       every star coefficient against the observing conditions
+    STRPCA        LBL's STRPCA amplitudes against the fit's own coefficients
 """
 
 from __future__ import annotations
@@ -99,20 +99,24 @@ def parse_tag(tag):
     return int(m.group(1)), int(m.group(2))
 
 
-def scans(tags, star_default=None, observer_default=None):
-    """(star scan, observer scan): the tags at the default observer count, by
-    star count, and the tags at the default star count, by observer count.
-    A default not given is the count most of the tags share."""
-    counts = [parse_tag(t) for t in tags]
-    if observer_default is None:
-        observer_default = max({c[1] for c in counts}, key=[c[1] for c in counts].count)
-    if star_default is None:
-        star_default = max({c[0] for c in counts}, key=[c[0] for c in counts].count)
-    star = sorted((t for t, c in zip(tags, counts) if c[1] == observer_default),
-                  key=lambda t: parse_tag(t)[0])
-    observer = sorted((t for t, c in zip(tags, counts) if c[0] == star_default),
-                      key=lambda t: parse_tag(t)[1])
-    return star, observer
+def scan_groups(tags):
+    """The scans a set of runs holds, as [(kind, fixed count, tags)].
+
+    An observer scan for every star count that two runs or more share, its runs
+    by observer count; a star scan for every observer count that three runs or
+    more share, its runs by star count. Observer scans first, by star count.
+    """
+    counts = {t: parse_tag(t) for t in tags}
+    out = []
+    for n_star in sorted({c[0] for c in counts.values()}):
+        members = sorted((t for t in tags if counts[t][0] == n_star), key=lambda t: counts[t][1])
+        if len(members) >= 2:
+            out.append(("observer", n_star, members))
+    for n_earth in sorted({c[1] for c in counts.values()}):
+        members = sorted((t for t in tags if counts[t][1] == n_earth), key=lambda t: counts[t][0])
+        if len(members) >= 3:
+            out.append(("star", n_earth, members))
+    return out
 
 
 def load_run(obj, tag, suffix, outputs, lbl_dir):
@@ -245,27 +249,68 @@ def summary_page(delivered, runs, n_common, title):
     return fig
 
 
-def metrics_page(delivered, star, observer):
-    fig, axes = plt.subplots(2, len(METRICS), figsize=(11, 6.4), squeeze=False)
-    for row, (runs, count, label) in enumerate(((star, "n_star", "star components"),
-                                                (observer, "n_earth", "observer components"))):
+def group_name(kind, fixed):
+    """'observer scan at 2 star components', 'star scan at 3 observer components'."""
+    return ("observer scan at %d star component%s" % (fixed, "" if fixed == 1 else "s")
+            if kind == "observer" else
+            "star scan at %d observer component%s" % (fixed, "" if fixed == 1 else "s"))
+
+
+def metrics_page(delivered, groups):
+    """One row of metric panels per scan, against the count it varies."""
+    fig, axes = plt.subplots(len(groups), len(METRICS),
+                             figsize=(11, 0.9 + 2.5 * len(groups)), squeeze=False)
+    for row, (kind, fixed, runs) in enumerate(groups):
+        count = "n_earth" if kind == "observer" else "n_star"
         for col, (key, name) in enumerate(METRICS):
             ax = axes[row, col]
-            if runs:
-                x = [r[count] for r in runs]
-                y = [r["stats"][key] for r in runs]
-                ax.plot(x, y, "o-", color=AFTER, lw=1.2, ms=5, label="corrected")
-                ax.set_xticks(x)
+            x = [r[count] for r in runs]
+            ax.plot(x, [r["stats"][key] for r in runs], "o-", color=AFTER, lw=1.2, ms=5,
+                    label="corrected")
+            ax.set_xticks(x)
             ax.axhline(delivered["stats"][key], color=BEFORE, ls="--", lw=1.0,
                        label="delivered")
-            ax.set_xlabel(label, fontsize=8.5)
-            ax.set_title(name + " (m/s)", fontsize=9)
-            ax.tick_params(labelsize=8)
+            ax.set_xlabel("%s components" % kind, fontsize=8)
+            ax.set_title("%s (m/s)" % name if row == 0 else "", fontsize=9)
+            ax.tick_params(labelsize=7.5)
             ax.grid(alpha=0.2)
+        axes[row, 0].set_ylabel(group_name(kind, fixed).replace(" at ", "\nat "), fontsize=8)
     axes[0, 0].legend(fontsize=7.5, frameon=False)
-    fig.suptitle("the numbers against the component count; top: the star scan,"
-                 " bottom: the observer scan", fontsize=10)
-    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.suptitle("the numbers against the component count, one scan per row", fontsize=10)
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
+    return fig
+
+
+def matrix_page(delivered, runs):
+    """rms and nightly rms on the grid of star by observer counts."""
+    stars = sorted({r["n_star"] for r in runs})
+    earths = sorted({r["n_earth"] for r in runs})
+    if len(stars) < 2 or len(earths) < 2:
+        return None
+    fig, axes = plt.subplots(1, 2, figsize=(11, 2.2 + 0.55 * len(stars)))
+    for ax, (key, name) in zip(axes, (("rms", "rms"), ("nightly_rms", "nightly rms"))):
+        grid = np.full((len(stars), len(earths)), np.nan)
+        for r in runs:
+            grid[stars.index(r["n_star"]), earths.index(r["n_earth"])] = r["stats"][key]
+        im = ax.imshow(np.ma.masked_invalid(grid), cmap="cividis", aspect="auto",
+                       vmin=np.nanmin(grid), vmax=max(np.nanmax(grid), delivered["stats"][key]))
+        for i in range(len(stars)):
+            for j in range(len(earths)):
+                if np.isfinite(grid[i, j]):
+                    dark = grid[i, j] < np.nanmin(grid) + 0.5 * (np.nanmax(grid) - np.nanmin(grid))
+                    ax.text(j, i, "%.1f" % grid[i, j], ha="center", va="center", fontsize=9,
+                            color="white" if dark else "black")
+        ax.set_xticks(range(len(earths)))
+        ax.set_xticklabels(earths)
+        ax.set_yticks(range(len(stars)))
+        ax.set_yticklabels(stars)
+        ax.set_xlabel("observer components", fontsize=8.5)
+        ax.set_ylabel("star components", fontsize=8.5)
+        ax.set_title("%s (m/s); delivered %.1f, blank not run" % (name, delivered["stats"][key]),
+                     fontsize=9)
+        fig.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
+    fig.suptitle("the matrix: every run on the grid of component counts", fontsize=10)
+    fig.tight_layout(rect=(0, 0, 1, 0.92))
     return fig
 
 
@@ -294,7 +339,7 @@ def series_page(delivered, runs, which):
     axes[0].set_ylim(-1.15 * lim, 1.15 * lim)
     axes[0].legend(fontsize=7.5, frameon=False, loc="upper right")
     axes[-1].set_xlabel("rjd (BJD - 2400000)", fontsize=9)
-    fig.suptitle("the %s scan: LBL velocities of each run, and of the delivered spectra"
+    fig.suptitle("the %s: LBL velocities of each run, and of the delivered spectra"
                  " on the same exposures" % which, fontsize=10)
     fig.tight_layout(rect=(0, 0, 1, 0.97))
     return fig
@@ -371,8 +416,6 @@ def parse_args(argv=None):
     p.add_argument("--tags", nargs="+", required=True, help="the runs, e.g. 1-3v 2-3v")
     p.add_argument("--suffix", default="_PCA2D_{tag}",
                    help="the corrected objects' LBL names, as lbl.suffix spells them")
-    p.add_argument("--star-default", type=int, default=None)
-    p.add_argument("--observer-default", type=int, default=None)
     p.add_argument("--outputs", default="outputs")
     p.add_argument("--lbl-dir", default="lbl")
     p.add_argument("--title", default=None)
@@ -383,7 +426,6 @@ def parse_args(argv=None):
 def main(argv=None):
     args = parse_args(argv)
     tags = list(dict.fromkeys(args.tags))
-    star_tags, observer_tags = scans(tags, args.star_default, args.observer_default)
     delivered_rdb = os.path.join(args.lbl_dir, "lblrdb", "lbl_%s_%s.rdb"
                                  % (args.object, args.object))
     if not os.path.exists(delivered_rdb):
@@ -392,22 +434,25 @@ def main(argv=None):
     delivered = {"t": t, "v": v, "e": e, "table": table}
     loaded = {tag: load_run(args.object, tag, args.suffix, args.outputs, args.lbl_dir)
               for tag in tags}
-    runs = [loaded[tag] for tag in tags if loaded[tag] is not None]
+    runs = sorted((loaded[tag] for tag in tags if loaded[tag] is not None),
+                  key=lambda r: (r["n_star"], r["n_earth"]))
     if not runs:
         raise SystemExit("none of the runs has LBL velocities yet")
     n_common = on_common(runs, delivered)
-    star = [loaded[t] for t in star_tags if loaded[t] is not None]
-    observer = [loaded[t] for t in observer_tags if loaded[t] is not None]
+    groups = [(kind, fixed, [loaded[t] for t in members if loaded[t] is not None])
+              for kind, fixed, members in scan_groups([r["tag"] for r in runs])]
     from .lbltemplate import resproj_divides_in_place
     title = args.title or "%s: LBL velocities across component counts" % args.object
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+    pages = [lambda: summary_page(delivered, runs, n_common, title),
+             lambda: metrics_page(delivered, groups) if groups else None,
+             lambda: matrix_page(delivered, runs)]
+    pages += [lambda g=g: series_page(delivered, g[2], group_name(g[0], g[1])) for g in groups]
+    pages += [lambda: conditions_page(runs),
+              lambda: strpca_page(runs, resproj_divides_in_place())]
     with PdfPages(args.out) as pdf:
-        for fig in (summary_page(delivered, runs, n_common, title),
-                    metrics_page(delivered, star, observer),
-                    series_page(delivered, star, "star") if star else None,
-                    series_page(delivered, observer, "observer") if observer else None,
-                    conditions_page(runs),
-                    strpca_page(runs, resproj_divides_in_place())):
+        for page in pages:
+            fig = page()
             if fig is not None:
                 pdf.savefig(fig)
                 plt.close(fig)

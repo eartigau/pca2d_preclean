@@ -18,12 +18,43 @@ def test_a_tag_is_star_then_observer_components():
         lblscan.parse_tag("2x3")
 
 
-def test_the_default_run_is_in_both_scans():
-    tags = ["1-3v", "2-3v", "3-3v", "2-2v", "2-4v", "2-5v", "2-6v", "2-7v"]
-    star, observer = lblscan.scans(tags, star_default=2, observer_default=3)
-    assert star == ["1-3v", "2-3v", "3-3v"]
-    assert observer == ["2-2v", "2-3v", "2-4v", "2-5v", "2-6v", "2-7v"]
-    assert lblscan.scans(tags) == (star, observer), "the defaults are what most tags share"
+def test_the_scans_are_read_from_the_tags():
+    tags = ["2-7v", "1-3v", "2-3v", "3-3v", "2-2v", "1-2v", "1-4v", "2-4v"]
+    groups = lblscan.scan_groups(tags)
+    assert ("observer", 1, ["1-2v", "1-3v", "1-4v"]) in groups
+    assert ("observer", 2, ["2-2v", "2-3v", "2-4v", "2-7v"]) in groups
+    assert ("star", 3, ["1-3v", "2-3v", "3-3v"]) in groups
+    assert not any(kind == "star" and fixed in (2, 4) for kind, fixed, _ in groups), (
+        "two runs at one observer count are already in the observer scans")
+    assert [g[0] for g in groups] == ["observer", "observer", "star"]
+
+
+def _fake_run(tag, rms, seed):
+    r = np.random.default_rng(seed)
+    t = np.sort(59900 + r.uniform(0, 400, 60))
+    v = r.normal(0, rms, t.size)
+    e = np.full(t.size, 7.0)
+    n_star, n_earth = lblscan.parse_tag(tag)
+    return {"tag": tag, "n_star": n_star, "n_earth": n_earth, "t": t, "v": v, "e": e,
+            "stats": lblscan.velocity_stats(t, v, e)}
+
+
+def test_the_pages_of_a_partial_matrix_are_drawn():
+    """The counts, the matrix and one page per scan, on a grid with holes in it."""
+    import matplotlib.pyplot as plt
+    tags = ["1-2v", "1-3v", "1-4v", "2-2v", "2-3v", "2-4v", "3-3v"]
+    runs = [_fake_run(t, 20 + 5 * i, i) for i, t in enumerate(tags)]
+    delivered = _fake_run("0-0", 47, 99)
+    by_tag = {r["tag"]: r for r in runs}
+    groups = [(kind, fixed, [by_tag[t] for t in members])
+              for kind, fixed, members in lblscan.scan_groups(tags)]
+    assert len(groups) == 3, "two observer scans and one star scan"
+    for fig in [lblscan.metrics_page(delivered, groups), lblscan.matrix_page(delivered, runs)]
+            + [lblscan.series_page(delivered, g[2], lblscan.group_name(g[0], g[1]))
+               for g in groups]:
+        assert fig is not None
+        plt.close(fig)
+    assert lblscan.matrix_page(delivered, runs[:3]) is None, "one star count is not a matrix"
 
 
 def test_the_numbers_are_about_the_median_and_the_nights_are_weighted():
