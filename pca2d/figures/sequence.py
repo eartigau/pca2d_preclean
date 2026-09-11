@@ -133,7 +133,7 @@ def window_arrays(cube, fit, means, group, grid, dv, delta, centre, width,
     earth = fit["b"] @ fit["Q"][:, a0:b0]
     n_star, n_earth = int(fit["P"].shape[0]), int(fit["Q"].shape[0])
     # What the correct stage divides out of the files: the observer block as
-    # the fit has it, or shrunk where the data do not detect it (--shrink and
+    # the fit has it, or shrunk where it is not significant (--shrink and
     # its variants), by the very function reconstruct.correct_many calls.
     # Column by column, so this block with its margin gives the window what
     # the whole grid gives the files.
@@ -171,7 +171,8 @@ def window_arrays(cube, fit, means, group, grid, dv, delta, centre, width,
          "5. minus everything: what nobody explained"),
         ("applied", lambda: applied,
          "6. what the correction divides out%s"
-         % (": shrunk where the data do not detect it" if shrunk
+         % (": shrunk where the component is not significant (all exposures)"
+            if shrunk
             else ", the observer block and its mean")),
     ]
     home = {}

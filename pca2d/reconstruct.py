@@ -127,9 +127,10 @@ def parse_args(argv=None):
                    help="the running sigma's box in grid samples; the high"
                         " pass's own window is what the pipeline passes")
     p.add_argument("--shrink", action="store_true",
-                   help="keep each observer component at a column only as far as"
-                        " the data detect it there: Q_ji times max(0, 1 - 1/z^2),"
-                        " z its significance from every row's own weight, the"
+                   help="keep each observer component at a column only where it"
+                        " is significant there, all exposures together: Q_ji"
+                        " times max(0, 1 - 1/z^2), z the significance of Q_ji"
+                        " from every row's own weight, the"
                         " weights scaled by the fit's reduced chi2 (pca2d.shrink)."
                         " Needs --cube and the fit's archive")
     p.add_argument("--shrink-smooth", action="store_true",
@@ -771,8 +772,11 @@ def shrink_model(model, fits_path, cube, shrink=True, shrink_smooth=False,
                  smooth_which=(), resolution=None):
     """Give the model the observer basis the correct stage divides out.
 
-    Each observer component kept at a column only as far as the data detect it
-    there (pca2d.shrink), the components asked for smoothed over a resolution
+    Each observer component kept at a column only where it is significant
+    there, all exposures together (pca2d.shrink): not where one exposure's
+    share of it is below its noise, since a pattern at half a sigma in every
+    exposure is well detected in the basis. The components asked for smoothed
+    over a resolution
     element first, their significance taken after. Held apart from Q, which a
     refit still solves against, and applied where the correction is built
     (correction_on_grid). The same function the sequence figure's panels 3 and

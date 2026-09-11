@@ -361,8 +361,9 @@ def shrink_args(cfg):
     if out and resolution:
         out += ["--resolution", str(float(resolution))]
     if out:
-        log("each observer component divided out only as far as the data detect"
-            " it%s%s" % (", its significance smoothed over a resolution element"
+        log("each observer component divided out only where it is significant,"
+            " all exposures together%s%s"
+            % (", its significance smoothed over a resolution element"
                          if "--shrink-smooth" in out else "",
                          ", components %s smoothed first" % ",".join(map(str, which))
                          if which else ""), "info")

@@ -300,8 +300,8 @@ general:
                             # The count goes in the header as PCA2RNAN. null
                             # keeps them all.
     shrink: true            # nominal since 2026-09-11: divide each observer
-                            # component out only as far as the data detect it
-                            # at that column: Q_ji times
+                            # component out only where it is significant at
+                            # that column, all exposures together: Q_ji times
                             # max(0, 1 - 1/z^2), z its significance with every
                             # row's own weight, the weights scaled by the fit's
                             # reduced chi2 (pca2d.shrink). Where it goes to

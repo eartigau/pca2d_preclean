@@ -1,10 +1,13 @@
-"""Each observer component kept at a column only as far as the data detect it there.
+"""Each observer component kept at a column only where it is significant there.
 
 The correction divides b_n . Q out of every file, and Q was estimated from the
 same noisy spectra it corrects: its error at a column is common to every
 exposure, a fixed pattern in the observer's frame that lands somewhere else in
-the star's at every BERV. Where a column holds nothing the data can detect,
-the correction adds that pattern and removes nothing. So each component is
+the star's at every BERV. Where the component is not significant at a column,
+all exposures together, the correction adds that pattern and removes nothing.
+The significance is the basis's, not that of one exposure's share of it: a
+pattern at half a sigma in every exposure is detected at about half a sigma
+times the square root of their number, and it is kept. So each component is
 shrunk at each column by the positive-part James-Stein factor of its own
 significance there:
 
