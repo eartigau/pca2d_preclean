@@ -57,14 +57,14 @@ general:
     use_cache: true
     max_memory_gb: 16.0
     windows:                # centre:width in nm, the regions each run draws
-      - 1200.3:2
-      - 1220:4
-      - 1267:2
-      - 1593.6:2
-      - 1669.5:5
-      - 1700.5:3
-      - 2196.2:2
-      - 2450:5
+      - "1200.3:2"          # quoted, as text: YAML 1.1 reads an unquoted
+      - "1220:4"            # 1220:4 as the base-60 number 73204, and any
+      - "1267:2"            # reader but pca2d's own drops the window
+      - "1593.6:2"
+      - "1669.5:5"
+      - "1700.5:3"
+      - "2196.2:2"
+      - "2450:5"
 
   domain:
     grid_source: magic      # lambda_i = wave0 * exp(i * dv / c). On a
