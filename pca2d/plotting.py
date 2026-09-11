@@ -227,10 +227,13 @@ def source_directory(cube_path):
     if not os.path.isdir(cube_path) or not os.path.exists(path):
         return None
     try:
-        from .config import read_yaml
+        from .config import read_yaml, spectra_dir
         with open(path) as fh:
             cfg = read_yaml(fh) or {}
-        return (cfg.get("input") or {}).get("directory")
+        # the object's own folder: input.directory is the root it hangs from,
+        # and a lookup in the root found no file, so no water row, on every
+        # run since the root and the object were split
+        return spectra_dir(cfg) if (cfg.get("input") or {}).get("directory") else None
     except Exception:                                         # noqa: BLE001
         return None
 
