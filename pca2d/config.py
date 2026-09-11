@@ -317,12 +317,18 @@ DEFAULTS = {
         # the wrong thing: unmasked, the term came out 1.8 times larger than
         # the velocity LBL measures on the same spectra.
         "velocity_min_transmission": 0.95,
-        # The instrument's resolving power, lambda/dlambda. When set, the star's
-        # spectra per parity (--mean star) and the star components P are
-        # smoothed to one resolution element, c/R, by LBL's own filter
-        # (pca2d.resolution): the star has nothing finer. The observer
-        # components are not, since they may carry pixel-level detector
-        # structure. Per instrument in config.yaml, as LBL's APPROX_RESOLUTION.
+        # The instrument's resolving power, lambda/dlambda, per instrument in
+        # config.yaml as LBL's APPROX_RESOLUTION: the unit every Savitzky-Golay
+        # here is measured in. It turns no smoothing on by itself.
+        "resolution": None,
+        # Smooth the star's spectra per parity (--mean star) and the star
+        # components P to this FWHM, in resolution elements, by LBL's own
+        # filter (pca2d.resolution). Off by default: at one element it cost
+        # TOI-2120 4 m/s, at half an element 2 (2026-09-11). The observer
+        # components are never smoothed here.
+        "star_smooth": None,
+        # The older spelling of the two above: smooth to one resolution element
+        # of this R. Still read, so the runs made with it reproduce.
         "star_resolution": None,
         # How the star-side vectors are carried and updated: 'spline', one
         # cubic B-spline evaluated at every exposure's shifted positions and

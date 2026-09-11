@@ -227,7 +227,8 @@ def run_correct(plan):
         "--n-star", str(n_star), "--n-earth", str(n_earth),
         "--max-sky-ratio", str(cfg["quality"]["max_sky_ratio"] or 0),
         "--source-dir", plan["directory"], "--cube", plan["cube"],
-        "--corrected-dir", plan["corrdir"], "--overwrite", *clip_args(cfg)])
+        "--corrected-dir", plan["corrdir"], "--overwrite", *clip_args(cfg),
+        *shrink_args(cfg)])
 
 
 def nightly_stacked(cube):
@@ -266,6 +267,33 @@ def clip_args(cfg):
         " running robust sigmas" % float(nsig), "info")
     return ["--nsig-cut", str(float(nsig)),
             "--clip-window", str(int(cfg["highpass"]["window"]))]
+
+
+def shrink_args(cfg):
+    """The correct stage's shrinkage of the observer components by their
+    significance, and its two Savitzky-Golay variants, when correct asks for
+    them (pca2d.shrink); both variants are measured in the instrument's
+    resolution element, twoframe.resolution."""
+    corr = cfg.get("correct") or {}
+    out = []
+    if corr.get("shrink"):
+        out.append("--shrink")
+        if corr.get("shrink_smooth"):
+            out.append("--shrink-smooth")
+    which = corr.get("smooth_components") or []
+    if which:
+        out += ["--smooth-components", ",".join(str(int(j)) for j in which)]
+    tf = cfg.get("twoframe") or {}
+    resolution = tf.get("resolution") or tf.get("star_resolution")
+    if out and resolution:
+        out += ["--resolution", str(float(resolution))]
+    if out:
+        log("each observer component divided out only as far as the data detect"
+            " it%s%s" % (", its significance smoothed over a resolution element"
+                         if "--shrink-smooth" in out else "",
+                         ", components %s smoothed first" % ",".join(map(str, which))
+                         if which else ""), "info")
+    return out
 
 
 def run_lbl(plan):

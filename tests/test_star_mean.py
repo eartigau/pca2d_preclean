@@ -122,3 +122,16 @@ def test_the_star_side_is_smoothed_and_the_observer_side_is_not(fitted, smoothed
     rough_after = np.mean([_roughness(r) for r in after["Q"]])
     assert rough_after > 0.5 * rough_before, "the observer components were smoothed"
     assert float(after["star_resolution"]) == 120000.0
+
+
+def test_the_new_spelling_smooths_as_the_old_one_did(fitted, smoothed, tmp_path_factory):
+    """--resolution R --star-smooth 1 is what --star-resolution R was."""
+    cube, _ = fitted
+    out = tmp_path_factory.mktemp("fit_new_spelling")
+    main(["--cube", cube, "--outdir", str(out), "--iters", "3", "-k", "1",
+          "-j", "2", "--max-mad", "0", "--mean", "star",
+          "--resolution", "120000", "--star-smooth", "1.0"])
+    new, old = np.load(out / "fit.npz"), np.load(smoothed / "fit.npz")
+    assert int(new["star_fwhm"]) == int(old["star_fwhm"]) == 5
+    assert np.allclose(new["P"], old["P"])
+    assert np.allclose(new["templates"], old["templates"])

@@ -80,10 +80,16 @@ def parse_args(argv=None):
                         " from the normal diagonal (default); 'spline', one cubic"
                         " B-spline evaluated at each exposure's shifted positions"
                         " and updated exactly (pca2d.splinestar)")
+    p.add_argument("--resolution", type=float, default=None,
+                   help="the instrument's resolving power, lambda/dlambda: the"
+                        " unit --star-smooth is measured in")
+    p.add_argument("--star-smooth", type=float, default=None,
+                   help="smooth the star's spectra and components to this FWHM, in"
+                        " resolution elements, by LBL's template filter; the"
+                        " observer components are not. Off by default")
     p.add_argument("--star-resolution", type=float, default=None,
-                   help="the instrument's resolving power: the star's spectra and"
-                        " components are smoothed to one resolution element, c/R,"
-                        " by LBL's template filter; the observer components are not")
+                   help="the older spelling: smooth the star to one resolution"
+                        " element of this resolving power")
     p.add_argument("--velocity-term", dest="velocity_term",
                    action="store_true", default=None,
                    help="fit one velocity per exposure beside the components;"
@@ -173,7 +179,8 @@ CONFIGURABLE = ("n_star", "n_earth", "iters", "order", "tie_parities", "max_mad"
                 "max_mad_rounds", "clip", "min_snr_frac", "template", "shift",
                 "kernel_halfwidth", "gap_guard", "leakage", "chunk", "dtype",
                 "velocity_term", "velocity_min_transmission", "mean",
-                "patience", "keep", "star_resolution", "star_basis")
+                "patience", "keep", "star_resolution", "star_basis",
+                "resolution", "star_smooth")
 
 
 def _resolve(args):
@@ -2242,16 +2249,21 @@ def main(argv=None):
     # component. Since 2026-09-10 the correction divides out the parity mean as
     # well (reconstruct.order_correction), so what is subtracted here comes out
     # of the corrected files too.
-    # the star's spectra and components smoothed to one resolution element, as
-    # LBL smooths its templates (pca2d.resolution); the observer block is not
+    # the star's spectra and components smoothed to star_smooth resolution
+    # elements, as LBL smooths its templates (pca2d.resolution); the observer
+    # block is not. star_resolution is the older spelling: one element of it
     star_fwhm = None
-    if getattr(args, "star_resolution", None):
+    resolution = getattr(args, "resolution", None)
+    fraction = getattr(args, "star_smooth", None)
+    if getattr(args, "star_resolution", None) and not fraction:
+        resolution, fraction = args.star_resolution, 1.0
+    if resolution and fraction:
         from .resolution import fwhm_samples
-        star_fwhm = fwhm_samples(args.star_resolution, dv)
-        log("the star side smoothed to R = %.0f: one resolution element is %d"
-            " samples of %.2f km/s, LBL's template filter; the observer"
+        star_fwhm = fwhm_samples(resolution, dv, fraction)
+        log("the star side smoothed to %.2f of a resolution element of R = %.0f:"
+            " %d samples of %.2f km/s FWHM, LBL's template filter; the observer"
             " components are not smoothed"
-            % (float(args.star_resolution), star_fwhm, dv), "value")
+            % (float(fraction), float(resolution), star_fwhm, dv), "value")
     templates = np.zeros_like(means)
     star_mean = None
     if args.mean == "star":
@@ -2738,6 +2750,8 @@ def main(argv=None):
                         mean_mode=str(args.mean),
                         # R the star side was smoothed to; 0 when it was not
                         star_resolution=float(getattr(args, "star_resolution", None) or 0),
+                        # the FWHM, in samples, the star side was smoothed to
+                        star_fwhm=int(star_fwhm or 0),
                         # how the star side was carried and updated
                         star_basis=str(getattr(args, "star_basis", None) or "grid"),
                         # the star-frame spectra per parity, from --mean iterate

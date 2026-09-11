@@ -16,12 +16,25 @@ import numpy as np
 C_KMS = 299792.458
 
 
-def fwhm_samples(resolution, dv):
-    """One resolution element, c/R, in samples of dv km/s: LBL's rule, rounded
-    and made odd. 9 for SPIRou (R = 70 000) and 7 for NIRPS (80 000) at 0.5 km/s.
+def fwhm_samples(resolution, dv, fraction=1.0):
+    """`fraction` of a resolution element, c/R, in samples of dv km/s: LBL's
+    rule, rounded and made odd, never under 3. One element is 9 samples for
+    SPIRou (R = 70 000) and 7 for NIRPS (80 000) at 0.5 km/s.
     """
-    n = int(np.round(C_KMS / float(dv) / float(resolution)))
+    n = int(np.round(float(fraction) * C_KMS / float(dv) / float(resolution)))
+    n = max(n, 3)
     return n if n % 2 else n + 1
+
+
+def noise_factor(fwhm, polyorder=3):
+    """sum h^2 of the filter's taps: what smooth() does to the variance of white
+    noise, away from any gap. A vector smoothed by it has its noise variance
+    multiplied by this."""
+    n = int(12 * fwhm) + 1
+    impulse = np.full(n, 1e-9)
+    impulse[n // 2] += 1.0
+    taps = smooth(impulse, fwhm, polyorder) - smooth(np.full(n, 1e-9), fwhm, polyorder)
+    return float(np.sum(taps ** 2))
 
 
 def smooth(vec, fwhm, polyorder=3):

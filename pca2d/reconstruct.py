@@ -132,6 +132,18 @@ def parse_args(argv=None):
                         " z its significance from every row's own weight, the"
                         " weights scaled by the fit's reduced chi2 (pca2d.shrink)."
                         " Needs --cube and the fit's archive")
+    p.add_argument("--shrink-smooth", action="store_true",
+                   help="with --shrink: average each component's z^2 over one"
+                        " resolution element before its factor is taken, so a"
+                        " telluric line is judged over its width. Needs --resolution")
+    p.add_argument("--smooth-components", default=None,
+                   help="observer components, 1-based and comma-separated, to"
+                        " smooth by LBL's template filter over one resolution"
+                        " element before they are shrunk and divided out; for the"
+                        " components that are mostly noise. Needs --resolution")
+    p.add_argument("--resolution", type=float, default=None,
+                   help="the instrument's resolving power, the unit of the two"
+                        " smoothings above")
     p.add_argument("--overwrite", action="store_true")
     p.add_argument("--cube", default=None,
                    help="the cube the fit was made from. With it, every sample"
@@ -313,10 +325,11 @@ def correction_on_grid(model, row, n_star=None, n_earth=None, halfwidth=8):
     earth = np.zeros(model["grid"].size)
     if j:
         b = np.array([row["b%d" % (i + 1)] for i in range(j)])
-        Q = model["Q"][:j]
-        if model.get("shrink") is not None:
-            # each component kept only as far as the data detect it (--shrink)
-            Q = Q * model["shrink"][:j]
+        # the observer basis as the correct stage divides it out: shrunk by its
+        # significance, some components smoothed first (--shrink,
+        # --smooth-components); the fit's own Q otherwise
+        Q = model.get("Q_correct")
+        Q = (model["Q"] if Q is None else Q)[:j]
         earth = b @ Q
     star_obs = (carry_star(star_rest, row["berv"], model["dv"], halfwidth)
                 if k else star_rest)
@@ -554,6 +567,10 @@ def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
     head["PCA2RFIT"] = (bool(refit), "coefficients solved for this file, basis fixed")
     head["PCA2SHRK"] = (model.get("shrink") is not None,
                         "observer comps kept only where significant")
+    head["PCA2SSIG"] = (bool(model.get("shrink_smooth")),
+                        "significance averaged over a resolution element")
+    head["PCA2SMTH"] = (",".join(str(j) for j in model.get("smoothed_components") or []),
+                        "observer comps smoothed before division")
     for key, value, comment in coefficient_cards(model, row, k, j):
         head[key] = (value, comment)
     head.add_history("two-frame PCA: %d star-frame + %d observer-frame"
@@ -808,33 +825,76 @@ def correct_many(model, args):
         log("  %d grid samples beyond it, over %d exposures"
             % (sum(int(v.sum()) for v in clipped_by_file.values()),
                len(clipped_by_file)), "value")
-    if getattr(args, "shrink", False):
+    smooth_which = [int(v) - 1 for v in
+                    str(getattr(args, "smooth_components", None) or "").split(",")
+                    if v.strip()]
+    shrink = bool(getattr(args, "shrink", False))
+    shrink_smooth = bool(getattr(args, "shrink_smooth", False))
+    if (shrink_smooth or smooth_which) and not getattr(args, "resolution", None):
+        raise SystemExit("--shrink-smooth and --smooth-components are measured in"
+                         " resolution elements: pass --resolution")
+    if shrink_smooth and not shrink:
+        raise SystemExit("--shrink-smooth smooths the significance --shrink uses:"
+                         " pass --shrink")
+    if any(j < 0 or j >= model["n_earth"] for j in smooth_which):
+        raise SystemExit("--smooth-components: the fit has %d observer components"
+                         % model["n_earth"])
+    if shrink or smooth_which:
         # each observer component kept at a column only as far as the data
-        # detect it there (pca2d.shrink). Held apart from Q, which a refit
-        # still solves against, and applied where the correction is built
-        from .shrink import shrink_factors
+        # detect it there (pca2d.shrink), and the components asked for smoothed
+        # over a resolution element first, their significance taken after. Held
+        # apart from Q, which a refit still solves against, and applied where
+        # the correction is built (correction_on_grid)
+        from .resolution import fwhm_samples, smooth
+        from .shrink import component_variance, james_stein, smoothed_components
         fit_path = os.path.join(os.path.dirname(os.path.abspath(args.fits)), "fit.npz")
         if not getattr(args, "cube", None) or not os.path.exists(fit_path):
-            raise SystemExit("--shrink needs --cube and the fit's archive beside"
-                             " %s: %s" % (args.fits, fit_path))
+            raise SystemExit("--shrink and --smooth-components need --cube and the"
+                             " fit's archive beside %s: %s" % (args.fits, fit_path))
         b_rows = np.asarray(np.load(fit_path)["b"], dtype=float)
         _, _, w_cube, _ = _bcd.load_cube(args.cube, dtype=np.float32)
         if b_rows.shape[0] != w_cube.shape[0]:
-            raise SystemExit("--shrink: the fit has %d rows and the cube %d"
+            raise SystemExit("the fit has %d rows and the cube %d"
                              % (b_rows.shape[0], w_cube.shape[0]))
         chi2 = np.asarray(model["coeffs"]["chi2_red"], dtype=float)
         good = np.isfinite(chi2) & (chi2 > 0)
         scale = float(np.median(chi2[good])) if good.any() else 1.0
-        model["shrink"] = shrink_factors(model["Q"], b_rows, w_cube, chi2_scale=scale)
+        var = component_variance(b_rows, w_cube, scale)
         del w_cube
-        live = np.any(model["Q"] != 0, axis=0)
+        fwhm = (fwhm_samples(args.resolution, model["dv"])
+                if getattr(args, "resolution", None) else None)
+        Q = np.asarray(model["Q"], dtype=float)
+        Q_correct = Q.copy()
+        factors = np.ones_like(Q)
+        if smooth_which:
+            smoothed, f_smooth = smoothed_components(Q, var, smooth_which, fwhm)
+            Q_correct[smooth_which] = smoothed[smooth_which]
+            factors[smooth_which] = f_smooth[smooth_which]
+        others = [j for j in range(Q.shape[0]) if j not in smooth_which]
+        if shrink and others:
+            z2 = Q[others] ** 2 / var[others]
+            if shrink_smooth:
+                z2 = np.array([smooth(row, fwhm, polyorder=0) for row in z2])
+            factors[others] = james_stein(z2)
+            Q_correct[others] = factors[others] * Q[others]
+        model["Q_correct"] = Q_correct
+        model["shrink"] = factors if shrink else None
+        model["shrink_smooth"] = shrink_smooth
+        model["smoothed_components"] = [j + 1 for j in smooth_which]
+        live = np.any(Q != 0, axis=0)
         log("  observer components shrunk by their significance at each column,"
-            " the weights scaled by the fit's median reduced chi2, %.2f" % scale)
-        for j, factor in enumerate(model["shrink"]):
+            " the weights scaled by the fit's median reduced chi2, %.2f%s%s"
+            % (scale, "; significance averaged over %d samples" % fwhm
+               if shrink_smooth else "",
+               "; components %s smoothed over %d samples first"
+               % (",".join(str(j + 1) for j in smooth_which), fwhm)
+               if smooth_which else ""))
+        for j, factor in enumerate(factors):
             kept = factor[live]
-            log("    component %d: kept in full (factor > 0.9) at %.1f%% of the"
+            log("    component %d%s: kept in full (factor > 0.9) at %.1f%% of the"
                 " columns, dropped (0) at %.1f%%, mean factor %.2f"
-                % (j + 1, 100 * np.mean(kept > 0.9), 100 * np.mean(kept == 0),
+                % (j + 1, " (smoothed)" if j in smooth_which else "",
+                   100 * np.mean(kept > 0.9), 100 * np.mean(kept == 0),
                    float(kept.mean())), "value")
     written = skipped = refitted = 0
     progress = _bar(pairs, desc="correcting", unit="file")
