@@ -117,6 +117,22 @@ def test_the_fit_s_correlation_matrix_is_titled_in_exposures(cube, tmp_path):
     assert titles and all(t == "6 exposures" for t in titles), titles
 
 
+def test_the_star_template_reads_the_cube_in_blocks_and_gets_the_same_numbers(cube, tmp_path):
+    """A block of columns at a time, as the lbl stage reads it beside a running
+    fit, and every column comes out as it does from the whole cube."""
+    from pca2d.lbltemplate import star_coverage
+    run(cube, tmp_path / "fit")
+    fit = np.load(tmp_path / "fit" / "fit.npz")
+    whole = star_coverage(cube, fit, block=None)
+    blocks = star_coverage(cube, fit, block=300)
+    assert np.array_equal(whole[0], blocks[0]) and np.array_equal(whole[3], blocks[3])
+    for name, x, y in zip(("count", "weight", "", "residual"), whole[1:], blocks[1:]):
+        if name:
+            np.testing.assert_allclose(x, y, rtol=1e-6, atol=1e-10, equal_nan=True,
+                                       err_msg=name)
+    assert np.isfinite(whole[4]).any(), "the residual means exist somewhere"
+
+
 def test_a_count_of_rows_is_reported_as_a_count_of_exposures():
     """Two rows per exposure, one per order parity: 632 rows are 316 spectra."""
     from pca2d.twoframe import count_exposures

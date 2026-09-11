@@ -43,8 +43,8 @@ from astropy.table import Table
 
 from .grids import doppler, pixel_shift
 from .plotting import live_mask
-from .twoframe import (LanczosShifter, carried_means, fit_means, fit_templates,
-                       load_cube, row_parity, star_model)
+from .twoframe import (LanczosShifter, carried_means, cube_grid, fit_means,
+                       fit_templates, load_cube, row_parity, star_model)
 
 #: what changes a template beyond the fit it came from, in its PCA2FIT stamp:
 #: 2 adds each parity's residual mean (star_coverage)
@@ -84,7 +84,7 @@ def mean_star(fit):
     return (abar @ P)[None, :] + T[:2], abar, P
 
 
-def star_coverage(cube, fit, chunk=16):
+def star_coverage(cube, fit, chunk=16, block=40000):
     """How well the fit saw each star-frame sample per parity, and what it left.
 
     The weights the fit read from the cube (twoframe.load_cube, its defaults),
@@ -106,11 +106,20 @@ def star_coverage(cube, fit, chunk=16):
     subtracted: its mean over the exposures moves both parities by the same
     velocity, which LBL takes as an offset.
 
+    The cube is read `block` columns at a time, each with a margin wider than
+    the largest shift and the Lanczos kernel, so that the columns kept from it
+    are computed exactly as from the whole cube. The whole of it in float32 is
+    2.9 GB on TOI-2120, and the lbl stage makes this template while the next
+    run's fit holds its own copy: the machine swapped until one sweep of that
+    fit took ten times as long. `block=None` reads it whole.
+
     Returns (grid, rows that saw each sample (2, M), their summed weight
     (2, M), rows per parity (2,), residual mean (2, M), NaN where unseen).
     """
-    grid, data, w, meta = load_cube(cube, dtype=np.float32)
-    n, m = w.shape
+    grid = np.asarray(cube_grid(cube))
+    m = grid.size
+    _, _, w1, meta = load_cube(cube, dtype=np.float32, columns=np.arange(0, 1))
+    n = w1.shape[0]
     if len(fit["berv"]) != n:
         raise SystemExit("the fit has %d rows and the cube %d: it was not made on"
                          " this cube" % (len(fit["berv"]), n))
@@ -119,34 +128,45 @@ def star_coverage(cube, fit, chunk=16):
     keep = (~np.asarray(fit["rejected"], dtype=bool) if "rejected" in files
             else np.ones(n, dtype=bool))
     delta = -pixel_shift(np.asarray(fit["berv"], dtype=float), float(fit["dv"]))
-    shifter = LanczosShifter(m, a=8, max_shift=int(np.ceil(np.abs(delta).max())) + 2)
+    reach = int(np.ceil(np.abs(delta).max())) + 2
+    margin = reach + 16                     # the shift, and the kernel's 8 on either side
     P, a = np.asarray(fit["P"], dtype=float), np.asarray(fit["a"], dtype=float)
     Q, b = np.asarray(fit["Q"], dtype=float), np.asarray(fit["b"], dtype=float)
     means, group = fit_means(fit, meta, n, m)
     T, tgroup = fit_templates(fit, meta, n, m)
-    Tf = shifter.prepare(T) if np.any(T) else None
     count, wsum, rsum = np.zeros((2, m)), np.zeros((2, m)), np.zeros((2, m))
-    for start in range(0, n, chunk):
-        stop = min(start + chunk, n)
-        rows = slice(start, stop)
-        model = star_model(P, a[rows], shifter, delta[rows], stop - start, m)
-        if Tf is not None:
-            model += carried_means(Tf, tgroup, shifter, delta, start, stop)
-        model += b[rows] @ Q
-        model += means[group[rows]]
-        weighted = np.where(w[rows] > 0, w[rows] * (data[rows] - model), 0.0)
-        del model
-        carried = shifter.rows(w[rows], -delta[rows])
-        carried_r = shifter.rows(weighted, -delta[rows])
-        live = live_mask(carried) & keep[rows, None]
-        carried = np.where(live, carried, 0.0)
-        carried_r = np.where(live, carried_r, 0.0)
-        for p in (0, 1):
-            sel = parity[rows] == p
-            if sel.any():
-                count[p] += live[sel].sum(axis=0)
-                wsum[p] += carried[sel].sum(axis=0)
-                rsum[p] += carried_r[sel].sum(axis=0)
+    step = m if block is None else int(block)
+    for c0 in range(0, m, step):
+        c1 = min(c0 + step, m)
+        a0, b0 = max(0, c0 - margin), min(m, c1 + margin)
+        _, data, w, _ = load_cube(cube, dtype=np.float32, columns=np.arange(a0, b0))
+        shifter = LanczosShifter(b0 - a0, a=8, max_shift=reach)
+        Tf = shifter.prepare(T[:, a0:b0]) if np.any(T[:, a0:b0]) else None
+        inner = slice(c0 - a0, c1 - a0)
+        for start in range(0, n, chunk):
+            stop = min(start + chunk, n)
+            rows = slice(start, stop)
+            model = star_model(P[:, a0:b0], a[rows], shifter, delta[rows],
+                               stop - start, b0 - a0)
+            if Tf is not None:
+                model += carried_means(Tf, tgroup, shifter, delta, start, stop)
+            model += b[rows] @ Q[:, a0:b0]
+            model += means[:, a0:b0][group[rows]]
+            weighted = np.where(w[rows] > 0, w[rows] * (data[rows] - model), 0.0)
+            del model
+            carried = shifter.rows(w[rows], -delta[rows])
+            carried_r = shifter.rows(weighted, -delta[rows])
+            live = live_mask(carried) & keep[rows, None]
+            carried = np.where(live, carried, 0.0)[:, inner]
+            carried_r = np.where(live, carried_r, 0.0)[:, inner]
+            live = live[:, inner]
+            for p in (0, 1):
+                sel = parity[rows] == p
+                if sel.any():
+                    count[p, c0:c1] += live[sel].sum(axis=0)
+                    wsum[p, c0:c1] += carried[sel].sum(axis=0)
+                    rsum[p, c0:c1] += carried_r[sel].sum(axis=0)
+        del data, w
     per_parity = np.array([np.sum(keep & (parity == p)) for p in (0, 1)])
     with np.errstate(invalid="ignore", divide="ignore"):
         resid = np.where(wsum > 0, rsum / np.where(wsum > 0, wsum, 1.0), np.nan)
