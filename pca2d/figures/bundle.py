@@ -165,6 +165,23 @@ def summary(config, args, fit):
     return "\n".join("%-*s   %s" % (width, k, v) for k, v in rows)
 
 
+def has_oh_model(source_dir):
+    """Whether the spectra carry the OHLine extension oh_residual.py draws.
+
+    SPIRou's t.fits do and NIRPS's do not. On NIRPS the figure has nothing to
+    draw, which is not a failure, and the bundle's last page listed it as one
+    (2026-09-11, PROXIMA). With no spectra at all this says yes, so that the
+    figure runs and says so itself.
+    """
+    import glob
+    from astropy.io import fits
+    files = sorted(glob.glob(os.path.join(source_dir, "*.fits")))
+    if not files:
+        return True
+    with fits.open(files[0]) as hdulist:
+        return "OHLine" in [h.name for h in hdulist]
+
+
 def run(cmd, failures):
     """Run one diagnostic, and say so if it fails rather than dying.
 
@@ -205,8 +222,12 @@ def main(argv=None):
     run([py, d("weight_spectrum.py"), "--cube", args.cube, "--fit", fit_path,
          "--out", os.path.join(tmp, "weights.pdf")], failures)
     src = args.source_dir or spectra_dir(config)
-    run([py, d("oh_residual.py"), "--cube", args.cube, "--fit", fit_path,
-         "--source-dir", src, "--out", os.path.join(tmp, "oh.pdf")], failures)
+    if has_oh_model(src):
+        run([py, d("oh_residual.py"), "--cube", args.cube, "--fit", fit_path,
+             "--source-dir", src, "--out", os.path.join(tmp, "oh.pdf")], failures)
+    else:
+        log("   oh_residual.py skipped: these spectra carry no OHLine"
+            " extension, which only SPIRou writes", "warn")
     run([py, d("coeff_periodogram.py"), "--fit", fit_path,
          "--out", os.path.join(tmp, "periodogram.pdf")], failures)
     # Only scripts that take --windows are used, so the cube is loaded once per
