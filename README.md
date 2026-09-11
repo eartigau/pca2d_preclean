@@ -37,8 +37,9 @@ own template takes back only a little of it.
 
 ## The model
 
-Each exposure becomes the log of its flux less a Savitzky-Golay of it (151
-samples of 0.5 km/s, a 75 km/s high pass), on one log-uniform grid in the
+Each exposure becomes the log of its flux less a Savitzky-Golay of it, 100
+km/s wide (`highpass.width_kms`, 201 samples of 0.5 km/s; runs saved before
+2026-09-11 used 151 samples, 75 km/s), on one log-uniform grid in the
 observer's frame, as two rows: its even orders and its odd ones. Then
 
 ```
@@ -297,10 +298,10 @@ instead: the finest pixel step in the first spectrum, sampled at 70% of its own
 width. SPIRou pixels are about 2.27 km/s, so that is a grid of about 1.58 km/s
 against the 0.5 the config asks for otherwise: three times fewer samples and a
 fit faster by about as much. **With `smart_dv` on, `dv` is not read at all**,
-and the run says so where it announces the domain. What smart_dv does not do is
-rescale the windows counted in samples, `highpass.window` and
-`weights.empirical_noise_box`; the run says what each of them now covers in
-km/s.
+and the run says so where it announces the domain. The high pass is a width
+in km/s (`highpass.width_kms`), so it covers the same velocity on any grid.
+What smart_dv does not do is rescale the one window still counted in samples,
+`weights.empirical_noise_box`; the run says what it now covers in km/s.
 
 ## Testing
 

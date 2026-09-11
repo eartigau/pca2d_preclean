@@ -110,7 +110,7 @@ def resolve(args):
     # Comparing the two is the reason the knob exists at all.
     tag = "%d-%d%s" % (config["twoframe"]["n_star"],
                        config["twoframe"]["n_earth"],
-                       "v" if config["twoframe"].get("velocity_term", True) else "")
+                       "v" if config["twoframe"].get("velocity_term", False) else "")
     # Everything this run writes hangs off one root, the corrected spectra
     # included: they used to land in a subfolder of the input directory, which
     # made the input tree both read and written and meant a shared or

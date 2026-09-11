@@ -106,6 +106,11 @@ def corrected_file_figure(ctx, run, source, centre=1267.0, width=2.0):
     gw = g[win]
     rows = {n: r for r, n in enumerate(ctx["names"]) if ctx["parity"][r] == order % 2}
     k = model["n_earth"]
+    # the high pass the depicted run used, not today's default: a run saved
+    # before 2026-09-11 filtered over 151 samples, a later one over 100 km/s
+    from pca2d.config import load_config
+    hp = load_config(os.path.join(run, "resolved_config.yaml"))["highpass"]
+    cut = dict(window=int(hp["window"]), polyorder=int(hp["polyorder"]), dv=ctx["dv"])
     views = {"panel3": [], "files": [], "before": []}
     bervs = []
     for path in corrected:

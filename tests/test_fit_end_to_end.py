@@ -78,7 +78,7 @@ def test_the_fit_writes_every_product(cube, tmp_path):
 
 def test_the_table_carries_one_velocity_per_row(cube, tmp_path):
     out = tmp_path / "fit"
-    run(cube, out)
+    run(cube, out, "--velocity-term")
     table = Table.read(out / "coefficients.csv", format="csv")
     for column in ("alpha", "vrad_fit", "evrad_fit"):
         assert column in table.colnames, "%s is missing" % column

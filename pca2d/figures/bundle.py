@@ -137,9 +137,10 @@ def summary(config, args, fit):
     rows.append(("domain", "%.1f to %.1f nm at dv = %.2f km/s"
                  % (config["domain"]["wave_min"], config["domain"]["wave_max"],
                     config["domain"]["dv"])))
-    rows.append(("high-pass", "savgol, %d samples, order %d, %s"
-                 % (config["highpass"]["window"], config["highpass"]["polyorder"],
-                    config["highpass"]["mode"])))
+    rows.append(("high-pass", "savgol, %d samples (%.1f km/s), order %d, %s"
+                 % (config["highpass"]["window"],
+                    config["highpass"]["window"] * float(config["domain"]["dv"]),
+                    config["highpass"]["polyorder"], config["highpass"]["mode"])))
     rows.append(("components", "%d star + %d observer"
                  % (tw["n_star"], tw["n_earth"])))
     rows.append(("nightly stacking", str(config["input"].get("nightly_stack"))))

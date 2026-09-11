@@ -74,6 +74,10 @@ def parse_args(argv=None):
     p.add_argument("--velocity-min-transmission", type=float, default=None,
                    help="measure the shift only where the telluric transmission"
                         " stays above this; 0 keeps the band cut alone")
+    p.add_argument("--velocity-term", dest="velocity_term",
+                   action="store_true", default=None,
+                   help="fit one velocity per exposure beside the components;"
+                        " off by default since 2026-09-11 (twoframe.velocity_term)")
     p.add_argument("--no-velocity-term", dest="velocity_term",
                    action="store_false", default=None,
                    help="do not fit one velocity per exposure. The observer"
@@ -2272,7 +2276,7 @@ def main(argv=None):
     # the term joins from the second one on, which is also when there is
     # anything for it to describe. With the term off it stays None throughout
     # and every solve is the one this package had before.
-    velocity_term = bool(getattr(args, "velocity_term", True))
+    velocity_term = bool(getattr(args, "velocity_term", False))
     a_lin = None
     alpha = np.zeros(n_spectra)
     alpha_prev = alpha

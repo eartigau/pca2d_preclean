@@ -102,7 +102,11 @@ general:
 
   highpass:
     method: savgol
-    window: 151             # samples, about 76 km/s at dv = 0.5
+    width_kms: 100          # Savitzky-Golay width in km/s, so it filters a line
+                            # the same way whatever the grid step. The window in
+                            # samples is derived from it: 201 at dv = 0.5. A
+                            # config that sets `window` (samples) instead, as
+                            # every run saved before 2026-09-11 does, keeps it.
     polyorder: 2
     mode: log_sub           # ln(f) - savgol(ln(f))
 
@@ -179,7 +183,9 @@ general:
     chunk: null
     template_berv_bin: 3000
     template_berv_min_entries: 3
-    velocity_term: true     # fit ONE VELOCITY PER EXPOSURE beside the
+    velocity_term: false    # OFF by default since 2026-09-11, as the sanity
+                            # check on what it does; true (or --velocity-term)
+                            # fits ONE VELOCITY PER EXPOSURE beside the
                             # components, as the derivative of the reconstructed
                             # star carried to that exposure's BERV. On a grid
                             # uniform in velocity that derivative is a plain

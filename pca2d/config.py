@@ -155,8 +155,13 @@ DEFAULTS = {
     },
     "highpass": {
         "method": "savgol",          # 'savgol' or 'none'
-        "window": 31,                # pixels (odd); 15.5 km/s at dv = 0.5 km/s,
-                                     # about 4 NIRPS resolution elements
+        # The Savitzky-Golay width IN KM/S, so the filter does the same thing
+        # to a line whatever the grid step; `window`, in samples, is derived
+        # from it once dv is known (resolve_highpass). A config that sets
+        # `window` and not this keeps its window, which is how a run saved
+        # before 2026-09-11 reads back, cube key included.
+        "width_kms": 100.0,
+        "window": 201,               # samples (odd): what 100 km/s is at dv = 0.5
         "polyorder": 2,
         "mode": "divide",            # 'divide'  -> y = ln(f / lowpass(f))
                                      # 'log_sub' -> y = ln(f) - lowpass(ln f)
@@ -302,7 +307,9 @@ DEFAULTS = {
         # on TOI2120 it accounts for 41% of the variance of what the correction
         # did to LBL's velocities. It is fitted and never divided out, since
         # taking it out of the data would remove the signal being looked for.
-        "velocity_term": True,
+        # OFF by default since 2026-09-11, as the sanity check on what it does;
+        # `--velocity-term` or `velocity_term: true` turns it on.
+        "velocity_term": False,
         # The shift is measured only on columns inside a photometric band whose
         # telluric transmission stays above this in 90% of the exposures. Zero
         # turns the transmission cut off and keeps the band cut. Fitting the
@@ -474,16 +481,88 @@ def resolve_smart_dv(cfg: dict) -> dict:
     cfg["domain"]["dv"] = float(dv)
     cfg["domain"]["pixel_dv"] = float(step)
 
-    # Every window below is counted in SAMPLES, so a coarser grid widens all of
-    # them in velocity without a line of the config changing. Said out loud
-    # rather than rescaled: what these should cover is a modelling decision,
-    # and one this function has no business making on its own.
-    for key, section in (("window", "highpass"),
-                         ("empirical_noise_box", "weights")):
-        n = cfg[section].get(key)
-        if n:
-            log("  %s.%s is %d samples, so %.0f km/s at this step"
-                % (section, key, n, n * dv), "warn")
+    # A window still counted in SAMPLES widens in velocity on a coarser grid
+    # without a line of the config changing. Said out loud rather than
+    # rescaled: what it should cover is a modelling decision. The high pass is
+    # no longer one of them: it is a width in km/s (resolve_highpass), and a
+    # config that still gives it in samples is told so there.
+    n = cfg["weights"].get("empirical_noise_box")
+    if n:
+        log("  weights.empirical_noise_box is %d samples, so %.0f km/s at this"
+            " step" % (n, n * dv), "warn")
+    return cfg
+
+
+def highpass_samples(width_kms, dv, polyorder=2):
+    """The Savitzky-Golay window, in samples, for a width in km/s.
+
+    Odd, as savgol_filter needs, and never shorter than polyorder + 2. At
+    dv = 0.5 km/s, 100 km/s is 201 samples; at SPIRou's smart step of
+    1.37 km/s it is 73, the same 100 km/s.
+    """
+    n = int(round(float(width_kms) / float(dv)))
+    n = max(n, int(polyorder) + 2)
+    return n if n % 2 else n + 1
+
+
+def _file_highpass(user, layered, instrument=None, object_name=None):
+    """The `highpass` keys the configuration FILE sets, its layers merged in
+    the order load_config applies them; the package DEFAULTS are not in it."""
+    if not layered:
+        layers = [user]
+    else:
+        top = {k: v for k, v in user.items()
+               if k not in ("general", "instruments", "objects")}
+        layers = [user.get("general") or top]
+        if instrument:
+            layers.append((user.get("instruments") or {}).get(instrument.upper()) or {})
+        if object_name:
+            layers.append((user.get("objects") or {}).get(object_name) or {})
+    out = {}
+    for layer in layers:
+        out.update((layer or {}).get("highpass") or {})
+    return out
+
+
+def resolve_highpass(cfg, file_hp=None):
+    """`highpass.window` from `highpass.width_kms` and the grid step.
+
+    The width is a velocity so that the filter treats a line the same way on
+    any grid; the window is what savgol_filter takes. It is written back as a
+    plain number, so the saved config says what was used, and the cube key
+    hashes it, together with the dv it came from.
+
+    A config file that sets `window` and not `width_kms` keeps its window:
+    every run saved before 2026-09-11 is written that way, and reading one
+    back has to give the cube it was built with, not a new one.
+    """
+    from .logger import log
+
+    file_hp = file_hp or {}
+    # a copy: a section the file does not touch can still be DEFAULTS' own dict
+    cfg["highpass"] = hp = dict(cfg["highpass"])
+    if "width_kms" in file_hp:
+        width = file_hp["width_kms"]
+    elif file_hp.get("window"):
+        width = None
+    else:
+        width = hp.get("width_kms")
+    hp["width_kms"] = float(width) if width else None
+    dv = cfg["domain"].get("dv")
+    if not dv:
+        return cfg                   # smart_dv without an object: no step yet
+    if width:
+        window = highpass_samples(width, dv, hp.get("polyorder", 2))
+        if file_hp.get("window") and int(file_hp["window"]) != window:
+            log("highpass.window %d is not used: width_kms %.0f km/s is %d"
+                " samples at dv = %.2f km/s"
+                % (int(file_hp["window"]), float(width), window, float(dv)),
+                "warn")
+        hp["window"] = window
+    elif cfg["domain"].get("smart_dv"):
+        log("highpass.window is %d samples, a config from before width_kms,"
+            " so %.0f km/s at this step"
+            % (int(hp["window"]), int(hp["window"]) * float(dv)), "warn")
     return cfg
 
 
@@ -639,6 +718,10 @@ def load_config(path: str | None, object_name: str | None = None,
                 raise ValueError("config sets both twoframe.%s and twoframe.%s"
                                  " to different values" % (new, old))
             cfg["twoframe"][old] = tf[new]
+
+    # the high pass's window from its width in km/s, now that dv is known
+    cfg = resolve_highpass(cfg, _file_highpass(user, layered, instrument,
+                                               object_name))
     return cfg
 
 
@@ -655,7 +738,11 @@ def cache_key(config: dict) -> str:
         # invalidate a cube that took twenty minutes to build
         "domain": {k: v for k, v in config["domain"].items() if k != "bands"},
         "registration": config["registration"],
-        "highpass": config["highpass"],
+        # the window the width resolved to, not the width: dv is hashed with
+        # the domain, and a config in samples from before width_kms has to
+        # keep the key its cube was built under
+        "highpass": {k: v for k, v in config["highpass"].items()
+                     if k != "width_kms"},
         # weights that are baked into the cube rather than applied later
         "weights": {
             k: config["weights"][k]
