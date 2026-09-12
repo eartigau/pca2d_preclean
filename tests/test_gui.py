@@ -57,7 +57,32 @@ def test_the_export_writes_what_was_changed_and_nothing_else():
 
 def test_every_option_names_a_real_configuration_key():
     from pca2d.config import DEFAULTS
-    for _key, _label, path, _kind, _help in OPTIONS:
+    for _key, path, _kind in OPTIONS:
         section, name = path.split(".")
         assert section in DEFAULTS, path
         assert name in DEFAULTS[section], path
+
+
+def test_every_item_explains_itself_in_both_languages():
+    """The window is for people meeting the pipeline: every item says what the
+    choice implies, in whichever of the two languages is on."""
+    from pca2d.gui import EN, FR, STAGES, text
+    keys = ["help_data_dir", "help_config", "help_out_dir", "help_objects",
+            "help_variant", "help_command", "help_log", "help_rescan",
+            "help_lang", "help_run_button", "help_stop_button",
+            "help_dry_button", "help_export_button", "help_savelog_button",
+            "help_openout_button"]
+    keys += ["help_" + key for key, _p, _k in OPTIONS]
+    keys += ["help_stage_" + stage for stage in STAGES]
+    for key in keys:
+        for name, table in (("en", EN), ("fr", FR)):
+            assert key in table, (name, key)
+            assert len(table[key]) > 40, ("too short to explain anything",
+                                          name, key)
+    for key, _path, _kind in OPTIONS:          # the labels, which are short
+        for name, table in (("en", EN), ("fr", FR)):
+            assert table.get("opt_" + key), (name, key)
+    assert set(EN) == set(FR), "the two languages say the same things"
+    assert text("fr", "run") == "Lancer" and text("en", "run") == "Run"
+    assert text("de", "run") == "Run", "an unknown language falls back"
+    assert text("en", "nothing at all") == "nothing at all"
