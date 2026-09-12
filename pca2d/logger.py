@@ -12,6 +12,7 @@ Colours encode the semantic role of the line:
 
 from __future__ import annotations
 
+import os
 import shutil
 import sys
 import textwrap
@@ -32,7 +33,10 @@ try:
 except ImportError:                                           # pragma: no cover
     _tqdm = None
 
-_USE_COLOUR = sys.stdout.isatty()
+#: colour when writing to a terminal, or when asked for: the window that runs
+#: the pipeline (pca2d.gui) reads these codes to colour its own log, and it is
+#: a pipe, not a terminal
+_USE_COLOUR = sys.stdout.isatty() or os.environ.get("PCA2D_COLOUR") == "1"
 
 
 def set_colour(enabled: bool) -> None:

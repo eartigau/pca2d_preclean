@@ -21,6 +21,7 @@ dependencies = [
 
 [project.scripts]
 pca2d-preclean = "pca2d.cli:main"
+pca2d-gui = "pca2d.gui:main"
 
 [tool.setuptools]
 packages = ["pca2d", "pca2d.figures"]
