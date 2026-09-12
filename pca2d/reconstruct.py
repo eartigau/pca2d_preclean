@@ -145,6 +145,10 @@ def parse_args(argv=None):
     p.add_argument("--resolution", type=float, default=None,
                    help="the instrument's resolving power, the unit of the two"
                         " smoothings above")
+    p.add_argument("--star-group", type=int, default=0,
+                   help="the first star-spectrum group of this object in a joint"
+                        " fit, 2 x its index among the objects (pca2d.joint);"
+                        " the order parity is added to it. 0 for one object")
     p.add_argument("--mask", choices=("exposure", "common", "none"),
                    default="exposure",
                    help="which samples a corrected file blanks: the ones its own"
@@ -208,12 +212,24 @@ def load_model(path):
     return model
 
 
+def group_of(model, parity, groups):
+    """Which star-spectrum group an order of this parity belongs to.
+
+    One object has two, the even orders and the odd ones. A joint fit of
+    several objects has two per object, labelled 2 * index + parity, since
+    every star has its own spectrum while a parity means the same thing for
+    all of them. The correction of one object's files is told which pair is
+    its own, in model["star_group"] (reconstruct --star-group).
+    """
+    return (int(model.get("star_group", 0)) + int(parity) % 2) % max(int(groups), 1)
+
+
 def template_for(model, parity):
     """The star-frame mean for an order of this parity (0 even, 1 odd)."""
     per = model.get("templates")
     if per:
         names = list(per.keys())
-        return per[names[parity % len(names)]]
+        return per[names[group_of(model, parity, len(names))]]
     return model["template"]
 
 
@@ -286,7 +302,7 @@ def reconstruct(model, row, halfwidth=8, path=None):
     recon = np.full((n_orders, n_pixels), np.nan)
     parity = np.arange(n_orders) % 2
     for order in range(n_orders):
-        mean = model["means"][names[parity[order]] if len(names) > 1 else names[0]]
+        mean = model["means"][names[group_of(model, parity[order], len(names))]]
         total = star_obs[parity[order]] + earth + mean
         # the basis has no support where the mean is exactly zero, and that is
         # per parity, so the mask has to be rebuilt for each order's parity
@@ -430,7 +446,7 @@ def order_correction(model, correction, n_earth, order, wave):
     """
     names = list(model["means"].keys())
     grid = model["grid"]
-    mean = model["means"][names[order % 2] if len(names) > 1 else names[0]]
+    mean = model["means"][names[group_of(model, order, len(names))]]
     # where the fit had data: its own weight sums, and, as before, wherever the
     # observer mean is not zero. A fit that keeps no observer mean (--mean
     # star) has one that is zero everywhere, and the mean alone would then
@@ -789,7 +805,7 @@ def refit_row(model, path, config, shifter, base_row):
     # exposure's frame
     names = list(model["means"].keys())
     for parity in (0, 1):
-        data[parity] -= model["means"][names[parity % len(names)]]
+        data[parity] -= model["means"][names[group_of(model, parity, len(names))]]
     berv = float(payload["meta"]["berv"])
     delta = np.full(2, -float(pixel_shift(berv, model["dv"])))
     for parity in (0, 1):
@@ -901,6 +917,9 @@ def correct_many(model, args):
               " coefficients. The sky is not constant over a night; --refit"
               " solves for each exposure's own amplitudes")
 
+    # which of the fit's star spectra are this object's, when several were
+    # fitted together against one observer basis (pca2d.joint)
+    model["star_group"] = int(getattr(args, "star_group", 0) or 0)
     alive_by_file = None
     mask_mode = str(getattr(args, "mask", None) or "exposure")
     if mask_mode == "none":

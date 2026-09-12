@@ -28,6 +28,7 @@ working one and a wedged one has to be visible from across the room.
 from __future__ import annotations
 
 import argparse
+import copy
 import glob
 import os
 import sys
@@ -44,10 +45,11 @@ def parse_args(argv=None):
     p = argparse.ArgumentParser(
         prog="pca2d-preclean", description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--object", required=True, metavar="NAME",
+    p.add_argument("--object", default=None, metavar="NAME",
                    help="the target, and the name of its directory under"
                         " --data-dir. Case matters: it is also the key looked"
-                        " up under `objects:` in the config")
+                        " up under `objects:` in the config. Required unless"
+                        " --objects names several")
     p.add_argument("--config", default="config.yaml",
                    help="default: config.yaml beside the repository root")
     p.add_argument("--data-dir", default=None, metavar="DIR",
@@ -77,6 +79,15 @@ def parse_args(argv=None):
     p.add_argument("--run-lbl", action="store_true",
                    help="have the lbl stage run LBL, not only prepare it."
                         " Hours. Same as lbl.run: true in the config")
+    p.add_argument("--objects", default=None, metavar="A,B,C",
+                   help="fit these objects TOGETHER against one observer basis,"
+                        " each keeping its own star spectrum per order parity"
+                        " (pca2d.joint). The atmosphere and the instrument are"
+                        " the same for all of them; the stars, their BERV"
+                        " coverage and their systemic velocities are not, which"
+                        " is what makes the shared basis cleaner. Everything"
+                        " lands under <output root>/joint/<A+B+C>/, and each"
+                        " object is measured by LBL on its own")
     p.add_argument("--variant", default=None, metavar="NAME",
                    help="variants/NAME.yaml, beside the config, on top of it:"
                         " the nominal plus what the variant changes. Its"
@@ -142,6 +153,98 @@ def check_reused_fit(plan):
             " give cube %s: a variant repeats its base's cube settings"
             % (fitdir, base, plan["key"]), "error")
         raise SystemExit(2)
+
+
+def run_tag(config):
+    """<M>-<N>, and `v` when the velocity term is on: the name of a run."""
+    return "%d-%d%s" % (config["twoframe"]["n_star"], config["twoframe"]["n_earth"],
+                        "v" if config["twoframe"].get("velocity_term", False) else "")
+
+
+def without_object(config):
+    """The config with the object taken out, so two objects built the same way
+    give the same cube key."""
+    other = copy.deepcopy(config)
+    other["input"]["object"] = ""
+    return other
+
+
+def joint_members(args, variant):
+    """One entry per object of a joint run: its config, its spectra, its cube.
+
+    Every object is resolved exactly as a solo run resolves it, so each keeps
+    its own folder and its own cube; the joint fit adds the one basis they
+    share. They must agree on the domain, the step and the high pass, or their
+    rows could not sit on one grid.
+    """
+    members = []
+    for name in args.objects:
+        cfg = load_config(args.config, object_name=name, data_dir=args.data_dir,
+                          out_dir=args.out_dir, instrument=args.instrument,
+                          variant=variant)
+        directory = spectra_dir(cfg)
+        if not os.path.isdir(directory):
+            log("no directory %s: %s has no spectra under the input root"
+                % (directory, name), "error")
+            raise SystemExit(2)
+        key = cache_key(cfg)
+        members.append({
+            "object": name, "config": cfg, "directory": directory,
+            "files": sorted(glob.glob(os.path.join(
+                directory, cfg["input"].get("pattern", "*t.fits")))),
+            "key": key,
+            "shared_key": cache_key(without_object(cfg)),
+            "cube": os.path.join(cfg["output"]["cache_directory"],
+                                 "cube_%s_%s" % (cfg["input"]["format"], key)),
+        })
+    return members
+
+
+def joint_plan(args, variant):
+    """The plan of a run that fits several objects against one observer basis."""
+    from . import joint as _joint
+
+    members = joint_members(args, variant)
+    if len({m["shared_key"] for m in members}) > 1:
+        log("these objects are not built the same way, so their rows cannot"
+            " share a grid: %s" % ", ".join("%s %s" % (m["object"], m["shared_key"])
+                                            for m in members), "error")
+        raise SystemExit(2)
+    config = copy.deepcopy(members[0]["config"])
+    # the same command-line overrides a solo run takes
+    if args.n_star is not None:
+        config["twoframe"]["n_star"] = args.n_star
+    if args.n_earth is not None:
+        config["twoframe"]["n_earth"] = args.n_earth
+    if args.windows:
+        config["output"]["windows"] = list(args.windows)
+    if args.rebuild_cube:
+        config["output"]["use_cache"] = False
+        for member in members:
+            member["config"]["output"]["use_cache"] = False
+    if args.run_lbl:
+        config.setdefault("lbl", {})["run"] = True
+    name = _joint.joint_name(args.objects)
+    config["input"]["object"] = name
+    # its own LBL objects, so a joint measurement is never taken for a solo one
+    config["lbl"]["suffix"] = "%s_joint" % (config["lbl"].get("suffix")
+                                            or "_PCA2D_{tag}")
+    tag = run_tag(config)
+    outdir = os.path.join(config["output"]["directory"], "joint", name, tag)
+    plan = {
+        "config": config, "objects": list(args.objects), "members": members,
+        "directory": ", ".join(m["directory"] for m in members),
+        "files": [f for m in members for f in m["files"]],
+        "key": members[0]["shared_key"], "tag": tag, "outdir": outdir,
+        "corrdir": os.path.join(outdir, "corrected"),
+        "cube": _joint.cube_path(config["output"]["cache_directory"],
+                                 config["input"]["format"],
+                                 members[0]["shared_key"], args.objects),
+    }
+    for k, member in enumerate(members):
+        member["star_group"] = 2 * k
+        member["corrdir"] = os.path.join(plan["corrdir"], member["object"])
+    return plan
 
 
 def resolve(args):
@@ -220,6 +323,10 @@ def announce(args, plan):
     log("cube        %s" % plan["cube"], "value")
     log("outputs     %s" % plan["outdir"], "value")
     log("corrected   %s" % plan["corrdir"], "value")
+    if plan.get("objects"):
+        log("objects     %s, fitted together against ONE observer basis, each"
+            " with its own star spectrum per order parity"
+            % ", ".join(plan["objects"]), "value")
     if cfg.get("variant"):
         log("variant     %s: variants/%s.yaml on top of the config%s"
             % (cfg["variant"]["name"], cfg["variant"]["name"],
@@ -227,9 +334,40 @@ def announce(args, plan):
             "value")
 
 
+def run_joint_cube(plan, build_main):
+    """Each object's own cube, then the one cube their rows share."""
+    import yaml
+
+    from . import joint as _joint
+
+    if os.path.isdir(plan["cube"]) and plan["config"]["output"]["use_cache"]:
+        log("a joint cube for these objects and this configuration is already"
+            " on disk, reusing it: %s" % plan["cube"], "warn")
+        return
+    for member in plan["members"]:
+        if os.path.isdir(member["cube"]) and plan["config"]["output"]["use_cache"]:
+            log("  %-10s its own cube is already built: %s"
+                % (member["object"], member["cube"]))
+            continue
+        path = os.path.join(plan["outdir"],
+                            "cube_config_%s.yaml" % member["object"])
+        with open(path, "w") as handle:
+            yaml.safe_dump(member["config"], handle, sort_keys=False,
+                           default_flow_style=False)
+        log("  %-10s %d spectra of its own" % (member["object"],
+                                               len(member["files"])), "info")
+        build_main([path] + ([] if plan["config"]["output"]["use_cache"]
+                             else ["--no-cache"]))
+    _joint.build([m["cube"] for m in plan["members"]],
+                 [m["object"] for m in plan["members"]],
+                 plan["cube"], plan["written_config"])
+
+
 def run_cube(plan):
     from .build import main as build_main
 
+    if plan.get("members"):
+        return run_joint_cube(plan, build_main)
     if os.path.isdir(plan["cube"]) and plan["config"]["output"]["use_cache"]:
         log("a cube for this exact configuration is already on disk, reusing"
             " it: %s" % plan["cube"], "warn")
@@ -282,8 +420,6 @@ def run_correct(plan):
     n_earth = cfg["correct"]["n_earth"]
     if n_earth is None:
         n_earth = cfg["twoframe"]["n_earth"]
-    log("writing %d corrected spectra to %s"
-        % (len(plan["files"]), plan["corrdir"]), "info")
     log("dividing out the observer block, its per-parity mean and %d"
         " components%s, and setting to NaN every sample the fit gave no weight:"
         " exactly panel 3 of the sequence figure"
@@ -292,16 +428,28 @@ def run_correct(plan):
     if "--refit" in mode:
         log("the fit's rows are nights: every exposure of every fitted night is"
             " corrected with its own coefficients, solved for that file against"
-            " the fixed basis, and its own no-weight mask", "info")
-    apply_main([
-        "--correct", *mode,
-        "--fits", os.path.join(plan.get("fitdir") or plan["outdir"],
-                               "twoframe_components.fits"),
-        "--n-star", str(n_star), "--n-earth", str(n_earth),
-        "--max-sky-ratio", str(cfg["quality"]["max_sky_ratio"] or 0),
-        "--source-dir", plan["directory"], "--cube", plan["cube"],
-        "--corrected-dir", plan["corrdir"], "--overwrite", *clip_args(cfg),
-        *shrink_args(cfg)])
+            " the fixed basis", "info")
+    # one target, or each object of a joint fit with its own star spectra
+    targets = plan.get("members") or [{"object": cfg["input"].get("object"),
+                                       "directory": plan["directory"],
+                                       "corrdir": plan["corrdir"],
+                                       "files": plan["files"], "star_group": 0}]
+    for target in targets:
+        log("writing %d corrected spectra to %s%s"
+            % (len(target["files"]), target["corrdir"],
+               " (star spectra %d and %d of the joint fit)"
+               % (target["star_group"], target["star_group"] + 1)
+               if len(targets) > 1 else ""), "info")
+        apply_main([
+            "--correct", *mode,
+            "--fits", os.path.join(plan.get("fitdir") or plan["outdir"],
+                                   "twoframe_components.fits"),
+            "--n-star", str(n_star), "--n-earth", str(n_earth),
+            "--max-sky-ratio", str(cfg["quality"]["max_sky_ratio"] or 0),
+            "--source-dir", target["directory"], "--cube", plan["cube"],
+            "--corrected-dir", target["corrdir"], "--overwrite",
+            "--star-group", str(target.get("star_group", 0)),
+            *clip_args(cfg), *shrink_args(cfg)])
 
 
 def nightly_stacked(cube):
@@ -400,6 +548,30 @@ def run_lbl(plan):
     for sub in _storage.LBL_FOLDERS:
         _storage.link_dir(plan["config"],
                           os.path.join(block.get("directory") or "lbl", sub))
+    if plan.get("members"):
+        # one LBL object per star, each measured on its own; what they share is
+        # the observer basis that corrected them, not their velocities
+        for member in plan["members"]:
+            theirs = dict(plan)
+            theirs["config"] = copy.deepcopy(plan["config"])
+            theirs["config"]["input"]["object"] = member["object"]
+            theirs["directory"] = member["directory"]
+            theirs["files"] = member["files"]
+            theirs["corrdir"] = member["corrdir"]
+            theirs["fitdir"] = plan.get("fitdir") or plan["outdir"]
+            theirs["outdir"] = os.path.join(plan["outdir"], "lbl",
+                                            member["object"])
+            os.makedirs(theirs["outdir"], exist_ok=True)
+            log("LBL for %s, corrected by the joint fit" % member["object"],
+                "info")
+            prepared = splbl.prepare(theirs)
+            if block.get("run", False):
+                if not prepared.get("readable", True):
+                    log("not running LBL for %s: the profile above cannot read"
+                        " its spectra" % member["object"], "error")
+                    continue
+                splbl.run(prepared["script"])
+        return
     prepared = splbl.prepare(plan)
     if block.get("run", False):
         if not prepared.get("readable", True):
@@ -426,7 +598,17 @@ def main(argv=None):
 
     started = time.time()
     log("pca2d-preclean", "info")
-    plan = resolve(args)
+    if args.objects:
+        args.objects = [o.strip() for o in str(args.objects).split(",") if o.strip()]
+        args.object = args.object or args.objects[0]
+        plan = joint_plan(args, load_variant(args.config,
+                                             getattr(args, "variant", None)))
+    elif not args.object:
+        log("--object NAME, or --objects A,B,C to fit several of them against"
+            " one observer basis", "error")
+        raise SystemExit(2)
+    else:
+        plan = resolve(args)
     announce(args, plan)
     from . import storage as _storage
     where = _storage.check(plan["config"], dry_run=args.dry_run)
