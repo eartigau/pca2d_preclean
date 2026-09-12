@@ -406,10 +406,16 @@ def run_figures(plan):
     log("drawing %d windows and binding everything into one PDF"
         % len(plan["config"]["output"]["windows"]), "info")
     log("each figure script reads the cube once; expect a few minutes", "info")
-    bundle_main(["--config", plan["written_config"], "--cube", plan["cube"],
-                 "--outdir", plan["outdir"],
-                 "--windows", *[str(w) for w in
-                                plan["config"]["output"]["windows"]]])
+    argv = ["--config", plan["written_config"], "--cube", plan["cube"],
+            "--outdir", plan["outdir"],
+            "--windows", *[str(w) for w in plan["config"]["output"]["windows"]]]
+    # a joint run's object is a NAME, not a folder: input.object is
+    # PROXIMA+GJ1+GJ3090 and there is no such directory. The figures that open
+    # real spectra are pointed at the first member's folder instead, which is
+    # where the sky they draw was recorded.
+    if plan.get("members"):
+        argv += ["--source-dir", plan["members"][0]["directory"]]
+    bundle_main(argv)
 
 
 def run_correct(plan):

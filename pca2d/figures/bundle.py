@@ -171,14 +171,18 @@ def has_oh_model(source_dir):
 
     SPIRou's t.fits do and NIRPS's do not. On NIRPS the figure has nothing to
     draw, which is not a failure, and the bundle's last page listed it as one
-    (2026-09-11, PROXIMA). With no spectra at all this says yes, so that the
-    figure runs and says so itself.
+    (2026-09-11, PROXIMA). A folder with no spectra in it is not a reason to
+    run the figure either: it cannot draw anything from nothing, and it landed
+    on the failure page of every joint run, whose object is a name rather than
+    a folder (2026-09-12, PROXIMA+GJ1+GJ3090).
     """
     import glob
     from astropy.io import fits
     files = sorted(glob.glob(os.path.join(source_dir, "*.fits")))
     if not files:
-        return True
+        log("   no spectra in %s, so nothing to draw the airglow from"
+            % source_dir, "warn")
+        return False
     with fits.open(files[0]) as hdulist:
         return "OHLine" in [h.name for h in hdulist]
 

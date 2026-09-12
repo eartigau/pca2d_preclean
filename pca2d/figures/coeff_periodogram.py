@@ -85,8 +85,14 @@ def main(argv=None):
     n_star, n_earth = a.shape[1], b.shape[1]
     comps = ([("a%d" % (k + 1), a[:, k]) for k in range(n_star)]
              + [("b%d" % (j + 1), b[:, j]) for j in range(n_earth)])
+    if not comps:
+        log("no coefficients to draw: the fit has no component at all", "warn")
+        return
 
-    t, _ = nightly(bjd, a[:, 0])
+    # the nights, which belong to the exposures and not to any one coefficient:
+    # the nominal fit has NO star coefficient (n_star 0), and asking a[:, 0] for
+    # the dates failed on every one of them
+    t = np.unique(bjd)
     baseline = t.max() - t.min()
     freq = np.linspace(1.0 / args.pmax, 1.0 / args.pmin, 20000)
     per = 1.0 / freq

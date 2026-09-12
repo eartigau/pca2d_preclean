@@ -27,5 +27,8 @@ def test_nirps_files_do_not(tmp_path):
     assert not has_oh_model(str(tmp_path))
 
 
-def test_no_spectra_lets_the_figure_say_so(tmp_path):
-    assert has_oh_model(str(tmp_path))
+def test_no_spectra_is_nothing_to_draw_rather_than_a_figure_that_fails(tmp_path):
+    """A joint run's object is a name, not a folder, and this figure needs real
+    spectra: every joint run had it on the bundle's failure page."""
+    assert not has_oh_model(str(tmp_path))
+    assert not has_oh_model(str(tmp_path / "PROXIMA+GJ1+GJ3090"))
