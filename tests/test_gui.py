@@ -5,7 +5,8 @@ tested is everything the window decides before it draws anything.
 """
 import os
 
-from pca2d.gui import OPTIONS, build_command, objects_in, variant_yaml
+from pca2d.gui import (ALL_OPTIONS, OPTIONS, OPTIONS_LBL, build_command,
+                       instruments_of, objects_in, variant_yaml)
 
 
 def test_the_objects_of_a_data_root_are_the_folders_with_spectra(tmp_path):
@@ -55,12 +56,40 @@ def test_the_export_writes_what_was_changed_and_nothing_else():
     assert changed == {"twoframe": {"n_star": 0}, "correct": {"mask": "exposure"}}
 
 
+def test_the_lbl_window_exports_its_own_block(tmp_path):
+    """The LBL settings are settings like the others: what differs is written."""
+    defaults = {"lbl": {"run": False, "star_template": False, "suffix": "_P_{tag}",
+                        "steps": ["template", "mask", "compute", "compile"],
+                        "template": None, "link": "symlink"}}
+    same = variant_yaml({"lbl_star_template": False, "lbl_suffix": "_P_{tag}",
+                         "lbl_steps": "template, mask, compute, compile",
+                         "lbl_link": "symlink", "lbl_template": ""}, defaults)
+    assert same == {}, "a window that repeats the configuration says nothing"
+    changed = variant_yaml({"lbl_star_template": True, "lbl_steps": "compute,compile",
+                            "lbl_link": "copy"}, defaults)
+    assert changed == {"lbl": {"star_template": True, "link": "copy",
+                               "steps": ["compute", "compile"]}}
+
+
+def test_two_instruments_are_seen_before_a_run_is_started():
+    rows = {"PROXIMA": {"instrument": "NIRPS"}, "GJ1": {"instrument": "NIRPS"},
+            "TOI1452": {"instrument": "SPIROU"}, "NEW": {"instrument": "?"}}
+    assert instruments_of(rows, ["PROXIMA", "GJ1"]) == {"NIRPS"}
+    assert instruments_of(rows, ["PROXIMA", "TOI1452"]) == {"NIRPS", "SPIROU"}
+    assert instruments_of(rows, ["PROXIMA", "NEW"]) == {"NIRPS"}, \
+        "an instrument that could not be read is not evidence of a second one"
+    assert instruments_of(rows, ["NOBODY"]) == set()
+
+
 def test_every_option_names_a_real_configuration_key():
     from pca2d.config import DEFAULTS
-    for _key, path, _kind in OPTIONS:
+    for _key, path, _kind in ALL_OPTIONS:
         section, name = path.split(".")
         assert section in DEFAULTS, path
         assert name in DEFAULTS[section], path
+    assert len({key for key, _p, _k in ALL_OPTIONS}) == len(ALL_OPTIONS), \
+        "one widget per setting: two would disagree"
+    assert len({path for _k, path, _kind in ALL_OPTIONS}) == len(ALL_OPTIONS)
 
 
 def test_every_item_explains_itself_in_both_languages():
@@ -71,18 +100,44 @@ def test_every_item_explains_itself_in_both_languages():
             "help_variant", "help_command", "help_log", "help_rescan",
             "help_lang", "help_run_button", "help_stop_button",
             "help_dry_button", "help_export_button", "help_savelog_button",
-            "help_openout_button"]
-    keys += ["help_" + key for key, _p, _k in OPTIONS]
+            "help_openout_button", "help_savedefaults_button",
+            "help_lblwin_button", "help_all_button", "help_check",
+            "help_col_snr", "help_col_exptime"]
+    keys += ["help_" + key for key, _p, _k in ALL_OPTIONS]
     keys += ["help_stage_" + stage for stage in STAGES]
     for key in keys:
         for name, table in (("en", EN), ("fr", FR)):
             assert key in table, (name, key)
             assert len(table[key]) > 40, ("too short to explain anything",
                                           name, key)
-    for key, _path, _kind in OPTIONS:          # the labels, which are short
+    for key, _path, _kind in ALL_OPTIONS:      # the labels, which are short
         for name, table in (("en", EN), ("fr", FR)):
             assert table.get("opt_" + key), (name, key)
     assert set(EN) == set(FR), "the two languages say the same things"
     assert text("fr", "run") == "Lancer" and text("en", "run") == "Run"
     assert text("de", "run") == "Run", "an unknown language falls back"
     assert text("en", "nothing at all") == "nothing at all"
+
+
+def speaking(lang):
+    """The window's text machinery without a screen: it needs only a language."""
+    from pca2d.gui import App
+    window = App.__new__(App)
+    window.lang = lang
+    return lambda key, *args: App._line(window, key, *args)
+
+
+def test_what_the_window_says_is_timestamped_and_in_its_language():
+    """`YYMMDD HH:MM:SS.SS | message`, the convention every log here follows."""
+    import re
+    english, french = speaking("en"), speaking("fr")
+    line = english("log_scan_done", "science_ab12.json", 3, 10, 0, 1)
+    assert re.match(r"^\d{6} \d\d:\d\d:\d\d\.\d\d \| ", line), line
+    assert line.endswith("\n") and "science_ab12.json" in line
+    assert "3 objects, 10 spectra read" in line
+    assert "3 objets, 10 spectres lus" in french("log_scan_done", "x", 3, 10, 0, 1)
+
+
+def test_a_message_whose_placeholders_drifted_does_not_stop_the_window():
+    line = speaking("en")("log_scan_done", "only one argument")
+    assert "only one argument" in line, "said badly rather than not at all"

@@ -778,6 +778,82 @@ def load_config(path: str | None, object_name: str | None = None,
     return cfg
 
 
+def as_yaml_value(value):
+    """A scalar as it should read in the file: true/false, a number, a list, or
+    a quoted string when YAML would otherwise make something else of it."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return "null"
+    if isinstance(value, (int, float)):
+        return repr(value)
+    if isinstance(value, (list, tuple)):
+        return "[%s]" % ", ".join(as_yaml_value(v) for v in value)
+    # written bare only if reading it back gives the same string: `auto` is
+    # safe, `*t.fits` is an alias, `1220:4` is a base-60 number and `true` is
+    # not a word (yaml-windows-as-text, which this project has been bitten by)
+    text = str(value)
+    try:
+        plain = yaml.safe_load(text) if text.strip() else None
+    except yaml.YAMLError:
+        plain = None
+    return text if isinstance(plain, str) and plain == text else json.dumps(text)
+
+
+def update_file(path, values):
+    """Write `values` into a configuration FILE, in place, keeping the comments.
+
+    `values` maps "section.key" to a value, and only the `general:` block is
+    touched, which is where the nominal lives. A key already there keeps its
+    line, its indentation and whatever comment follows it, and only its value
+    changes; a key that is missing is added at the end of its section; a
+    section that is missing is refused, since guessing where it goes would put
+    it under the wrong instrument.
+
+    Every comment in config.yaml is an argument for a value, and yaml.safe_dump
+    would delete all of them, which is why this edits lines rather than
+    re-writing the document. Returns the keys it wrote.
+    """
+    with open(path) as handle:
+        lines = handle.read().split("\n")
+    try:
+        start = next(i for i, line in enumerate(lines) if line.startswith("general:"))
+    except StopIteration:
+        raise SystemExit("%s has no `general:` block to write into" % path)
+    end = next((i for i in range(start + 1, len(lines))
+                if lines[i][:1] not in ("", " ", "#")), len(lines))
+
+    written = []
+    for name, value in (values or {}).items():
+        section, key = name.split(".")
+        head = next((i for i in range(start + 1, end)
+                     if lines[i].strip().startswith(section + ":")), None)
+        if head is None:
+            raise SystemExit("%s has no `%s:` under general:" % (path, section))
+        indent = len(lines[head]) - len(lines[head].lstrip()) + 2
+        stop = next((i for i in range(head + 1, end)
+                     if lines[i].strip() and not lines[i].startswith(" " * indent)),
+                    end)
+        at = next((i for i in range(head + 1, stop)
+                   if lines[i].strip().startswith(key + ":")), None)
+        text = "%s%s: %s" % (" " * indent, key, as_yaml_value(value))
+        if at is None:
+            last = max([i for i in range(head + 1, stop) if lines[i].strip()],
+                       default=head)
+            lines.insert(last + 1, text)
+            end += 1
+        else:
+            comment = lines[at].split("#", 1)
+            if len(comment) > 1:
+                pad = max(1, 28 - len(text))
+                text = "%s%s# %s" % (text, " " * pad, comment[1].strip())
+            lines[at] = text
+        written.append(name)
+    with open(path, "w") as handle:
+        handle.write("\n".join(lines))
+    return written
+
+
 def cache_key(config: dict) -> str:
     """Hash of the config entries that affect the registered data cube.
 

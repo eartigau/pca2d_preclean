@@ -80,6 +80,17 @@ def _wrap(message, room):
     return lines
 
 
+def stamp(now=None) -> str:
+    """The convention's timestamp: `YYMMDD HH:MM:SS.SS`, to hundredths.
+
+    Here rather than inside log() because the window that runs the pipeline
+    (pca2d.gui) writes its own lines beside the run's, and the two must carry
+    the same stamp rather than two spellings of the same idea.
+    """
+    now = now or datetime.now()
+    return now.strftime("%y%m%d %H:%M:%S.") + "%02d" % (now.microsecond // 10000)
+
+
 def log(message: str, level: str = "info") -> None:
     """Print a timestamped, colour-coded message, one stamp per printed line.
 
@@ -98,9 +109,7 @@ def log(message: str, level: str = "info") -> None:
     active bar, writes the message on its own line, and redraws the bars below
     it, so a message and a bar never share a line whichever of them came first.
     """
-    now = datetime.now()
-    stamp = now.strftime("%y%m%d %H:%M:%S.") + "%02d" % (now.microsecond // 10000)
-    prefix = "%s | " % stamp
+    prefix = "%s | " % stamp()
     width = _terminal_width()
     if width is not None and width - len(prefix) >= _MIN_ROOM:
         lines = _wrap(message, width - len(prefix))
