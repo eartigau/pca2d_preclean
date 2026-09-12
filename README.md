@@ -18,22 +18,35 @@ runs all of it, from the t.fits to LBL's velocities.
 TOI-2120, 316 SPIRou exposures over 452 days, one star and three observer
 components, and LBL on the same exposures before and after:
 
-| spectra | template | rms | robust sigma | nightly rms | median error |
-| --- | --- | ---: | ---: | ---: | ---: |
-| as delivered | LBL's own | 47.7 m/s | 35.0 m/s | 46.7 m/s | 7.29 m/s |
-| corrected, 1-3v | LBL's own | 27.3 m/s | 20.6 m/s | 25.5 m/s | 7.00 m/s |
-| corrected, 1-3v | the fit's star | 26.3 m/s | 17.8 m/s | 24.6 m/s | 8.35 m/s |
+| spectra | rms | robust sigma | nightly rms | median error |
+| --- | ---: | ---: | ---: | ---: |
+| as delivered | 47.7 m/s | 35.0 m/s | 46.7 m/s | 7.29 m/s |
+| corrected, the star fixed (0-3) | 17.4 m/s | 14.1 m/s | 15.4 m/s | 7.93 m/s |
 
 The robust sigma is 1.4826 times the MAD, and the nightly rms is that of the
-weighted nightly means, over 81 nights. `docs/make_figures.py` draws the
-velocities from the rdb files and prints these numbers.
+weighted nightly means. `docs/make_figures.py` draws the velocities from the
+rdb files and prints these numbers.
 
-Against the fit's own star template (below) the same spectra scatter a little
-less, and their formal errors are 19% larger. The extra error is in each line,
-on the same lines with the same widths and depths, and its cause is not pinned
-down: it is not the lines the mask keeps, not the template's rms column (LBL
-takes its noise from the science residual), and giving each order parity its
-own template takes back only a little of it.
+It is not free everywhere, and what decides it is measured
+(`paper/pca2d.pdf`). On four campaigns, against the delivered spectra on the
+exposures both series share:
+
+| target | instrument | delivered | corrected |
+| --- | --- | ---: | ---: |
+| TOI-2120 | SPIRou | 47.7 m/s | 17.4 m/s |
+| GJ 1 | NIRPS | 2.70 m/s | 2.61 m/s |
+| Proxima | NIRPS | 2.86 m/s | 3.04 m/s |
+| TOI-4552 | NIRPS | 12.6 m/s | 14.2 m/s |
+
+The gain is large where telluric residuals dominate and absent where the
+delivered velocities are already good. What separates them is the barycentric
+span of the exposures a fit is built on: two 14-night slices of the TOI-4552
+campaign, at the same signal-to-noise, spanning 42.8 and 0.7 km/s of BERV, go
+from 8.5 to 4.5 m/s of robust scatter and from 9.1 to 21.8 respectively. Where
+the star does not move against the sky the two frames are one frame, the
+observer block takes up stellar structure, and dividing it out removes part of
+the star. Fitting several stars against one observer basis is the way out
+(`docs/joint_fit.md`).
 
 ## The model
 
@@ -215,6 +228,29 @@ dependency come through pip. `astropy-base` and `matplotlib-base` rather than
 the metapackages: nothing here imports pyarrow or bqplot, and every entry point
 calls `matplotlib.use("Agg")` before it draws. `pyproject.toml` keeps this
 package's own looser floor, python 3.10, for anyone installing it on its own.
+
+## A window, if the command line is one thing too many
+
+```
+pca2d-gui
+```
+
+lists the objects of the data root, runs one of them or several together,
+explains what every choice implies when the pointer rests on it, in English or
+in French, writes the command it is about to run so it can be copied into a
+terminal, and shows the run's log as it comes. `docs/gui.md`.
+
+## Several stars, one observer basis
+
+```
+pca2d-preclean --objects PROXIMA,GJ1,GJ3090 --n-star 0
+```
+
+The atmosphere and the instrument belong to the night, not to the target, so
+several campaigns can be fitted against a single observer basis while each star
+keeps its own spectrum per order parity. No basis can follow one star when
+three of them, with different barycentric coverage and systemic velocities,
+constrain it. `docs/joint_fit.md`.
 
 ## Running it
 
