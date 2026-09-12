@@ -78,6 +78,39 @@ def test_an_object_is_told_which_star_spectra_are_its_own():
     assert group_of({}, 1, 2) == 1, "one object still picks its own parity"
 
 
+def test_every_star_spectrum_gets_a_column_of_its_own(tmp_path):
+    """Four groups, two objects: naming them all "all", as this did until
+    2026-09-12, wrote one mean and dropped the rest, or refused the file for
+    using a name twice. The correction reads them back by group."""
+    from astropy.table import Table
+
+    from pca2d.reconstruct import load_model
+    from pca2d.twoframe import group_names, write_components_fits
+
+    assert group_names(1) == ["all"]
+    assert group_names(2) == ["even", "odd"]
+    assert group_names(4) == ["g0_even", "g0_odd", "g1_even", "g1_odd"]
+    assert len(set(group_names(6))) == 6
+
+    m, groups = 16, 4
+    grid = 1500.0 * np.exp(np.arange(m) * 0.5 / 299792.458)
+    means = np.zeros((groups, m))
+    templates = np.array([np.full(m, float(g + 1)) for g in range(groups)])
+    table = Table({"filename": ["0001t.fits"], "berv": [0.0], "bjd": [2459000.0],
+                   "rejected": [False], "chi2_red": [1.0], "b1": [1.0]})
+    path = str(tmp_path / "twoframe_components.fits")
+    write_components_fits(path, grid, np.zeros((0, m)), np.ones((1, m)),
+                          np.zeros(m), means, np.zeros(0), np.ones(1),
+                          1.0, 0.5, table, 0.5, templates=templates,
+                          mean_mode="star")
+    model = load_model(path)
+    assert list(model["templates"]) == group_names(groups)
+    for g in range(groups):
+        model["star_group"] = g - g % 2
+        from pca2d.reconstruct import template_for
+        assert np.allclose(template_for(model, g % 2), templates[g]), g
+
+
 def test_the_joint_cube_is_named_after_its_objects(tmp_path):
     assert joint.joint_name(["A", "B"]) == "A+B"
     one = joint.cube_path("cache", "tfits", "abc123", ["A", "B"])

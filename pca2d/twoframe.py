@@ -971,6 +971,22 @@ def cube_grid(path):
     return np.asarray(np.load(path, allow_pickle=True)["grid"])
 
 
+def group_names(n_groups):
+    """A name per star-spectrum group, unique and readable.
+
+    One object has two, the even orders and the odd ones. A joint fit of
+    several objects has two per object, labelled 2 * index + parity
+    (pca2d.joint), and they all need a column of their own: naming them all
+    "all", as this did until 2026-09-12, wrote one mean and dropped the rest,
+    or refused the file outright for using a name twice.
+    """
+    if n_groups <= 1:
+        return ["all"]
+    if n_groups == 2:
+        return list(PARITY_NAMES)
+    return ["g%d_%s" % (i // 2, PARITY_NAMES[i % 2]) for i in range(n_groups)]
+
+
 def row_parity(meta, n_rows):
     """Which half of the echellogram each cube row came from.
 
@@ -1599,7 +1615,7 @@ def write_components_fits(path, grid, P, Q, template, means, power_star,
 
     cols = [fits.Column(name="wavelength", format="D", unit="nm", array=grid),
             fits.Column(name="template", format="D", array=template)]
-    names = PARITY_NAMES if means.shape[0] == 2 else ["all"]
+    names = group_names(means.shape[0])
     for i, nm in enumerate(names[:means.shape[0]]):
         cols.append(fits.Column(name="mean_%s" % nm, format="D", array=means[i]))
     if templates is not None:
@@ -1625,7 +1641,7 @@ def write_components_fits(path, grid, P, Q, template, means, power_star,
         for i, value in enumerate(groups):
             rows = (slice(None) if parity is None
                     else np.asarray(parity) == value)
-            name = (PARITY_NAMES[i] if len(groups) == 2 and i < 2 else "all")
+            name = group_names(len(groups))[i]
             count = live[rows].sum(axis=0).astype(np.int32)
             wsum = np.asarray(weights)[rows].sum(axis=0)
             cols.append(fits.Column(name="n_spectra_%s" % name, format="J",
