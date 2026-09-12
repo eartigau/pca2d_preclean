@@ -1,0 +1,14 @@
+# earth0own: nothing divided out, the no-weight mask still applied, and the
+# spectra measured against the template LBL builds from them.
+#
+# earth0 did the first half and came out at 34 m/s, which is not the cost of
+# the mask: those files keep all of their telluric structure and were measured
+# against the fit's star template, which describes none of it. With LBL's own
+# template that mismatch is gone and what is left is the mask alone.
+reuse_fit: nominal
+note: "the mask by itself, template mismatch taken out (earth0 with LBL's own template)"
+lbl:
+  before: false
+  star_template: false
+correct:
+  n_earth: 0
