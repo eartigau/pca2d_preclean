@@ -1,0 +1,385 @@
+\documentclass[11pt]{article}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{microtype}
+\usepackage[round]{natbib}
+\usepackage[colorlinks=true,linkcolor=black,citecolor=black,urlcolor=blue]{hyperref}
+\usepackage{caption}
+\captionsetup{font=small,labelfont=bf}
+\setlength{\parskip}{2pt}
+
+\title{Two-frame weighted PCA precleaning of near-infrared spectra,\\
+and what it does to line-by-line velocities}
+\author{É. Artigau}
+\date{Draft of 2026 September 12}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Near-infrared radial velocities are limited less by photon noise than by what
+is left of the atmosphere and of the instrument in a corrected spectrum. We
+model a campaign with two rest frames at once: one anchored on the star, one
+anchored on the observer, fitted together on a log-uniform grid where a Doppler
+shift is an exact translation. Dividing the observer block out of every
+exposure leaves a spectrum whose stellar content is untouched, which is then
+measured line by line. On a SPIRou campaign of TOI-2120, where telluric
+residuals dominate, the velocity scatter falls from 47.7 to 20.4~m\,s$^{-1}$.
+On three NIRPS campaigns whose delivered velocities are already good, the same
+correction is neutral at best. A pair of twin experiments, two 14-night slices
+of one campaign at the same signal-to-noise, shows what decides the outcome:
+where the barycentric velocity spans 42.8~km\,s$^{-1}$ the correction improves
+the robust scatter from 8.5 to 4.5~m\,s$^{-1}$, and where it spans
+0.7~km\,s$^{-1}$ it degrades it from 9.1 to 21.8. When the star does not move
+against the sky, the two frames are one frame, the observer block takes up
+stellar structure, and dividing it out removes part of the star. We give a
+practical guard, and a mode that fits several stars against a single observer
+basis, which breaks the degeneracy by construction.
+\end{abstract}
+
+\section{Introduction}
+
+In the near infrared the error budget of a precise radial velocity is rarely
+photon noise. Telluric absorption and emission, detector systematics and the
+imperfect removal of both leave a residual that is fixed in the observer's
+frame while the star moves through it at the barycentric velocity. Telluric
+correction removes most of it; what remains is small in flux and large in
+velocity.
+
+The line-by-line method of \citet{artigau2022} measures a velocity per line and
+combines them with an outlier-resistant estimator, which is what makes a
+residual of this kind visible: a handful of contaminated lines no longer drags
+the whole exposure. It also makes it worth removing the residual before the
+velocities are measured rather than after.
+
+This paper describes a data-driven precleaning of that residual, and, as much
+as the method itself, what four campaigns say about when it helps. The
+implementation, the configuration of every run shown here and the tests that
+pin its behaviour are in one repository; each figure and each number below is
+produced by the pipeline it documents.
+
+\section{Method}
+
+\subsection{Two frames, one model}
+
+Each exposure is resampled onto a grid uniform in $\ln \lambda$, where a
+Doppler shift is a translation of $\mathrm{atanh}(v/c)$ divided by the grid's
+step, exactly, with no approximation in $v/c$. A Savitzky-Golay filter of
+100~km\,s$^{-1}$ removes the continuum, so the data are
+$y = \ln f - \mathrm{savgol}(\ln f)$, in which an absorption of optical depth
+$\tau$ is $-\tau$ and scales linearly with the column it comes from.
+
+A t.fits exposure gives two rows, the even orders and the odd ones, which see
+the same lines at different resolutions. The model of row $n$ is
+%
+\begin{equation}
+  y_n \;=\; T_{p(n)} \;+\; a_n \, S_n P \;+\; b_n \cdot Q \;+\; \epsilon_n ,
+  \label{eq:model}
+\end{equation}
+%
+where $T_p$ is the star's own spectrum for order parity $p$, carried into the
+exposure's frame by $S_n$, the shift operator of that exposure's barycentric
+velocity; $P$ are components anchored in the star's rest frame; $Q$ are
+components anchored in the observer's; and $a_n$, $b_n$ are that exposure's
+amplitudes, shared by its two parity rows because they are one measurement of
+one star at one instant.
+
+Two properties of Eq.~\ref{eq:model} matter for what follows.
+
+\paragraph{The star's mean spectrum carries the coefficient one.} $T_p$ is
+estimated once, before any component, as the barycentric-binned median of the
+rows of that parity in the star's frame, and is then subtracted with a
+coefficient of exactly one. A coefficient in front of a term in a logarithm is
+an exponent on the flux, and an exponent on a star's mean spectrum describes no
+star. The free amplitude $a_n$ multiplies $P$, which describes variability
+around that fixed spectrum, and is measured below to be nearly orthogonal to
+it.
+
+\paragraph{A free amplitude on an observer component is exact physics.} For an
+absorption, $\ln T = -\tau$ and the optical depth scales with the airmass and
+the column, so $b_n$ is the physical parameter itself, not a linearisation.
+
+\subsection{The star per order parity}
+
+The two halves of the echellogram are not equivalent. Where two orders overlap,
+the same stellar lines appear at both ends of a blaze, and their measured
+depths differ: on Proxima at 1201.1~nm the four lines of one overlap are
+shallower in the odd orders by 0.005 to 0.042 in $\ln f$, and the even and odd
+residuals of a single fit are mirror images of one another, with a rank
+correlation of $-0.98$. One star spectrum cannot describe both halves. The
+model therefore carries one $T_p$ per parity, and only the amplitudes are
+shared.
+
+\subsection{Weights, and the samples nobody should trust}
+
+Every sample carries a weight: photon noise, floored by the sample-to-sample
+scatter measured over 201 samples, which is what keeps the thermal background
+of the reddest orders from being called the quietest part of the detector; a
+ramp in telluric transmission; zero below a line depth of $\ln f = -0.5$; zero
+at the edges of the grid; and zero wherever the Lanczos taps of the carry would
+reach into a hole in the basis support.
+
+\subsection{Solving}
+
+The two blocks are solved by block coordinate descent. Each sweep solves the
+amplitudes of both blocks jointly per exposure, by the normal equations of the
+design $[\,S_n P^{\mathsf T} \mid Q^{\mathsf T}\,]$, the two parity rows
+summed into one system; then updates each basis against the residual of the
+other. The star side is a cubic B-spline with a knot per sample, evaluated at
+each exposure's shifted positions and updated exactly by a banded solve, which
+is both faster and slightly better conditioned than carrying samples with a
+Lanczos kernel.
+
+\subsection{The correction}
+
+Only the observer block is divided out:
+%
+\begin{equation}
+  f_{\rm corrected} \;=\; f \, \exp\!\left(- b_n \cdot \tilde{Q} \right) ,
+\end{equation}
+%
+on each order's own pixels, by a cubic spline from the grid. The star block is
+never divided out: with no external template the first star component is the
+star.
+
+$\tilde{Q}$ is the fitted basis shrunk by its own significance, column by
+column. At column $i$ the components' Fisher matrix is
+$F_i = \sum_n w_{ni} b_n b_n^{\mathsf T}$, with the weights scaled by the fit's
+median reduced $\chi^2$; $\sigma^2(Q_{ji}) = [F_i^{-1}]_{jj}$ and
+$z_{ji} = Q_{ji}/\sigma(Q_{ji})$; and
+%
+\begin{equation}
+  \tilde{Q}_{ji} \;=\; \max\!\left(0,\, 1 - z_{ji}^{-2}\right) Q_{ji} .
+\end{equation}
+%
+The significance is the basis's, measured with every exposure at once, not one
+exposure's share of it: a pattern at half a sigma in each of $N$ exposures is
+detected at about $0.5\sqrt{N}$ and is kept, while a column where the component
+is noise is divided out at zero and the file keeps its delivered flux there.
+
+Finally, a sample the fit gave no weight cannot be corrected, and is blanked.
+Blanking each exposure's own leaves every epoch with a different set of lines;
+we show below that this alone costs 1.8~m\,s$^{-1}$ on one campaign. The
+nominal mode blanks, in every exposure, every sample that any exposure lost, so
+the campaign carries one set of lines.
+
+\section{Data}
+
+Four campaigns, two instruments, reduced with APERO \citep{cook2022} and
+measured with LBL \citep{artigau2022}.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lllrrr}
+\toprule
+Target & Instrument & $T_{\rm eff}$ (K) & exposures & nights & delivered rms (m\,s$^{-1}$)\\
+\midrule
+TOI-2120 & SPIRou & 3179 & 321 & --- & 47.7\\
+Proxima  & NIRPS  & 3050 & 782 & 259 & 2.9\\
+GJ~1     & NIRPS  & 3478 & 292 & 146 & 2.7\\
+TOI-4552 & NIRPS  & 3304 & 119 & 60  & 12.6\\
+\bottomrule
+\end{tabular}
+\caption{The campaigns. Nights are the nightly coadds the NIRPS fits use; the
+delivered rms is the line-by-line velocity scatter of the spectra as reduced,
+with no precleaning.}
+\end{table}
+
+\section{Results}
+
+\subsection{What the correction is worth}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+& \multicolumn{2}{c}{delivered} & \multicolumn{2}{c}{corrected}\\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+Target & rms & robust $\sigma$ & rms & robust $\sigma$\\
+\midrule
+TOI-2120 & 47.71 & 34.99 & 20.35 & 16.16\\
+Proxima  &  2.86 &  2.22 &  3.04 &  2.52\\
+GJ~1     &  2.70 &  2.74 &  2.85 &  2.78\\
+TOI-4552 & 12.64 & 11.37 & 15.35 & 14.56\\
+\bottomrule
+\end{tabular}
+\caption{Line-by-line velocities, in m\,s$^{-1}$, on the exposures both series
+share. The correction transforms the campaign whose residuals are telluric,
+and costs where the delivered velocities are already good.}
+\label{tab:overall}
+\end{table}
+
+The pattern of Table~\ref{tab:overall} is not a signal-to-noise effect: GJ~1 is
+four magnitudes brighter than TOI-4552 and both are NIRPS campaigns stacked by
+night, yet one is neutral and the other loses 3~m\,s$^{-1}$.
+
+\subsection{The barycentric span decides}
+
+TOI-4552 was observed in two seasons. In the first the barycentric velocity
+spans 52.6~km\,s$^{-1}$; in the second, 9.8. Fitting each season alone, the
+correction improves the first and degrades the second. To remove every other
+difference we then cut two slices of 14 nights each, at the same median
+signal-to-noise, one spanning 42.8~km\,s$^{-1}$ of barycentric velocity and one
+spanning 0.7 (Fig.~\ref{fig:berv}):
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+& \multicolumn{2}{c}{delivered} & \multicolumn{2}{c}{corrected}\\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+14 nights of TOI-4552 & rms & robust $\sigma$ & rms & robust $\sigma$\\
+\midrule
+BERV span 42.8 km\,s$^{-1}$ & 7.80 & 8.48 & 6.18 & 4.52\\
+BERV span \phantom{0}0.7 km\,s$^{-1}$ & 8.96 & 9.14 & 21.76 & 21.76\\
+\bottomrule
+\end{tabular}
+\caption{The same campaign, the same instrument, the same number of nights and
+the same signal-to-noise. Only the barycentric coverage differs, by a factor
+of sixty, and the correction changes sign.}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.49\textwidth]{../outputs/TOI4552/rv_bervwide.pdf}
+\includegraphics[width=0.49\textwidth]{../outputs/TOI4552/rv_bervnarrow.pdf}
+\caption{Left: the wide-span slice, corrected in orange over the delivered
+series in grey. Right: the narrow-span slice. Nightly means above, exposures
+below.}
+\label{fig:berv}
+\end{figure}
+
+\subsection{What does not explain it}
+
+Every other candidate was measured on the same 109 exposures of TOI-4552 and
+ruled out: nightly stacking (fitting the exposures individually gives 15.6
+against 15.9~m\,s$^{-1}$); the number of observer components, in the fit
+(16.9 with one instead of three) or in the correction (15.9 with one divided
+out); the velocity term (16.4); the shrinkage, which helps (15.1 with it, 18.1
+without); the template handed to LBL; and the mask.
+
+\subsection{The mask, and the set of lines}
+
+Blanking the samples the fit could not weight is necessary, but blanking a
+different set in every exposure is not. With nothing divided out at all and
+each exposure blanking its own, the scatter rises from 12.64 to
+14.41~m\,s$^{-1}$ while the per-exposure error does not move: a line set that
+moves from epoch to epoch is scatter, not lost information. Blanking one common
+set instead gives 11.96, below the delivered spectra themselves, for 4.8
+percentage points more of each exposure blanked.
+
+\subsection{The star's freedom, and what $a_1$ is}
+
+The amplitude $a_1$ multiplies the star-frame variability component, never the
+star's mean spectrum. Measured on four campaigns, that component is nearly
+orthogonal to the mean spectrum, $|\cos| \le 0.065$; expressed as an exponent
+on the star it amounts to $0.4\%$ rms on the three NIRPS targets and $1.25\%$
+on TOI-2120.
+
+It is nevertheless not describing the star. On Proxima, $a_1$ follows the
+barycentric velocity with a rank correlation of 0.69, ahead of humidity (0.43)
+and airmass ($-0.39$), and its periodogram peaks at 366 days
+(Fig.~\ref{fig:a1}). It is an annual mode aligned with the Earth's orbit.
+
+Removing the star component altogether, so that the star is its fixed template
+and nothing else, takes TOI-4552 from 14.56 to 11.20~m\,s$^{-1}$ of robust
+scatter at equal mask and template (Fig.~\ref{fig:freedom}), that is, below the
+delivered spectra. The freedom the star block is given is used, in part, to
+absorb what belongs to the observer, and the observer block then divides out
+what belongs to the star.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.62\textwidth]{../outputs/PROXIMA/a1_series_proxima.pdf}
+\caption{Proxima: the star amplitude over time, against the barycentric
+velocity, and its periodogram. The right-hand axis of the first panel gives
+the equivalent exponent on the star's mean spectrum.}
+\label{fig:a1}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.92\textwidth]{../outputs/TOI4552/rv_star_freedom.pdf}
+\caption{TOI-4552 at equal mask and template: the delivered series, the same
+spectra with the mask alone, the correction with a free star amplitude, and
+the correction with no star component at all.}
+\label{fig:freedom}
+\end{figure}
+
+\section{Discussion}
+
+\subsection{One frame instead of two}
+
+The observer block is identifiable only because the star moves through it. Over
+a campaign whose barycentric velocity spans tens of km\,s$^{-1}$, a pattern
+fixed in the observer's frame lands on different stellar lines in every
+exposure, and no combination of stellar structure can imitate it. Over a
+campaign whose barycentric velocity barely moves, the two frames coincide: a
+column of the observer basis and a column of the star's spectrum are then the
+same column, and the fit has no way to tell which of them owns the flux.
+Dividing the observer block out then removes part of the star, and the
+line-by-line velocities record it as a barycentric-shaped injection.
+
+This is the same mechanism, at the campaign scale, as the annual mode that
+$a_1$ carries.
+
+\subsection{A guard, and a way out}
+
+The practical guard is to look at the barycentric span of the set of exposures
+a fit is built on, not merely at their number, and to fit seasons separately
+when a campaign mixes wide and narrow spans: on TOI-4552, fitting the narrow
+season alone costs 14\% against the delivered velocities, where fitting it
+together with the wide one costs 55\%.
+
+The principled way out is to break the degeneracy with other stars. The
+atmosphere and the instrument belong to the night, not to the target, while the
+star, its barycentric coverage and its systemic velocity do not: several
+campaigns fitted against a single observer basis cannot let that basis follow
+any one star. The pipeline has a mode for it, in which the rows of several
+objects share one grid and one observer basis while each object keeps its own
+star spectrum per order parity.
+
+\subsection{What the precleaning is for}
+
+Table~\ref{tab:overall} is the honest summary: this is a method for campaigns
+whose velocities are limited by what the atmosphere and the instrument left
+behind, and it is not free where they are not. On TOI-2120 it removes more than
+half the scatter. On Proxima and GJ~1 the delivered velocities are already at
+2.7 to 2.9~m\,s$^{-1}$, and the correction adds 0.2. Applying it there buys
+nothing, and the decision can be made in advance from the barycentric span and
+from how much of the scatter the formal errors already explain.
+
+\section{Conclusions}
+
+\begin{enumerate}
+\item A two-frame weighted decomposition separates what is fixed in the
+observer's frame from what belongs to the star, and dividing the first out
+removes more than half of the velocity scatter of a campaign dominated by
+telluric residuals.
+\item What decides whether it helps is the barycentric span of the fitted set.
+Two 14-night slices of one campaign, at equal signal-to-noise, differ by a
+factor of sixty in span, and the correction improves the robust scatter by a
+factor of two in one and degrades it by a factor of 2.4 in the other.
+\item The star's mean spectrum must carry a coefficient of exactly one. The
+freedom given to a star component is used to absorb an annual, barycentric
+mode, and removing it recovers most of the damage on the worst case.
+\item Blanking the samples a fit could not weight must be done with one set of
+lines for the whole campaign. Blanking each exposure's own costs
+1.8~m\,s$^{-1}$ with no correction applied at all.
+\end{enumerate}
+
+\begin{thebibliography}{9}
+\bibitem[Artigau et al.(2022)]{artigau2022} Artigau, É., et al. 2022,
+  \textit{Line-by-line Velocity Measurements: an Outlier-resistant Method for
+  Precision Velocimetry}, AJ, 164, 84, doi:10.3847/1538-3881/ac7ce6
+\bibitem[Cook et al.(2022)]{cook2022} Cook, N. J., et al. 2022,
+  \textit{APERO: A PipelinE to Reduce Observations, Demonstration with SPIRou},
+  PASP, 134, 114509, doi:10.1088/1538-3873/ac9e74
+\end{thebibliography}
+
+\end{document}
