@@ -8,7 +8,7 @@
 # variant changes that and nothing else: correction only, on the nominal's fit,
 # with the same corrected spectra.
 reuse_fit: nominal
-note: "asks whether the fit's star template is what broadens the lines"
+note: "it was: the fit's star template is what broadens the lines. Its answer became the nominal on 2026-09-12 (lbl.star_template: false), so this variant now only reproduces the runs that asked the question"
 lbl:
   before: false
   star_template: false

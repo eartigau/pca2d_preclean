@@ -257,11 +257,24 @@ general:
     before: true            # measure the delivered spectra too. Leaving this
                             # off measures the correction against nothing.
     after: true
-    star_template: true     # the corrected object's LBL template is the fit's
-                            # first star component at its mean amplitude,
-                            # written by LBL's own writer where LBL looks for
-                            # it, so LBL's template step finds it and skips.
-                            # One LBL built for that object is never replaced.
+    star_template: false    # false since 2026-09-12: the corrected object is
+                            # measured against the template LBL builds from the
+                            # corrected spectra themselves.
+                            #
+                            # Measured on Proxima, the same corrected spectra
+                            # against the fit's star template instead: the line
+                            # width LBL fits grows from 9076 to 11306 m/s and
+                            # the error per exposure from 0.97 to 1.67, for
+                            # 3.34 m/s rms against 3.04 (delivered 2.86). On
+                            # TOI-4552 the widths and the error behave the same
+                            # way. Whatever the fit's template lacks, LBL
+                            # notices it and pays for it per line.
+                            #
+                            # true writes the fit's star at its mean amplitude,
+                            # each order parity with its own residual mean, by
+                            # LBL's own writer where LBL looks for it, so LBL's
+                            # template step finds it and skips. One LBL built
+                            # for that object is never replaced.
     strpca: true            # with two or more star components, the ones past
                             # the first go to LBL as RESPROJ tables STRPCA2..N,
                             # the way its DTEMP gradients do: the rdb gets each
