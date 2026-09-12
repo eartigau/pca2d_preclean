@@ -374,6 +374,8 @@ class LanczosShifter:
         allocating sixteen temporaries per row rather than by arithmetic.
         """
         out = np.empty((pix.size, prepared.shape[0], self.n))
+        if not prepared.shape[0]:
+            return out                      # an empty basis carries to nothing
         n_threads = self.threads if threads is None else threads
         if n_threads and n_threads > 1 and pix.size > 1:
             from concurrent.futures import ThreadPoolExecutor
@@ -600,7 +602,8 @@ def joint_coeffs(data, w, P, Q, shifter, delta, chunk=64, exposure=None,
                 # linearised around the star model the previous solve found: a
                 # lagged Jacobian, which converges with the sweeps like every
                 # other block here
-                star_row = velocity_from[n] @ SP[i]
+                star_row = (velocity_from[n] @ SP[i] if n_star
+                            else np.zeros(data.shape[1]))
                 if TT is not None:
                     star_row = star_row + TT[i]
                 B[-1] = velocity_column(star_row, velocity_mask)

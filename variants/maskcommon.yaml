@@ -9,8 +9,9 @@
 # no weight. It costs 3.6 points more of each TOI-4552 exposure, 6.7 on
 # Proxima. Correction only, on the nominal's fit.
 reuse_fit: nominal
-note: "TOI4552, 2026-09-12: one mask for every exposure, against lblown 16.82 and delivered 12.64"
+note: "TOI4552, 2026-09-12: one mask for every exposure, against lblown 16.82 and delivered 12.64. Its first run measured nothing: the refit path computed a mask of its own and the option did not reach the files, so the object carries a b"
 lbl:
   before: false
+  suffix: "_PCA2D_{tag}_maskcommonb"
 correct:
   mask: common

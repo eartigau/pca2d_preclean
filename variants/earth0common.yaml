@@ -5,9 +5,10 @@
 # earth0own is the same with each exposure's own mask, and came out at 14.41
 # against 12.64 delivered on TOI-4552.
 reuse_fit: nominal
-note: "TOI4552, 2026-09-12: the floor of a common mask, against earth0own 14.41"
+note: "TOI4552, 2026-09-12: the floor of a common mask, against earth0own 14.41. Its first run measured nothing, the option not having reached the files, so the object carries a b"
 lbl:
   before: false
+  suffix: "_PCA2D_{tag}_earth0commonb"
 correct:
   n_earth: 0
   mask: common

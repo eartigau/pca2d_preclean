@@ -450,6 +450,25 @@ def order_correction(model, correction, n_earth, order, wave):
     return values, live
 
 
+def mask_for(mode, own_alive, alive_by_file, name):
+    """Which samples a corrected file blanks, under correct --mask.
+
+    `none` blanks nothing. `common` blanks every sample any exposure left
+    unweighted, the same set for all of them, and it says so even in the refit
+    path: that path computes a mask from the exposure's own weights, and
+    leaving it in charge made the option do nothing at all on a nightly-stacked
+    target, where every file goes through it (2026-09-12). `exposure` blanks
+    what that exposure lost, the refit's own mask when it has one.
+    """
+    if mode == "none":
+        return None
+    if mode == "common" and alive_by_file:
+        return next(iter(alive_by_file.values()))
+    if own_alive is not None:
+        return own_alive
+    return alive_by_file.get(name) if alive_by_file is not None else None
+
+
 def star_support(model):
     """The grid samples the star basis constrains, or None when the fit has no
     star component at all.
@@ -967,9 +986,8 @@ def correct_many(model, args):
             refitted += 1
         # a refitted exposure has its own weights and so its own no-weight
         # mask; on a cube of nights the cube's rows are not this file
-        alive = own_alive if own_alive is not None else (
-            alive_by_file.get(os.path.basename(path))
-            if alive_by_file is not None else None)
+        alive = mask_for(mask_mode, own_alive, alive_by_file,
+                         os.path.basename(path))
         clipped = (clipped_by_file.get(os.path.basename(path))
                    if clipped_by_file is not None else None)
         new, touched, total = correct_file(
