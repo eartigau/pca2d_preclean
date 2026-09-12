@@ -142,6 +142,26 @@ def test_a_shrunk_file_divides_out_panel_6(fitted):
         assert np.allclose(values[live], panel6[i][inner][live], rtol=0, atol=1e-7), i
 
 
+def test_a_common_mask_hides_in_every_row_what_one_exposure_lost(fitted):
+    """With correct --mask common a file blanks every sample any exposure left
+    unweighted, so the panels hide those in every row, not only in the row that
+    lost them."""
+    from pca2d.figures.sequence import load_context, window_arrays
+    cube, out = fitted
+    hidden = {}
+    for mode in ("exposure", "common"):
+        ctx = load_context(cube, str(out / "fit.npz"), mask=mode)
+        arr = window_arrays(ctx["cube"], ctx["fit"], ctx["means"], ctx["group"],
+                            ctx["grid"], ctx["dv"], ctx["delta"],
+                            float(ctx["grid"][710]), 1.0,
+                            templates=ctx["templates"], correct=ctx.get("correct"))
+        hidden[mode] = ~np.isfinite(arr["home"]["corrected"])
+    assert hidden["common"].sum() > hidden["exposure"].sum(), \
+        "the hole one exposure has is not hidden in the others"
+    assert not (hidden["exposure"] & ~hidden["common"]).any(), \
+        "a sample the per-exposure mask hides must stay hidden"
+
+
 def test_the_figure_runs_as_the_bundle_runs_it(fitted, tmp_path):
     """The bundle runs sequence.py as a script, where a relative import fails:
     on 2026-09-11 one did, and the report came out without its sequence pages."""

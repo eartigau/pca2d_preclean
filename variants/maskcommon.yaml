@@ -1,0 +1,16 @@
+# maskcommon: the nominal correction with one mask for every exposure.
+#
+# A file blanks the samples its own fit gave no weight, so each exposure is
+# measured on its own set of lines and the set changes from one to the next.
+# On TOI-4552 that alone costs 1.8 m/s of rms (earth0own, 14.41 against 12.64
+# delivered, with no correction at all in it), while the error per exposure
+# barely moves: it is not lost information, it is a line set that moves. With
+# `common` a sample is blanked in every exposure as soon as one of them gave it
+# no weight. It costs 3.6 points more of each TOI-4552 exposure, 6.7 on
+# Proxima. Correction only, on the nominal's fit.
+reuse_fit: nominal
+note: "TOI4552, 2026-09-12: one mask for every exposure, against lblown 16.82 and delivered 12.64"
+lbl:
+  before: false
+correct:
+  mask: common

@@ -343,12 +343,21 @@ def clip_args(cfg):
 
 
 def shrink_args(cfg):
-    """The correct stage's shrinkage of the observer components by their
-    significance, and its two Savitzky-Golay variants, when correct asks for
-    them (pca2d.shrink); both variants are measured in the instrument's
-    resolution element, twoframe.resolution."""
+    """The correct stage's own options, which the sequence figure needs too so
+    that its panels 3 and 6 show what the files hold: the shrinkage of the
+    observer components by their significance and its two Savitzky-Golay
+    variants (pca2d.shrink), both measured in the instrument's resolution
+    element, twoframe.resolution, and which samples a corrected file blanks."""
     corr = cfg.get("correct") or {}
     out = []
+    mask = str(corr.get("mask") or "exposure")
+    if mask != "exposure":
+        out += ["--mask", mask]
+        log("corrected files blank %s"
+            % ("every sample any exposure left unweighted, so each of them"
+               " carries the same set of lines" if mask == "common"
+               else "nothing: an unweighted sample keeps its delivered flux"),
+            "info")
     if corr.get("shrink"):
         out.append("--shrink")
         if corr.get("shrink_smooth"):

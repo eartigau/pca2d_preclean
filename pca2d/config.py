@@ -341,6 +341,21 @@ DEFAULTS = {
     # ---------------------------------------------------------------- lbl ---
     # Handing both sets of spectra to LBL, the delivered ones and the corrected
     # ones, as two objects in one LBL tree. See pca2d/lbl.py.
+    # ------------------------------------------------------------ correct ---
+    # What comes out of a corrected file. The star components are never
+    # divided out: with no template the first of them IS the star.
+    "correct": {
+        "n_star": 0,
+        "n_earth": None,             # None = every observer component the fit has
+        "nsig_cut": None,            # NaN beyond this many running robust sigmas
+        "shrink": True,              # each component only where it is significant
+        "shrink_smooth": False,      # its significance averaged over an element
+        "smooth_components": [],     # observer components smoothed before division
+        # which samples a file blanks: the ones its own exposure's fit gave no
+        # weight ('exposure'), the ones any exposure's did ('common', so every
+        # epoch carries the same set of lines), or none at all
+        "mask": "exposure",
+    },
     "lbl": {
         "prepare": True,             # write LBL's config and its run script
         "run": False,                # and run it. Hours, so it is asked for.

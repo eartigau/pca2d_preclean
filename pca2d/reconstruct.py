@@ -145,6 +145,12 @@ def parse_args(argv=None):
     p.add_argument("--resolution", type=float, default=None,
                    help="the instrument's resolving power, the unit of the two"
                         " smoothings above")
+    p.add_argument("--mask", choices=("exposure", "common", "none"),
+                   default="exposure",
+                   help="which samples a corrected file blanks: the ones its own"
+                        " exposure's fit gave no weight (exposure), the ones any"
+                        " exposure's did (common, so every epoch carries the same"
+                        " set of lines), or none, keeping the delivered flux there")
     p.add_argument("--overwrite", action="store_true")
     p.add_argument("--cube", default=None,
                    help="the cube the fit was made from. With it, every sample"
@@ -444,8 +450,33 @@ def order_correction(model, correction, n_earth, order, wave):
     return values, live
 
 
-def fit_weights_mask(cube):
+def star_support(model):
+    """The grid samples the star basis constrains, or None when the fit has no
+    star component at all.
+
+    A fit with n_star 0 stores an empty P, and np.any over the first axis of an
+    empty array gives a scalar, which broke the refit of every exposure on
+    2026-09-12. There is nothing to guard then: gap_guard falls back on the
+    weights' own support.
+    """
+    # not atleast_2d: an empty P of one dimension becomes (1, 0) under it, and
+    # the answer would be an empty vector rather than "there is no support"
+    P = np.asarray(model["P"])
+    if P.ndim != 2 or not P.size:
+        return None
+    return np.any(P != 0, axis=0)
+
+
+def fit_weights_mask(cube, mode="exposure"):
     """The grid samples the fit weighted, per exposure: file name -> (2, grid).
+
+    With mode "common" every exposure gets the same mask, the samples EVERY
+    exposure weighted: a file otherwise blanks its own, so each epoch is
+    measured on its own set of lines and the set moves from one to the next.
+    On TOI-4552 that alone cost 1.8 m/s of rms with no correction applied at
+    all, while the error per exposure did not move: a line set that moves is
+    not lost information, it is scatter. The common mask costs 3.6 points more
+    of each exposure there, 6.7 on Proxima.
 
     Exactly what panel 3 of the sequence figure shows and nothing else: the
     weights the fit read from the cube (twoframe.load_cube, with the figure's
@@ -460,6 +491,11 @@ def fit_weights_mask(cube):
     for i, name in enumerate(names):
         out.setdefault(name, np.zeros((2, w.shape[1]), dtype=bool))
         out[name][int(parity[i]) % 2] = live_mask(w[i:i + 1])[0]
+    if str(mode) == "common":
+        shared = np.ones((2, w.shape[1]), dtype=bool)
+        for mask in out.values():
+            shared &= mask
+        out = {name: shared.copy() for name in out}
     return out
 
 
@@ -721,8 +757,7 @@ def refit_row(model, path, config, shifter, base_row):
     # constrained (twoframe.gap_guard, against the support the basis has)
     berv = float(payload["meta"]["berv"])
     delta = np.full(2, -float(pixel_shift(berv, model["dv"])))
-    _bcd.gap_guard(w, delta, 8, verbose=False,
-                   live=np.any(np.asarray(model["P"]) != 0, axis=0))
+    _bcd.gap_guard(w, delta, 8, verbose=False, live=star_support(model))
     data = np.where(w > 0, values, 0.0)
 
     # take out exactly what the fit took out before it solved for coefficients:
@@ -843,11 +878,18 @@ def correct_many(model, args):
               " solves for each exposure's own amplitudes")
 
     alive_by_file = None
-    if getattr(args, "cube", None):
-        log("  reading the fit's weights from %s: every sample the fit gave no"
-            " weight to will be NaN, as panel 3 of the sequence figure hides it"
-            % args.cube)
-        alive_by_file = fit_weights_mask(args.cube)
+    mask_mode = str(getattr(args, "mask", None) or "exposure")
+    if mask_mode == "none":
+        log("  --mask none: a sample the fit gave no weight keeps its delivered"
+            " flux rather than being blanked, so nothing is lost and nothing"
+            " there is corrected either", "warn")
+    elif getattr(args, "cube", None):
+        log("  reading the fit's weights from %s: %s will be NaN"
+            % (args.cube,
+               "every sample no exposure weighted, one line set for them all"
+               if mask_mode == "common" else
+               "every sample the fit gave no weight, as panel 3 hides it"))
+        alive_by_file = fit_weights_mask(args.cube, mask_mode)
     else:
         log("  no --cube: samples the fit gave no weight to keep their flux,"
             " which panel 3 of the sequence figure does not show", "warn")

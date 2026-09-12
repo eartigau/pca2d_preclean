@@ -319,6 +319,17 @@ general:
                             # row's own weight, the weights scaled by the fit's
                             # reduced chi2 (pca2d.shrink). Where it goes to
                             # zero the file keeps its delivered flux. PCA2SHRK
+    mask: common            # which samples a corrected file blanks. `exposure`
+                            # blanks the ones that exposure's own fit gave no
+                            # weight, so every epoch carries a different set of
+                            # lines; on TOI-4552 that alone cost 1.8 m/s of rms
+                            # with nothing divided out at all, while the error
+                            # per exposure did not move. `common`, nominal since
+                            # 2026-09-12, blanks a sample in every exposure as
+                            # soon as one of them gave it no weight: one line
+                            # set for the whole campaign, for 3.6 points more of
+                            # each TOI-4552 exposure and 6.7 on Proxima.
+                            # `none` keeps the delivered flux there instead.
     shrink_smooth: false    # with shrink: average z^2 over one resolution
                             # element first, so a line is judged over its width
     smooth_components: []   # observer components (1-based) to smooth by LBL's

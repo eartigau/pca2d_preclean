@@ -1,0 +1,13 @@
+# earth0common: nothing divided out, and one mask for every exposure.
+#
+# The floor of the mask, with its epoch-to-epoch variation taken out: what is
+# left against the delivered series is what a common mask costs by itself.
+# earth0own is the same with each exposure's own mask, and came out at 14.41
+# against 12.64 delivered on TOI-4552.
+reuse_fit: nominal
+note: "TOI4552, 2026-09-12: the floor of a common mask, against earth0own 14.41"
+lbl:
+  before: false
+correct:
+  n_earth: 0
+  mask: common

@@ -73,6 +73,10 @@ def parse_args(argv=None):
     p.add_argument("--shrink-smooth", action="store_true")
     p.add_argument("--smooth-components", default=None)
     p.add_argument("--resolution", type=float, default=None)
+    p.add_argument("--mask", default=None,
+                   choices=("exposure", "common", "none"),
+                   help="which samples the corrected files blank, so the panels"
+                        " hide the same ones (reconstruct --mask)")
     return p.parse_args(argv)
 
 
@@ -177,6 +181,12 @@ def window_arrays(cube, fit, means, group, grid, dv, delta, centre, width,
     ]
     home = {}
     alive = live_mask(shifter.rows(w0, -delta))
+    if correct and str(correct.get("mask")) == "common":
+        # the files blank every sample any exposure left unweighted, so the
+        # panels hide it in every row too, carried the same way
+        shared = live_mask(w0).all(axis=0).astype(w0.dtype)
+        alive &= live_mask(shifter.rows(
+            np.broadcast_to(shared, w0.shape).copy(), -delta))
     for name, build, _ in steps:
         z = shifter.rows(build(), -delta)
         z[~alive] = np.nan
@@ -187,7 +197,7 @@ def window_arrays(cube, fit, means, group, grid, dv, delta, centre, width,
 
 
 def load_context(cube, fit_path, source_dir=None, shrink=False, shrink_smooth=False,
-                 smooth_components=None, resolution=None):
+                 smooth_components=None, resolution=None, mask=None):
     """What every page shares: the fit, its means, the rows and their BERV, and
     how the correct stage divides the observer block out (panels 3 and 6):
     the same options reconstruct takes, the weights scaled by the fit's median
@@ -196,14 +206,15 @@ def load_context(cube, fit_path, source_dir=None, shrink=False, shrink_smooth=Fa
     dv = float(fit["dv"])
     which = [int(v) - 1 for v in str(smooth_components or "").split(",") if v.strip()]
     correct = None
-    if shrink or which:
+    if shrink or which or (mask and mask != "exposure"):
         from pca2d.resolution import fwhm_samples
         chi2 = np.asarray(fit["chi2_red"], dtype=float)
         good = np.isfinite(chi2) & (chi2 > 0)
         correct = {"shrink": bool(shrink), "shrink_smooth": bool(shrink_smooth),
                    "smooth_which": which,
                    "fwhm": fwhm_samples(resolution, dv) if resolution else None,
-                   "chi2_scale": float(np.median(chi2[good])) if good.any() else 1.0}
+                   "chi2_scale": float(np.median(chi2[good])) if good.any() else 1.0,
+                   "mask": str(mask or "exposure")}
     grid = cube_grid(cube)
     # the rows and their metadata; one column is the cheapest way to get them
     _, _, _, meta = load_cube(cube, columns=np.arange(1))
@@ -363,7 +374,8 @@ def draw_window(ctx, centre, width, n_overplot=5):
 def main(argv=None):
     args = parse_args(argv)
     ctx = load_context(args.cube, args.fit, args.source_dir, args.shrink,
-                       args.shrink_smooth, args.smooth_components, args.resolution)
+                       args.shrink_smooth, args.smooth_components, args.resolution,
+                       args.mask)
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     with PdfPages(args.out) as pdf:
         for centre, width in (parse_window(spec) for spec in args.windows):
