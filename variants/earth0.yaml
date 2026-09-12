@@ -1,0 +1,10 @@
+# earth0: nothing divided out at all, the no-weight mask still applied. The
+# corrected files then differ from the delivered ones only by their NaN, so
+# what LBL measures here against the delivered series is the cost of the mask
+# alone, with no correction in it. Correction only, on the nominal's fit.
+reuse_fit: nominal
+note: "measures the mask by itself: 3.7 to 8.5% of the samples, biased to line cores"
+lbl:
+  before: false
+correct:
+  n_earth: 0

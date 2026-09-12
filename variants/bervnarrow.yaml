@@ -1,0 +1,12 @@
+# bervnarrow: 14 nights whose BERV spans 0.7 km/s (rjd 60561-60587 on
+# TOI-4552, BERV -27.2 to -26.4). Its twin, bervwide, has the same number of
+# nights at the same SNR with a BERV spanning 42.8 km/s. Where the star does
+# not move against the sky, the two frames are nearly the same frame, and the
+# observer block can take up stellar structure that dividing it then removes.
+# These two say whether that is what costs TOI-4552 its velocities.
+note: "TOI4552, 2026-09-11: the narrow half of the BERV-coverage pair"
+quality:
+  min_rjd: 60561
+  max_rjd: 60587
+lbl:
+  before: false

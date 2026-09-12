@@ -1,0 +1,9 @@
+# s2: TOI-4552's second season alone, rjd 60521-60610. 25 nights, BERV -27.2
+# to -17.4, a 9.8 km/s span, against 52.6 for the first season (s1). In the
+# whole-campaign fit this season is where the correction cost the most:
+# 11.42 -> 17.75 m/s, against 13.35 -> 14.12 for the first.
+note: "TOI4552, 2026-09-11: the narrow-BERV season"
+quality:
+  min_rjd: 60400
+lbl:
+  before: false

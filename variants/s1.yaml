@@ -1,0 +1,9 @@
+# s1: TOI-4552's first season alone, rjd 60043-60207. 35 nights, BERV -27.2 to
+# +25.3, a 52.6 km/s span. Its twin s2 is the second season, 25 nights with a
+# BERV span of 9.8 km/s. Between them they say whether a season whose BERV
+# barely moves is the one the correction damages.
+note: "TOI4552, 2026-09-11: the wide-BERV season"
+quality:
+  max_rjd: 60400
+lbl:
+  before: false

@@ -1,0 +1,8 @@
+# bervwide: the twin of bervnarrow. 14 nights of TOI-4552 (rjd 60053-60162)
+# whose BERV spans 42.8 km/s, -19.5 to +23.3, at the same median band SNR.
+note: "TOI4552, 2026-09-11: the wide half of the BERV-coverage pair"
+quality:
+  min_rjd: 60053
+  max_rjd: 60162
+lbl:
+  before: false

@@ -1,0 +1,9 @@
+# j1: one observer component in the FIT, not three, so the observer block has
+# far less freedom to take up stellar structure. earth1 asked the same question
+# of the correction alone, on a fit that still had three; this asks it of the
+# fit. Its run is tagged 1-1.
+note: "TOI4552, 2026-09-11: does the damage come from what the observer block can absorb"
+twoframe:
+  n_earth: 1
+lbl:
+  before: false

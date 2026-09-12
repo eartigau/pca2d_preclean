@@ -1,0 +1,10 @@
+# vel: the velocity term on. It exists to keep the star's own motion out of the
+# observer block: the star is never exactly where the BERV alone puts it, and
+# seven free vectors will describe that residual and then divide it out of the
+# flux. If that is what hurts TOI-4552, fitting the shift instead should show
+# here. Its run is tagged 1-3v, and the term is fitted, never divided out.
+note: "TOI4552, 2026-09-11: is the star's own motion what the observer block absorbs"
+twoframe:
+  velocity_term: true
+lbl:
+  before: false
