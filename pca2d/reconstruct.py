@@ -174,8 +174,13 @@ def load_model(path):
         model = {
             "grid": np.asarray(basis["wavelength"], dtype=np.float64),
             "template": np.asarray(basis["template"], dtype=np.float64),
-            "P": np.array([basis["star_pc%d" % (k + 1)] for k in range(n_star)],
-                          dtype=np.float64),
+            # (n_star, M) even with no star component at all: an empty list
+            # gives a one-dimensional array, and everything downstream asks the
+            # basis how many columns it has. The refit of every exposure died
+            # on that, twice, on 2026-09-12.
+            "P": (np.array([basis["star_pc%d" % (k + 1)] for k in range(n_star)],
+                           dtype=np.float64) if n_star else
+                  np.zeros((0, len(basis["wavelength"])), dtype=np.float64)),
             "Q": np.array([basis["earth_pc%d" % (j + 1)] for j in range(n_earth)],
                           dtype=np.float64),
             "dv": float(head["DV"]),

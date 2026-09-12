@@ -88,6 +88,34 @@ def test_a_fit_with_no_star_component_solves_for_the_observer_alone():
     assert np.allclose(b[0], truth, atol=0.01)
 
 
+def test_a_components_file_with_no_star_gives_a_two_dimensional_basis(tmp_path):
+    """An empty list of star components read back as a one-dimensional array,
+    and the refit of every exposure died on it twice on 2026-09-12: everything
+    downstream asks the basis how many columns it has."""
+    from astropy.io import fits
+
+    from pca2d.reconstruct import load_model
+    m = 32
+    grid = 1500.0 * np.exp(np.arange(m) * 0.5 / 299792.458)
+    basis = fits.BinTableHDU.from_columns([
+        fits.Column(name="wavelength", format="D", array=grid),
+        fits.Column(name="template", format="D", array=np.zeros(m)),
+        fits.Column(name="earth_pc1", format="D", array=np.ones(m)),
+        fits.Column(name="mean_even", format="D", array=np.zeros(m)),
+    ], name="BASIS")
+    coeffs = fits.BinTableHDU.from_columns([
+        fits.Column(name="filename", format="12A", array=np.array(["0001t.fits"])),
+        fits.Column(name="b1", format="D", array=np.array([1.0])),
+    ], name="COEFFS")
+    head = fits.PrimaryHDU()
+    head.header["NSTAR"], head.header["NEARTH"], head.header["DV"] = 0, 1, 0.5
+    path = str(tmp_path / "twoframe_components.fits")
+    fits.HDUList([head, basis, coeffs]).writeto(path)
+    model = load_model(path)
+    assert model["P"].shape == (0, m)
+    assert model["Q"].shape == (1, m)
+
+
 def test_a_fit_with_no_star_component_has_no_support_to_guard():
     """n_star 0: P is empty, and np.any over its first axis gives a scalar,
     which broke gap_guard in the refit on 2026-09-12."""

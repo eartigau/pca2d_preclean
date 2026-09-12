@@ -580,7 +580,8 @@ def joint_coeffs(data, w, P, Q, shifter, delta, chunk=64, exposure=None,
     coeffs = np.zeros((n_spectra, n_tot))
     cond = np.zeros(n_spectra)
     eye = np.eye(n_tot)
-    Pf = shifter.prepare(P)
+    # nothing to carry when the fit has no star component
+    Pf = shifter.prepare(P) if n_star else None
     Tf = (shifter.prepare(star_mean[0])
           if n_vel and star_mean is not None else None)
     B = np.empty((n_tot, data.shape[1]))
@@ -591,12 +592,13 @@ def joint_coeffs(data, w, P, Q, shifter, delta, chunk=64, exposure=None,
     steps = range(0, n_spectra, chunk)
     for start in (_bar(steps, desc=desc, unit="chunk") if desc else steps):
         stop = min(start + chunk, n_spectra)
-        SP = shifter.carry(Pf, delta[start:stop])
+        SP = shifter.carry(Pf, delta[start:stop]) if Pf is not None else None
         TT = (carried_means(Tf, star_mean[1], shifter, delta, start, stop)
               if Tf is not None else None)
         for i in range(stop - start):
             n = start + i
-            B[:n_star] = SP[i]
+            if n_star:
+                B[:n_star] = SP[i]
             B[n_star:n_star + n_earth] = Q
             if n_vel:
                 # linearised around the star model the previous solve found: a
