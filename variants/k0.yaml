@@ -1,0 +1,13 @@
+# k0: no star component at all. The star is then the per-parity template and
+# nothing else, subtracted with a coefficient of exactly 1.
+#
+# A coefficient in front of a term in the log is an exponent on the flux, and
+# an exponent on the star's mean spectrum describes no star (user, 2026-09-12).
+# The nominal already keeps that coefficient at 1, the free amplitudes riding
+# on variability components of zero mean; this variant is the strict form of
+# the rule, with no stellar freedom left. Its run is tagged 0-3.
+note: "TOI4552, 2026-09-12: the star fixed at its template, a1 gone rather than fixed at 1"
+twoframe:
+  n_star: 0
+lbl:
+  before: false
