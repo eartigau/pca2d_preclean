@@ -40,7 +40,7 @@ VERSION = 1
 #: other numbers stay on screen while that happens: throwing the whole index
 #: away instead would cost the minutes of a first scan for one new column.
 FIELDS = ("snr", "exptime", "mjd", "instrument", "mag", "mag_band",
-          "berv")
+          "berv", "ecl_lat")
 
 #: The brightness each pipeline writes, and WHICH BAND it is, which is not the
 #: same for the two: NIRPS writes the J magnitude of the ESO target package,
@@ -118,7 +118,7 @@ def scan_file(path):
     from .tfits import INSTRUMENTS
 
     out = {"instrument": "?", "snr": None, "exptime": None, "mjd": None,
-           "mag": None, "mag_band": None, "berv": None}
+           "mag": None, "mag_band": None, "berv": None, "ecl_lat": None}
     with fits.open(path, memmap=True) as hdulist:
         instrument = ""
         for hdu in hdulist:
@@ -154,6 +154,17 @@ def scan_file(path):
                 if value is not None:
                     out[name] = round(value, 6)
                     break
+        # the ecliptic latitude, which fixes the BERV a target can EVER have:
+        # |BERV| <= 29.78 cos(beta) km/s. TOI-1452 sits at +80.5 deg, so its
+        # whole possible span is 9.8 km/s and no amount of observing will
+        # separate the two frames for it. SPIRou writes RA_DEG/DEC_DEG, NIRPS
+        # writes RA/DEC already in degrees.
+        ra = next((_number(h[k]) for k in ("RA_DEG", "RA")
+                   for h in headers if k in h and _number(h[k]) is not None), None)
+        dec = next((_number(h[k]) for k in ("DEC_DEG", "DEC")
+                    for h in headers if k in h and _number(h[k]) is not None), None)
+        if ra is not None and dec is not None and abs(dec) <= 90.0:
+            out["ecl_lat"] = round(_ecliptic_latitude(ra, dec), 3)
         for key, band in MAG_KEYS:
             value = next((_number(h[key]) for h in headers if key in h), None)
             # 0.0 is what NIRPS writes in the fields it did not fill, and a
@@ -162,6 +173,33 @@ def scan_file(path):
                 out["mag"], out["mag_band"] = round(value, 3), band
                 break
     return out
+
+
+#: obliquity of the ecliptic, degrees (J2000)
+OBLIQUITY = 23.439291
+#: the Earth's mean orbital speed, km/s
+EARTH_SPEED = 29.78
+
+
+def _ecliptic_latitude(ra_deg, dec_deg):
+    """Ecliptic latitude from equatorial coordinates, in degrees.
+
+    The rotation by the obliquity, done here rather than through a coordinate
+    library: this is called once per spectrum during a scan, and the answer only
+    has to be good to a degree to say what a target's BERV can reach.
+    """
+    ra = np.radians(float(ra_deg))
+    dec = np.radians(float(dec_deg))
+    eps = np.radians(OBLIQUITY)
+    return float(np.degrees(np.arcsin(np.sin(dec) * np.cos(eps)
+                                      - np.cos(dec) * np.sin(eps) * np.sin(ra))))
+
+
+def berv_limit(ecl_lat):
+    """The largest |BERV| this target can ever have, km/s, from its latitude."""
+    if ecl_lat is None:
+        return None
+    return float(EARTH_SPEED * np.cos(np.radians(float(ecl_lat))))
 
 
 def _number(value):
@@ -349,6 +387,15 @@ def summaries(index):
 BERV_BIN = 3.0
 
 
+def _ecl_lat(index, name):
+    """The object's ecliptic latitude, from the first spectrum that has one."""
+    files = ((index.get("objects") or {}).get(name) or {}).get("files") or {}
+    for record in files.values():
+        if isinstance(record, dict) and record.get("ecl_lat") is not None:
+            return float(record["ecl_lat"])
+    return None
+
+
 def bervs_of(index, name):
     """Every barycentric velocity this object was observed at, in km/s."""
     files = ((index.get("objects") or {}).get(name) or {}).get("files") or {}
@@ -382,9 +429,14 @@ def berv_coverage(index, names, width=BERV_BIN):
     filled = np.zeros(len(edges) - 1, dtype=bool)
     for c in counts.values():
         filled |= c > 0
+    limits = [berv_limit(_ecl_lat(index, n)) for n in per_object]
+    limits = [v for v in limits if v is not None]
     summary = {"span": float(every.max() - every.min()),
                "effective": float(filled.sum() * width),
                "n": int(every.size),
+               # twice the largest amplitude any of them can reach: what the
+               # sky allows, against what the campaign got
+               "possible": 2.0 * max(limits) if limits else None,
                "objects": {n: {"span": float(v.max() - v.min()),
                                "effective": float((counts[n] > 0).sum() * width),
                                "n": int(v.size)}

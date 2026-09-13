@@ -317,3 +317,35 @@ def test_a_coverage_asked_of_nothing_is_zero_rather_than_a_crash(tmp_path):
     edges, counts, summary = scan.berv_coverage(index, ["PROXIMA"])
     assert edges.size == 0 and counts == {} and summary["effective"] == 0.0
     assert scan.berv_coverage(index, [])[2]["span"] == 0.0
+
+
+def test_the_ecliptic_latitude_says_what_a_target_can_ever_reach():
+    """|BERV| <= 29.78 cos(beta): TOI-1452 at +80.5 deg can span 9.8 km/s and no
+    more, whatever is observed. Checked against astropy on three targets."""
+    for ra, dec, want in ((290.173917, 73.195, 80.49),
+                          (217.376408, -62.67345, -44.77),
+                          (133.781, 1.541, -15.21)):
+        assert abs(scan._ecliptic_latitude(ra, dec) - want) < 0.02
+
+    assert abs(scan.berv_limit(80.49) - 4.93) < 0.05, "TOI-1452, the hopeless one"
+    assert abs(scan.berv_limit(0.0) - 29.78) < 0.01, "on the ecliptic, the most"
+    assert abs(scan.berv_limit(90.0)) < 0.01, "at the pole, none at all"
+    assert scan.berv_limit(None) is None
+
+
+def test_the_coverage_says_what_the_sky_allowed_as_well(tmp_path):
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    folder = tmp_path / "POLE"
+    folder.mkdir()
+    for i, berv in enumerate((-2.0, 0.0, 2.0)):
+        path = str(folder / ("%04dt.fits" % i))
+        write_tfits(path, mjd=60000.0 + i)
+        with fits.open(path, mode="update") as h:
+            h[1].header["BERV"] = berv
+            h[0].header["RA_DEG"] = 290.173917      # TOI-1452's, near the pole
+            h[0].header["DEC_DEG"] = 73.195
+    index, _tally = scan.update(str(tmp_path), home=str(tmp_path / "home"))
+    _edges, _counts, summary = scan.berv_coverage(index, ["POLE"])
+    assert summary["span"] == 4.0
+    assert abs(summary["possible"] - 9.86) < 0.1, \
+        "twice 29.78 cos(80.5 deg): what this target could ever have"

@@ -91,8 +91,9 @@ EN = {
     "berv_none": "tick a target to see its barycentric coverage",
     "berv_wait": "no barycentric velocity read yet",
     "berv_building": "UNDER CONSTRUCTION: still reading",
-    "berv_note": "effective coverage %.0f km/s over a span of %.0f,"
-                 " in bins of %.0f km/s, from %d exposures",
+    "berv_note": "effective coverage %.0f km/s, span %.0f, at most %s possible"
+                 " for this target's ecliptic latitude; bins of %.0f km/s,"
+                 " %d exposures",
     "help_berv":
         "How much of the barycentric range the ticked campaigns actually cover,"
         " in bins of 3 km/s, one colour per instrument and stacked. This is the"
@@ -102,7 +103,13 @@ EN = {
         " 42.8 km/s and the other 0.7, went from a gain of a factor two to a"
         " loss of a factor 2.4. The EFFECTIVE coverage counts only the bins that"
         " hold an exposure, so a campaign observed at two extremes and nowhere"
-        " between is not credited with the range between them.",
+        " between is not credited with the range between them. The third number"
+        " is what the sky ALLOWS: a target's |BERV| never exceeds"
+        " 29.78 cos(ecliptic latitude) km/s, so TOI-1452 at +80.5 deg can only"
+        " ever span 9.8 km/s and no amount of observing will separate the two"
+        " frames for it. A coverage short of the span means gaps, which more"
+        " nights can fill; a span short of the possible means the campaign is"
+        " young; a small possible means the target is the wrong one.",
     "run": "Run", "stop": "Stop", "dry": "Dry run", "export": "Export YAML...",
     "savelog": "Save log...", "openout": "Open outputs",
     "savedefaults": "Save as defaults...", "lblwin": "LBL settings...",
@@ -397,8 +404,9 @@ FR = {
     "berv_none": "cocher une cible pour voir sa couverture en BERV",
     "berv_wait": "aucune vitesse barycentrique encore lue",
     "berv_building": "EN COURS DE CONSTRUCTION : lecture en cours",
-    "berv_note": "couverture effective %.0f km/s sur une étendue de %.0f,"
-                 " en bins de %.0f km/s, sur %d poses",
+    "berv_note": "couverture effective %.0f km/s, étendue %.0f, au plus %s"
+                 " possible vu la latitude écliptique ; bins de %.0f km/s,"
+                 " %d poses",
     "help_berv":
         "Quelle part de la gamme barycentrique les campagnes cochées couvrent"
         " réellement, en bins de 3 km/s, une couleur par instrument et empilées."
@@ -408,7 +416,14 @@ FR = {
         " 42,8 km/s et l'autre 0,7, passent d'un gain d'un facteur deux à une"
         " perte d'un facteur 2,4. La couverture EFFECTIVE ne compte que les bins"
         " qui contiennent une pose : une campagne observée à deux extrêmes et"
-        " nulle part entre les deux n'est pas créditée de l'intervalle.",
+        " nulle part entre les deux n'est pas créditée de l'intervalle. Le"
+        " troisième nombre est ce que le ciel AUTORISE : le |BERV| d'une cible"
+        " ne dépasse jamais 29,78 cos(latitude écliptique) km/s, donc TOI-1452,"
+        " à +80,5°, ne pourra jamais couvrir plus de 9,8 km/s et aucune quantité"
+        " d'observations n'y séparera les deux référentiels. Une couverture"
+        " inférieure à l'étendue signale des trous, que des nuits combleront ;"
+        " une étendue inférieure au possible, une campagne jeune ; un possible"
+        " faible, une cible mal choisie.",
     "run": "Lancer", "stop": "Arrêter", "dry": "Essai à blanc",
     "export": "Exporter le YAML...", "savelog": "Enregistrer le journal...",
     "openout": "Ouvrir les sorties",
@@ -1455,9 +1470,12 @@ class App:
         if self._berv_partial(names):
             canvas.create_text(width // 2, pad + 8, text=self.t("berv_building"),
                                fill="#b26a00", font=("Helvetica", 10, "bold"))
+        possible = summary.get("possible")
         self.berv_note.configure(
-            text=self.t("berv_note") % (summary["effective"], summary["span"],
-                                        scan.BERV_BIN, summary["n"]))
+            text=self.t("berv_note")
+            % (summary["effective"], summary["span"],
+               "%.0f" % possible if possible else "?",
+               scan.BERV_BIN, summary["n"]))
 
     def _berv_partial(self, names):
         """Whether some spectrum of a ticked object has not been read yet."""
