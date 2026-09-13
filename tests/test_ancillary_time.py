@@ -54,7 +54,7 @@ def test_the_quantities_are_the_matrix_s_and_every_exposure_is_there(fitted):
     cube, out = fitted
     fit = np.load(out / "fit.npz")
     meta = Table.read(os.path.join(cube, "meta.fits"))
-    rjd, values, status = exposure_table(meta, fit)
+    rjd, values, status, objects = exposure_table(meta, fit)
     assert list(values) == [str(v) for v in fit["anc_labels"] if str(v) != "time"]
     assert len(rjd) == N_EXP, "one point per exposure, not per parity row"
     assert list(np.flatnonzero(status == "not fitted")) == [3], \
