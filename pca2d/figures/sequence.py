@@ -195,9 +195,12 @@ def window_arrays(cube, fit, means, group, grid, dv, delta, centre, width,
         # the 15-20% of columns that two orders reach (2026-09-13).
         live = live_mask(w0)
         shared = np.empty_like(w0)
-        for g in np.unique(group):
-            rows_g = group == g
-            shared[rows_g] = live[rows_g].all(axis=0).astype(w0.dtype)
+        # NOT `g`, which is this function's grid: named that, the loop replaced
+        # the grid with a group number and every window came back "too few
+        # columns" (2026-09-13, an hour after the fix above)
+        for label in np.unique(group):
+            rows_here = group == label
+            shared[rows_here] = live[rows_here].all(axis=0).astype(w0.dtype)
         alive &= live_mask(shifter.rows(shared, -delta))
     for name, build, _ in steps:
         z = shifter.rows(build(), -delta)

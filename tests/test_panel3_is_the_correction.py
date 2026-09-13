@@ -10,6 +10,8 @@ panel 3 subtracts from that order's parity, and the samples it blanks are
 exactly the ones the fit did not weight.
 """
 
+import os
+
 import numpy as np
 import pytest
 from astropy.table import Table
@@ -160,6 +162,36 @@ def test_a_common_mask_hides_in_every_row_what_one_exposure_lost(fitted):
         "the hole one exposure has is not hidden in the others"
     assert not (hidden["exposure"] & ~hidden["common"]).any(), \
         "a sample the per-exposure mask hides must stay hidden"
+
+
+def test_the_common_mask_of_a_panel_is_taken_within_one_parity(fitted):
+    """A wavelength is reached by ONE order parity: orders n and n+2 do not
+    overlap. Intersected over every row, the mask asked a sample to be alive in
+    rows that never cover it, and was empty everywhere the parities do not meet:
+    the three H-band windows of the joint run vanished from the report.
+
+    This calls window_arrays itself, because the first fix was written against a
+    reimplementation of the rule and shipped with the grid shadowed by the loop
+    variable, which no such test could see.
+    """
+    from pca2d.figures.sequence import load_context, window_arrays
+    cube, out = fitted
+    ctx = load_context(cube, str(out / "fit.npz"), mask="common")
+    # a sample only one parity can see, as a wavelength only one order reaches
+    w = np.load(os.path.join(cube, "sigma.npy"))
+    w[0::2, 300:340] = 0.0
+    np.save(os.path.join(cube, "sigma.npy"), w)
+    ctx = load_context(cube, str(out / "fit.npz"), mask="common")
+    arr = window_arrays(ctx["cube"], ctx["fit"], ctx["means"], ctx["group"],
+                        ctx["grid"], ctx["dv"], ctx["delta"],
+                        float(ctx["grid"][320]), 1.0,
+                        templates=ctx["templates"], correct=ctx.get("correct"))
+    assert arr is not None
+    assert np.ndim(arr["grid"]) == 1 and arr["grid"].size > 10, \
+        "the grid comes back as the grid, not as a group label"
+    alive = np.isfinite(arr["home"]["corrected"])
+    odd = np.asarray(ctx["group"]) % 2 == 1
+    assert alive[odd].any(), "the parity that covers this window still has rows"
 
 
 def test_the_figure_runs_as_the_bundle_runs_it(fitted, tmp_path):

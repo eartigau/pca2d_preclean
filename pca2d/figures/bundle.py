@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -45,6 +46,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 from pca2d.config import cache_key, load_config, spectra_dir  # noqa: E402
 from pca2d.logger import log                              # noqa: E402
+
+#: what a figure says when it drew less than it was asked for. Reported even
+#: though the figure succeeded: a page that is not there is not an error anybody
+#: notices, and three of them went unseen on the joint run of 2026-09-12.
+SKIPPED = re.compile(r"\bskipped\b|\bnot drawn\b|\bnothing to draw\b")
 
 #: default windows, the ones this campaign looks at
 WINDOWS = ["1200.3:2", "1220:4", "1267:2", "1593.6:2", "1669.5:5", "1700.5:3",
@@ -224,6 +230,16 @@ def run(cmd, failures):
         failures.append((" ".join(cmd),
                          (r.stderr or r.stdout or "").strip()[-400:]))
         log("      failed, see the bundle's last page")
+    else:
+        # A figure that SUCCEEDS can still have drawn less than it was asked
+        # for, and its own report of that was thrown away with the rest of its
+        # output, since only a non-zero exit was ever shown. Three windows of
+        # the joint run were skipped for "too few rows" and nobody saw it: the
+        # report simply had three pages fewer than windows (2026-09-13).
+        for line in (r.stdout or "").splitlines():
+            if SKIPPED.search(line):
+                log("   " + line.split("| ", 1)[-1].strip(), "warn")
+                failures.append((" ".join(cmd[:4]) + " ...", line.strip()))
     return r.returncode == 0
 
 

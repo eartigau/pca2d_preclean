@@ -32,3 +32,38 @@ def test_no_spectra_is_nothing_to_draw_rather_than_a_figure_that_fails(tmp_path)
     spectra: every joint run had it on the bundle's failure page."""
     assert not has_oh_model(str(tmp_path))
     assert not has_oh_model(str(tmp_path / "PROXIMA+GJ1+GJ3090"))
+
+
+def test_a_figure_that_skipped_a_window_is_reported_even_though_it_succeeded():
+    """A page that is not there is not an error anybody notices: three windows
+    of the joint run were skipped for "too few rows" and nobody saw it."""
+    from pca2d.figures.bundle import SKIPPED
+    said = ["260913 09:34:48.13 |   1667.0-1672.0 nm: too few rows, skipped",
+            "   1220.0-1222.0 nm: outside the grid, skipped",
+            "   oh_residual.py skipped: these spectra carry no OHLine extension",
+            "output.windows: 2450:5 is centred at 2450.0 nm, ... so it is not drawn",
+            "   no spectra in data/X, so nothing to draw the airglow from"]
+    for line in said:
+        assert SKIPPED.search(line), line
+    for line in ("260913 10:05:50.30 |   1199.3-1201.3 nm: given 0.0698",
+                 "wrote outputs/x.pdf: 6 pages from 8 figures",
+                 "drawing 8 windows and binding everything into one PDF"):
+        assert not SKIPPED.search(line), line
+
+
+def test_the_runner_collects_them(monkeypatch):
+    import subprocess
+
+    from pca2d.figures import bundle
+
+    class Done:
+        returncode = 0
+        stdout = ("260913 09:34:48.13 |   1667.0-1672.0 nm: too few rows, skipped\n"
+                  "260913 09:34:49.00 |   1199.3-1201.3 nm: given 0.07\n")
+        stderr = ""
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: Done())
+    failures = []
+    assert bundle.run(["python", "sequence.py"], failures) is True
+    assert len(failures) == 1, failures
+    assert "too few rows" in failures[0][1]
