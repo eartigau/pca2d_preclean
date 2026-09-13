@@ -94,6 +94,61 @@ def velocity_stats(t, v, e):
             "nights": int(nt.shape[1])}
 
 
+def amplitude_at(t, v, e, period):
+    """(K, sigma_K) of a sinusoid at a FIXED period, weighted by 1/e^2.
+
+    Used to ask the only question that matters about a correction applied to a
+    star that has a signal: is the signal still there afterwards?
+    """
+    w = 1.0 / np.maximum(np.asarray(e, float), 1e-6) ** 2
+    ph = 2 * np.pi * np.asarray(t, float) / float(period)
+    A = np.column_stack([np.cos(ph), np.sin(ph), np.ones_like(ph)])
+    cov = np.linalg.inv(A.T @ (A * w[:, None]))
+    p = cov @ ((A * w[:, None]).T @ np.asarray(v, float))
+    K = float(np.hypot(p[0], p[1]))
+    dof = max(len(ph) - 3, 1)
+    scale = float(np.sum(w * (v - A @ p) ** 2) / dof / max(np.mean(w), 1e-12))
+    var = (p[0] ** 2 * cov[0, 0] + p[1] ** 2 * cov[1, 1]
+           + 2 * p[0] * p[1] * cov[0, 1])
+    return K, float(np.sqrt(max(scale * var, 0.0)) / max(K, 1e-9))
+
+
+def signal_stats(t, v, e, periods=(), degree=2):
+    """What a correction did to a star that MOVES, which the rms cannot say.
+
+    On TOI-1452, whose binary companion gives 412 m/s of curvature over one
+    season, the correction absorbed 45% of that curve and the raw rms fell by a
+    third, from 100 to 68 m/s, while the scatter within a night and the error per
+    exposure both got worse. A figure of merit that rewards eating astrophysics
+    is not a figure of merit, so this reports, beside the rms:
+
+      drift        peak-to-peak of a low-order polynomial in time, which is what
+                   a companion on a long orbit looks like over one campaign
+      residual     the scatter once that is removed: the honest number
+      in_night     what one night's exposures disagree by, which no signal of
+                   months can touch, and the cleanest measure of a correction
+      amplitudes   K at each period the target is KNOWN to have
+                   (config.yaml, objects.<NAME>.target.planets)
+
+    A correction that shrinks `drift` or any amplitude is removing signal,
+    whatever it does to the rms.
+    """
+    t = np.asarray(t, float)
+    v = np.asarray(v, float)
+    nights = np.floor(t).astype(int)
+    tc = t - t.mean()
+    trend = np.polyval(np.polyfit(tc, v, degree), tc) if t.size > degree + 1 \
+        else np.zeros_like(v)
+    inside = [float(np.std(v[nights == n], ddof=1))
+              for n in np.unique(nights) if (nights == n).sum() > 2]
+    out = dict(velocity_stats(t, v, e))
+    out.update({"drift": float(np.ptp(trend)),
+                "residual": float(np.std(v - trend, ddof=1)),
+                "in_night": float(np.median(inside)) if inside else float("nan"),
+                "amplitudes": [amplitude_at(t, v, e, P) for P in periods]})
+    return out
+
+
 # -------------------------------------------------------------------- the runs
 def parse_tag(tag):
     """(star components, observer components) of a run's tag, 2-3v -> (2, 3)."""
