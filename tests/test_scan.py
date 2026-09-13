@@ -96,6 +96,19 @@ def test_a_replaced_file_is_read_again(tmp_path):
     assert scan.summary(index, "PROXIMA")["snr"] == 600.0
 
 
+def test_the_names_come_before_the_numbers_and_each_object_is_announced(tmp_path):
+    """A first scan of a campaign is minutes: the list cannot stay empty for it."""
+    root = root_with(tmp_path, PROXIMA=3, GJ1=2)
+    listed, done, files = {}, [], []
+    scan.update(root, home=str(tmp_path / "home"),
+                on_listed=listed.update, on_object=done.append,
+                on_file=lambda name, i, n: files.append((name, i, n)))
+    assert listed == {"GJ1": 2, "PROXIMA": 3}, \
+        "the names and the counts cost one folder listing, before any header"
+    assert done == ["GJ1", "PROXIMA"], "each object is announced as it finishes"
+    assert files[0] == ("GJ1", 1, 2) and files[-1] == ("PROXIMA", 3, 3)
+
+
 def test_the_summary_is_what_a_row_shows(tmp_path):
     root = root_with(tmp_path, PROXIMA=3, TOI1452=2)
     index, _tally = scan.update(root, home=str(tmp_path / "home"))

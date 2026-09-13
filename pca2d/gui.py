@@ -1190,11 +1190,7 @@ class App:
         self.names, self.rows = {}, {}
         for row in rows:
             name = row["object"]
-            item = self.tree.insert("", "end", values=(
-                row["files"],
-                "" if row.get("snr") is None else "%.0f" % row["snr"],
-                "" if row.get("exptime") is None else "%.0f" % row["exptime"],
-                row.get("instrument") or "?"))
+            item = self.tree.insert("", "end", values=self._values(row))
             self.names[item] = name
             self.rows[name] = row
             self._draw_check(item, name)
@@ -1202,6 +1198,31 @@ class App:
         self.count.configure(text="%d / %d" % (len(self.picked()),
                                                len(self.names)))
         self._sync()
+
+    def _values(self, row):
+        """One row's columns. A number not read yet is blank, never a zero."""
+        return (row["files"],
+                "" if row.get("snr") is None else "%.0f" % row["snr"],
+                "" if row.get("exptime") is None else "%.0f" % row["exptime"],
+                row.get("instrument") or "?")
+
+    def _listed(self, counts):
+        """The names and the counts, before a single header has been read."""
+        rows = []
+        for name in sorted(counts):
+            row = scan.summary(self.index, name)
+            row["files"] = counts[name]    # the folder is the truth for the count
+            rows.append(row)
+        self._fill(rows)
+
+    def _one(self, name):
+        """One object finished its scan: its numbers, in place."""
+        row = scan.summary(self.index, name)
+        self.rows[name] = row
+        for item, known in self.names.items():
+            if known == name:
+                self.tree.item(item, values=self._values(row))
+                return
 
     def _scan(self, root):
         """Read what changed, off the main thread, touching no widget.
@@ -1212,8 +1233,19 @@ class App:
         """
         def on_file(name, done, total):
             self.lines.put(("status", "%s  %d/%d" % (name, done, total)))
+
+        def on_listed(counts):
+            # the names and the counts cost one folder listing, so they are
+            # shown before any header is read: a first scan of a campaign on a
+            # shared disk is minutes, and an empty list says nothing meanwhile
+            self.lines.put(("listed", counts))
+
+        def on_object(name):
+            scan.save(self.index, root)     # a first scan is not lost on a close
+            self.lines.put(("object", name))
         try:
-            index, tally = scan.update(root, index=self.index, on_file=on_file)
+            index, tally = scan.update(root, index=self.index, on_file=on_file,
+                                       on_listed=on_listed, on_object=on_object)
             path = scan.save(index, root)
         except OSError as exc:
             self.lines.put(("line", self._line("log_failed", exc), "error"))
@@ -1310,6 +1342,10 @@ class App:
                 self._write(item[1], item[2])
             elif item[0] == "status":
                 self.status.configure(text=item[1])
+            elif item[0] == "listed":
+                self._listed(item[1])
+            elif item[0] == "object":
+                self._one(item[1])
             elif item[0] == "scanned":
                 self._scanned(*item[1:])
             elif item[0] == "finished":

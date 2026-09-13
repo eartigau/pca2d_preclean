@@ -161,20 +161,30 @@ def objects_of(root, pattern="*t.fits"):
 
 
 def update(root, index=None, pattern="*t.fits", objects=None, on_file=None,
-           home=None):
+           home=None, on_listed=None, on_object=None):
     """Bring the index level with the root, reading only what changed.
 
     A file already in the index with the same size and modification time is
     taken as it was; one that is new or was replaced is read; one that is gone
     is dropped, as is an object folder that is. `objects` limits the work to
-    some of them. `on_file(object, done, total)` is called as files are read,
-    which is how a window stays alive through a first scan.
+    some of them.
+
+    Three callbacks, so that a window can show what is happening instead of
+    waiting for the whole campaign:
+      `on_listed(found)`  once the folders are listed, before anything is read
+      `on_file(object, done, total)`  as files are read
+      `on_object(name)`   when one object is finished, so it can be drawn and
+                          the index saved; a first scan of a few thousand
+                          spectra on a shared disk is minutes, and losing it
+                          because a window was closed would be a waste
 
     Returns (index, {"read": n, "kept": n, "gone": n}).
     """
     index = index if index is not None else load(root, home)
     table = index.setdefault("objects", {})
     found = objects_of(root, pattern)
+    if on_listed is not None:
+        on_listed({name: len(files) for name, files in found.items()})
     tally = {"read": 0, "kept": 0, "gone": 0}
     for name in list(table):
         if name not in found and (objects is None or name in objects):
@@ -214,6 +224,8 @@ def update(root, index=None, pattern="*t.fits", objects=None, on_file=None,
         tally["gone"] += len([f for f in cached if f not in fresh])
         entry["files"] = fresh
         entry["scanned"] = datetime.datetime.now().isoformat(timespec="seconds")
+        if on_object is not None:
+            on_object(name)
     return index, tally
 
 
