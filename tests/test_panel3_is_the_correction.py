@@ -213,3 +213,22 @@ def test_the_figure_runs_as_the_bundle_runs_it(fitted, tmp_path):
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stderr[-800:]
     assert pdf.exists()
+
+
+def test_a_joint_cube_gets_one_page_per_star_and_one_of_them_all():
+    """Three campaigns on one axis, ordered by BERV, interleave three stars'
+    lines at three systemic velocities: the H-band pages of the first joint
+    report were unreadable for it."""
+    from pca2d.figures.sequence import pages_for
+
+    plan = pages_for(np.array(["PROXIMA"] * 3 + ["GJ1"] * 2 + ["GJ3090"]))
+    assert [label for _only, label in plan] == \
+        ["PROXIMA", "GJ1", "GJ3090", "PROXIMA + GJ1 + GJ3090   (all)"]
+    assert plan[0][0].tolist() == [True, True, True, False, False, False]
+    assert plan[1][0].sum() == 2
+    assert plan[-1][0] is None, "the last page keeps every row"
+
+    solo = pages_for(np.array(["TOI2120"] * 4))
+    assert solo == [(None, "TOI2120")], "one object, one page, named"
+    assert pages_for(None) == [(None, None)], "a cube without the column"
+    assert pages_for(np.array(["", ""])) == [(None, None)]

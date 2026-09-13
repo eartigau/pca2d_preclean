@@ -1312,13 +1312,28 @@ def load_cube(path, ln_clip_low=-0.5, ramp_zero=0.5, min_snr_frac=0.5,
 
     if min_snr_frac:
         snr = np.asarray(meta["snr_band"], dtype=float)
-        threshold = float(min_snr_frac * np.nanmedian(snr))
-        keep = np.isfinite(snr) & (snr >= threshold)
+        # PER OBJECT. The cut is relative by design: it drops the bad nights OF A
+        # CAMPAIGN, a spectrum at a third of that campaign's usual SNR. Taken
+        # over a joint cube it becomes "below half the BRIGHTEST stars' median"
+        # and punishes the faintest star for the others' brightness: GJ 3090 lost
+        # 56 of its 198 rows to Proxima's and GJ 1's median, where its own
+        # threshold drops 12 (2026-09-13).
+        objects = (np.asarray([str(v) for v in meta["object"]])
+                   if "object" in getattr(meta, "colnames", [])
+                   else np.zeros(len(snr), dtype=int))
+        keep = np.isfinite(snr)
+        thresholds = {}
+        for name in np.unique(objects):
+            here = objects == name
+            thresholds[name] = float(min_snr_frac * np.nanmedian(snr[here]))
+            keep &= ~here | (snr >= thresholds[name])
         if not keep.all():
+            shown = ", ".join("%.1f" % t for t in thresholds.values())
             log("dropping %d exposures (%d rows, one per order parity) with band"
-                " SNR below %.0f%% of the median (%.1f): %d of %d exposures left"
+                " SNR below %.0f%% of the median of their own object (%s): %d of"
+                " %d exposures left"
                 % (count_exposures(meta, ~keep), int((~keep).sum()),
-                   100 * min_snr_frac, threshold,
+                   100 * min_snr_frac, shown,
                    count_exposures(meta, keep), count_exposures(meta)))
             data, sigma, meta = data[keep], sigma[keep], meta[keep]
             if trans is not None:

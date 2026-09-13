@@ -36,6 +36,15 @@ STYLE = {
     "not fitted": dict(color="0.55", marker="o", ms=3, ls="none", mfc="none",
                        label="not fitted: band SNR below the cut"),
 }
+#: with several objects in one cube the colour says WHICH STAR and the marker
+#: says what the fit did with the exposure: a joint run's page held three
+#: campaigns of airmass and seeing with nothing to tell them apart.
+MARKER = {"fitted": dict(marker="o", ms=3, ls="none"),
+          "rejected": dict(marker="x", ms=5, ls="none"),
+          "not fitted": dict(marker="o", ms=3, ls="none", mfc="none")}
+#: a categorical palette that survives being printed and colour-blind readers
+OBJECT_COLOURS = ("#0072b2", "#d55e00", "#009e73", "#cc79a7", "#56b4e9",
+                  "#e69f00")
 
 
 def parse_args(argv=None):
@@ -95,31 +104,66 @@ def exposure_table(meta, fit):
             values[label] = np.array([anc[k][row_of[name]] if name in row_of
                                       else np.nan for name in exposures])
     rjd = _column(meta, "bjd")[order] - RJD0
-    return rjd, values, status
+    objects = (np.asarray([str(v) for v in meta["object"]])[order]
+               if "object" in meta.colnames else np.array([""] * len(order)))
+    return rjd, values, status, objects
 
 
-def draw(rjd, values, status, title="", unit="exposures"):
-    """One portrait page per PER_PAGE quantities, time on a shared axis."""
+def draw(rjd, values, status, title="", unit="exposures", objects=None):
+    """One portrait page per PER_PAGE quantities, time on a shared axis.
+
+    One colour per object when the cube holds several, the marker keeping what
+    the fit did with the exposure. A joint run drew three campaigns' airmass,
+    seeing and water on one axis with nothing to tell the stars apart.
+    """
     labels = list(values)
     counts = ", ".join("%d %s" % ((status == s).sum(), s) for s in STYLE
                        if (status == s).any())
+    names = ([] if objects is None
+             else [n for n in dict.fromkeys(objects) if n])
+    several = len(names) > 1
+    colour = {n: OBJECT_COLOURS[i % len(OBJECT_COLOURS)]
+              for i, n in enumerate(names)}
     figs = []
     for start in range(0, len(labels), PER_PAGE):
         chunk = labels[start:start + PER_PAGE]
         fig, axes = plt.subplots(len(chunk), 1, sharex=True, squeeze=False,
                                  figsize=(8.5, 1.0 * len(chunk) + 1.8))
         for n, (ax, label) in enumerate(zip(axes[:, 0], chunk)):
-            for s, style in STYLE.items():
-                sel = status == s
-                if sel.any():
-                    kw = dict(style)
-                    if n:
-                        kw.pop("label")
-                    ax.plot(rjd[sel], values[label][sel], **kw)
+            if several:
+                for name in names:
+                    for s, mark in MARKER.items():
+                        sel = (status == s) & (objects == name)
+                        if sel.any():
+                            ax.plot(rjd[sel], values[label][sel],
+                                    color=colour[name], **mark)
+            else:
+                for s, style in STYLE.items():
+                    sel = status == s
+                    if sel.any():
+                        kw = dict(style)
+                        if n:
+                            kw.pop("label")
+                        ax.plot(rjd[sel], values[label][sel], **kw)
             ax.set_ylabel(label, fontsize=8)
             ax.tick_params(labelsize=7)
             ax.grid(alpha=0.3)
-        axes[0, 0].legend(fontsize=7, loc="upper right", ncol=3, framealpha=0.8)
+        if several:
+            # two legends: the colours are the stars, the markers are the fit
+            stars = [plt.Line2D([], [], color=colour[n], marker="o", ms=4,
+                                ls="none", label=n) for n in names]
+            marks = [plt.Line2D([], [], color="0.35", ls="none",
+                                label=STYLE[s]["label"],
+                                **{k: v for k, v in MARKER[s].items()
+                                   if k != "ls"}) for s in MARKER]
+            first = axes[0, 0].legend(handles=stars, fontsize=7, ncol=len(stars),
+                                      loc="upper left", framealpha=0.8)
+            axes[0, 0].add_artist(first)
+            axes[0, 0].legend(handles=marks, fontsize=6.5, ncol=3,
+                              loc="upper right", framealpha=0.8)
+        else:
+            axes[0, 0].legend(fontsize=7, loc="upper right", ncol=3,
+                              framealpha=0.8)
         axes[-1, 0].set_xlabel("BJD - 2400000")
         fig.suptitle("%severy quantity of the correlation matrix, against time"
                      % (title + ": " if title else ""), fontsize=11)
@@ -137,16 +181,20 @@ def main(argv=None):
         log("  no ancillary quantity in %s: nothing to draw" % args.fit, "warn")
         return None
     meta = Table.read(os.path.join(args.cube, "meta.fits"))
-    rjd, values, status = exposure_table(meta, fit)
+    rjd, values, status, objects = exposure_table(meta, fit)
     stacked = ("n_exposures" in meta.colnames
                and int(np.nanmax(_column(meta, "n_exposures"))) > 1)
-    figs = draw(rjd, values, status, args.title, "nights" if stacked else "exposures")
+    figs = draw(rjd, values, status, args.title,
+                "nights" if stacked else "exposures", objects)
     with PdfPages(args.out) as pdf:
         for fig in figs:
             pdf.savefig(fig)
             plt.close(fig)
-    log("wrote %s: %d quantities over %d %s"
-        % (args.out, len(values), len(rjd), "nights" if stacked else "exposures"))
+    stars = [n for n in dict.fromkeys(objects) if n]
+    log("wrote %s: %d quantities over %d %s%s"
+        % (args.out, len(values), len(rjd), "nights" if stacked else "exposures",
+           ", one colour per star (%s)" % ", ".join(stars) if len(stars) > 1
+           else ""))
     return None
 
 

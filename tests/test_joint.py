@@ -186,3 +186,40 @@ def test_merging_snippets_survives_a_member_that_has_none(tmp_path):
     target = tmp_path / "joint2"
     target.mkdir()
     assert merge_snippets([str(bare)], str(target)) == 0
+
+
+def test_the_snr_cut_is_taken_against_each_object_s_own_median(tmp_path):
+    """The relative cut drops the bad nights OF A CAMPAIGN. Over a joint cube it
+    became "below half the brightest stars' median": GJ 3090 lost 56 of its 198
+    rows to Proxima's brightness, where its own threshold drops 12."""
+    import numpy as np
+    from astropy.table import Table
+
+    from pca2d.twoframe import load_cube
+
+    n_pix = 8
+    bright = np.full(200, 280.0)
+    bright[:6] = 40.0                      # its own bad nights
+    faint = np.full(100, 60.0)             # a fainter star, none of them bad
+    snr = np.concatenate([bright, faint])
+    n = snr.size
+    path = tmp_path / "cube"
+    path.mkdir()
+    np.save(path / "grid.npy", 1500.0 * np.exp(np.arange(n_pix) * 0.5 / 299792.458))
+    np.save(path / "data.npy", np.zeros((n, n_pix)))
+    np.save(path / "sigma.npy", np.full((n, n_pix), 0.01))
+    meta = Table()
+    meta["filename"] = ["%04dt.fits" % i for i in range(n)]
+    meta["bjd"] = 2459000.0 + np.arange(n)
+    meta["berv"] = np.zeros(n)
+    meta["snr_band"] = snr
+    meta["exposure"] = np.arange(n)
+    meta["parity"] = np.zeros(n, dtype=int)
+    meta["object"] = ["BRIGHT"] * 200 + ["FAINT"] * 100
+    meta.write(path / "meta.fits", overwrite=True)
+
+    _grid, _data, _w, kept = load_cube(str(path), min_snr_frac=0.5)
+    left = np.asarray([str(v) for v in kept["object"]])
+    assert (left == "FAINT").sum() == 100, \
+        "the faint star keeps every night: none is bad FOR IT"
+    assert (left == "BRIGHT").sum() == 194, "the bright one loses its own six"

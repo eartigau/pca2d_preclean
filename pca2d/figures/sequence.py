@@ -95,12 +95,15 @@ def _filled(block, ok):
     return np.where(ok, block, np.broadcast_to(fill, block.shape))
 
 
-def panel(ax, image, x, scale, title, cmap=None):
+def panel(ax, image, x, scale, title, cmap=None, unit="rows"):
     im = ax.imshow(image, aspect="auto", cmap=cmap or nan_cmap("RdBu_r"),
                    vmin=-scale, vmax=scale, origin="upper",
                    extent=[x[0], x[-1], image.shape[0] - 0.5, -0.5])
     ax.set_title(title, fontsize=8.5)
-    ax.set_ylabel("ordered by BERV", fontsize=8)
+    # WHICH rows: a cube built with nightly stacking has one row per night, and
+    # a reader counting 259 of them for Proxima's 782 spectra had nothing on the
+    # page to tell them why (2026-09-13)
+    ax.set_ylabel("%s, ordered by BERV" % unit, fontsize=8)
     ax.tick_params(labelsize=7)
     return im
 
@@ -242,16 +245,44 @@ def load_context(cube, fit_path, source_dir=None, shrink=False, shrink_smooth=Fa
             "means": means, "group": group,
             "templates": fit_templates(fit, meta, n, grid.size),
             "names": [os.path.basename(str(v)) for v in meta["filename"]],
+            "objects": (np.asarray([str(v) for v in meta["object"]])
+                        if "object" in getattr(meta, "colnames", []) else None),
+            "per_row": (np.asarray(meta["n_exposures"], dtype=float)
+                        if "n_exposures" in getattr(meta, "colnames", [])
+                        else np.ones(n)),
             "sample_path": sample_source_file(cube, meta, source_dir),
             "source_dir": source_dir, "correct": correct}
 
 
-def draw_window(ctx, centre, width, n_overplot=5):
+def pages_for(objects):
+    """[(row mask or None, label or None)]: the pages one window is drawn on.
+
+    One per object and then one of all of them together when the cube holds
+    several, since rows of three stars on one axis are three sets of lines at
+    three systemic velocities, which nobody can read; the page of all of them
+    stays because what the observer block does is common to them. One page,
+    unlabelled, when there is one object, which is every solo run.
+    """
+    names = [n for n in dict.fromkeys(objects) if n] if objects is not None else []
+    if len(names) < 2:
+        return [(None, names[0] if names else None)]
+    objects = np.asarray(objects)
+    return ([(objects == n, n) for n in names]
+            + [(None, " + ".join(names) + "   (all)")])
+
+
+def draw_window(ctx, centre, width, n_overplot=5, only=None, label=None):
     """One page: the five panels, then a few of the rows in flux.
 
     Returns the figure, or None when the window has nothing to draw. The report
     puts it in its PDF; the site saves the same figure as SVG, so the two can
     never show different things.
+
+    `only` keeps the rows of one object of a joint cube and `label` names it in
+    the title: three campaigns drawn on one axis, ordered by BERV, interleave
+    three different stars' lines, and the H-band pages of the first joint report
+    were unreadable for it. The page of all of them together is drawn as well,
+    since what the observer block does is common to them.
     """
     fit, grid, dv, delta = ctx["fit"], ctx["grid"], ctx["dv"], ctx["delta"]
     parity, berv = ctx["parity"], ctx["berv"]
@@ -279,10 +310,18 @@ def draw_window(ctx, centre, width, n_overplot=5):
         keep &= parity == own
         log("  %.1f-%.1f nm: two orders reach it, drawing the one"
               " %.2f of a half-width from its centre" % (lo, hi, off))
+    if only is not None:
+        keep = keep & np.asarray(only, dtype=bool)
     rows = np.where(keep)[0][np.argsort(berv[keep])]
     if rows.size < 6:
         log("  %.1f-%.1f nm: too few rows, skipped" % (lo, hi))
         return None
+    per_row = np.asarray(ctx.get("per_row", np.ones(len(berv))), dtype=float)
+    spectra = int(np.nansum(per_row[rows]))
+    stacked = spectra > rows.size
+    unit = "nights" if stacked else "exposures"
+    count = ("%d %s of %d spectra" % (rows.size, unit, spectra) if stacked
+             else "%d exposures" % rows.size)
     jw = np.where(win)[0]
     block = {k: home[k][np.ix_(rows, jw)] for k in home}
     finite = block["given"][np.isfinite(block["given"])]
@@ -304,9 +343,10 @@ def draw_window(ctx, centre, width, n_overplot=5):
         extra = ("" if name in ("given", "model")
                  else "   scatter %.4f" % np.nanstd(block[name]))
         if name in RESIDUAL_PANELS:
-            im_resid = panel(axes[r], block[name], x, resid_scale, title + extra)
+            im_resid = panel(axes[r], block[name], x, resid_scale, title + extra,
+                             unit=unit)
         else:
-            im = panel(axes[r], block[name], x, scale, title + extra)
+            im = panel(axes[r], block[name], x, scale, title + extra, unit=unit)
 
     # the same rows in flux, before and after, from the raw flux the
     # cube build kept around this window (see cache.py)
@@ -373,12 +413,13 @@ def draw_window(ctx, centre, width, n_overplot=5):
         y0, y1 = min(p.y0 for p in low), max(p.y1 for p in low)
         fig.colorbar(im_resid, cax=fig.add_axes([box.x0, y0, box.width, y1 - y0]),
                      label="residual, ln f")
-    fig.suptitle("%.2f-%.2f nm: every step, in order, in the STAR'S REST"
+    fig.suptitle("%s%.2f-%.2f nm, %s: every step, in order, in the STAR'S REST"
                  " FRAME\nvertical structure belongs to the star;"
-                 " anything slanted does not" % (lo, hi), fontsize=10)
-    log("  %.1f-%.1f nm: given %.4f | corrected %.4f (%+.0f%%) |"
+                 " anything slanted does not"
+                 % ("%s   " % label if label else "", lo, hi, count), fontsize=10)
+    log("  %s%.1f-%.1f nm: given %.4f | corrected %.4f (%+.0f%%) |"
           " residual %.4f"
-          % (lo, hi, np.nanstd(block["given"]),
+          % ("%s " % label if label else "", lo, hi, np.nanstd(block["given"]),
              np.nanstd(block["corrected"]),
              100 * (np.nanstd(block["corrected"]) /
                     max(np.nanstd(block["given"]), 1e-30) - 1),
@@ -392,13 +433,15 @@ def main(argv=None):
                        args.shrink_smooth, args.smooth_components, args.resolution,
                        args.mask)
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
+    pages = pages_for(ctx.get("objects"))
     with PdfPages(args.out) as pdf:
         for centre, width in (parse_window(spec) for spec in args.windows):
-            fig = draw_window(ctx, centre, width, args.n_overplot)
-            if fig is None:
-                continue
-            pdf.savefig(fig)
-            plt.close(fig)
+            for only, label in pages:
+                fig = draw_window(ctx, centre, width, args.n_overplot, only, label)
+                if fig is None:
+                    continue
+                pdf.savefig(fig)
+                plt.close(fig)
     log("wrote %s" % args.out)
     return None
 
