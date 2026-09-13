@@ -26,9 +26,10 @@ anchored on the observer, fitted together on a log-uniform grid where a Doppler
 shift is an exact translation. Dividing the observer block out of every
 exposure leaves a spectrum whose stellar content is untouched, which is then
 measured line by line. On a SPIRou campaign of TOI-2120, where telluric
-residuals dominate, the velocity scatter falls from 47.7 to 20.4~m\,s$^{-1}$.
-On three NIRPS campaigns whose delivered velocities are already good, the same
-correction is neutral at best. A pair of twin experiments, two 14-night slices
+residuals dominate, the velocity scatter falls from 47.7 to 17.4~m\,s$^{-1}$.
+On NIRPS campaigns whose delivered velocities are already at 2.7~m\,s$^{-1}$ the
+same correction moves them by less than a tenth of a m\,s$^{-1}$, in either
+direction. A pair of twin experiments, two 14-night slices
 of one campaign at the same signal-to-noise, shows what decides the outcome:
 where the barycentric velocity spans 42.8~km\,s$^{-1}$ the correction improves
 the robust scatter from 8.5 to 4.5~m\,s$^{-1}$, and where it spans
@@ -200,21 +201,25 @@ as reduced, with no precleaning.}
 \begin{table}[h]
 \centering
 \small
-\begin{tabular}{lrrrr}
+\begin{tabular}{lrrrrr}
 \toprule
-& \multicolumn{2}{c}{delivered} & \multicolumn{2}{c}{corrected}\\
+& \multicolumn{2}{c}{delivered} & \multicolumn{2}{c}{corrected} & \\
 \cmidrule(lr){2-3}\cmidrule(lr){4-5}
-Target & rms & robust $\sigma$ & rms & robust $\sigma$\\
+Target & rms & robust $\sigma$ & rms & robust $\sigma$ & exposures\\
 \midrule
-TOI-2120 & 47.71 & 34.99 & 20.35 & 16.16\\
-Proxima  &  2.86 &  2.22 &  3.04 &  2.52\\
-GJ~1     &  2.70 &  2.74 &  2.85 &  2.78\\
-TOI-4552 & 12.64 & 11.37 & 15.35 & 14.56\\
+TOI-2120 & 47.71 & 34.99 & 17.40 & 14.07 & 316\\
+Proxima  &  2.86 &  2.22 &  2.93 &  2.37 & 765\\
+GJ~1     &  2.70 &  2.74 &  2.61 &  2.38 & 280\\
+TOI-4552 & 12.64 & 11.37 & 14.24 & 11.20 & 109\\
 \bottomrule
 \end{tabular}
 \caption{Line-by-line velocities, in m\,s$^{-1}$, on the exposures both series
-share. The correction transforms the campaign whose residuals are telluric,
-and costs where the delivered velocities are already good.}
+share, with the adopted parameters: no star component, three observer
+components, the correction shrunk by its significance, one set of lines per
+campaign, and each series measured against the template LBL builds from it. The
+correction transforms the campaign whose residuals are telluric. Where the
+delivered velocities are already at 2.7~m\,s$^{-1}$ it neither helps nor costs
+much, and on GJ~1 it takes the robust scatter below the delivered series.}
 \label{tab:overall}
 \end{table}
 
@@ -222,10 +227,12 @@ The pattern of Table~\ref{tab:overall} is not a signal-to-noise effect, and the
 cleanest case against that reading is TOI-2120 against TOI-4552. Their exposures
 are of the same length, 903 and 897~s, and their spectra reach the same
 signal-to-noise in the band both instruments cover, 51 and 43 per order in $H$
-(Table~\ref{tab:campaigns}), yet the correction removes more than half of the
-velocity scatter of one and adds to the other's. The two brighter campaigns,
-whose spectra have four to six times that signal-to-noise, are the ones where
-the correction has the least to remove.
+(Table~\ref{tab:campaigns}), yet the correction removes nearly two thirds of the
+velocity scatter of one and adds a sixth to the other's rms while leaving its
+robust scatter where it was. The two brighter campaigns, whose spectra have four
+to six times that signal-to-noise, are the ones where the correction has the
+least to remove, and there it neither helps nor costs more than a tenth of a
+m\,s$^{-1}$.
 
 \subsection{The barycentric span decides}
 
@@ -358,26 +365,30 @@ star spectrum per order parity.
 
 Table~\ref{tab:overall} is the honest summary: this is a method for campaigns
 whose velocities are limited by what the atmosphere and the instrument left
-behind, and it is not free where they are not. On TOI-2120 it removes more than
-half the scatter. On Proxima and GJ~1 the delivered velocities are already at
-2.7 to 2.9~m\,s$^{-1}$, and the correction adds 0.2. Applying it there buys
-nothing, and the decision can be made in advance from the barycentric span and
-from how much of the scatter the formal errors already explain.
+behind, and it is not free where they are not. On TOI-2120 it removes nearly two
+thirds of the scatter, 47.7 to 17.4~m\,s$^{-1}$. On Proxima and GJ~1 the
+delivered velocities are already at 2.7 to 2.9~m\,s$^{-1}$ and the correction
+moves them by less than a tenth of a m\,s$^{-1}$, upward on one and downward on
+the other. Applying it there buys nothing and costs nothing, and the decision can
+be made in advance from the barycentric span and from how much of the scatter the
+formal errors already explain.
 
 \section{Conclusions}
 
 \begin{enumerate}
 \item A two-frame weighted decomposition separates what is fixed in the
 observer's frame from what belongs to the star, and dividing the first out
-removes more than half of the velocity scatter of a campaign dominated by
-telluric residuals.
+removes nearly two thirds of the velocity scatter of a campaign dominated by
+telluric residuals, 47.7 to 17.4~m\,s$^{-1}$ on TOI-2120.
 \item What decides whether it helps is the barycentric span of the fitted set.
 Two 14-night slices of one campaign, at equal signal-to-noise, differ by a
 factor of sixty in span, and the correction improves the robust scatter by a
 factor of two in one and degrades it by a factor of 2.4 in the other.
-\item The star's mean spectrum must carry a coefficient of exactly one. The
-freedom given to a star component is used to absorb an annual, barycentric
-mode, and removing it recovers most of the damage on the worst case.
+\item The star's mean spectrum must carry a coefficient of exactly one, and the
+star is better given no free component at all. The freedom given to one is used
+to absorb an annual, barycentric mode; removing it improved every campaign
+measured, by 0.9~m\,s$^{-1}$ on TOI-2120, 1.6 on TOI-4552 and 0.4 on GJ~1, which
+it takes below its delivered velocities.
 \item Blanking the samples a fit could not weight must be done with one set of
 lines for the whole campaign. Blanking each exposure's own costs
 1.8~m\,s$^{-1}$ with no correction applied at all.
