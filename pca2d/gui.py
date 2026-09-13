@@ -70,6 +70,12 @@ OPTIONS_LBL = [
 ALL_OPTIONS = OPTIONS + OPTIONS_LBL
 #: a target is run or not run, and the list says which with a box
 CHECKED, UNCHECKED = "☑", "☐"
+#: one tint per instrument, on the row's background. A joint fit is one
+#: instrument, so which instrument a target belongs to is the first thing the
+#: list has to make obvious; the colours are pale enough that the ticked box and
+#: the selection still read over them.
+INSTRUMENT_TINT = {"NIRPS": "#eaf3ff", "SPIROU": "#fff1e6"}
+OTHER_TINTS = ("#eefaf0", "#f6eeff", "#fdf6e3", "#f0f0f0")
 
 EN = {
     "subtitle": "two-frame precleaning, then LBL. Pick a data root, pick"
@@ -110,11 +116,11 @@ EN = {
     "log_mixed_refused": "refusing to run: %s are from two instruments (%s)",
     "log_nights": "%s: %d nights in common, out of %s",
     "log_nights_thin":
-        "%s share only %d nights out of %s: the atmosphere belongs to the night,"
-        " so a basis fitted on stars that were not observed together is an"
-        " average over conditions none of them met. Measured on"
-        " PROXIMA+GJ1+GJ3090, 2 nights in common: the brightest improved and"
-        " GJ 1 lost what its solo fit had gained.",
+        "%s share %d nights out of %s, which is FEW and not a problem: the"
+        " observer components are a parasite that is always there, and what is"
+        " being measured is its pattern. Nights that no other star saw widen the"
+        " range of conditions the pattern is determined over, which constrains"
+        " it better rather than worse.",
     "log_command": "running: %s",
     "log_ended": "the run ended, exit code %d",
     "log_stopping": "asking the run to stop",
@@ -207,6 +213,12 @@ EN = {
         " observer basis. Click the box, double-click the row, or press the space"
         " bar. They must all come from the same instrument.",
     "help_all_button": "Tick every target in the list, or untick every one.",
+    "help_instrument_filter":
+        "Show or hide the targets of one instrument. A run is ONE instrument, so"
+        " hiding the others is the quickest way to a selection that can actually"
+        " be run; the rows are grouped and tinted by instrument for the same"
+        " reason. Hiding an instrument unticks its targets, and nothing is"
+        " deleted: tick the box again and they come back as they were.",
     "help_savedefaults_button":
         "Write the settings that DIFFER from the configuration into config.yaml"
         " itself, as the defaults every later run starts from. The file's"
@@ -398,11 +410,11 @@ FR = {
     "log_mixed_refused": "passage refusé : %s viennent de deux instruments (%s)",
     "log_nights": "%s : %d nuits en commun, sur %s",
     "log_nights_thin":
-        "%s ne partagent que %d nuits sur %s : l'atmosphère appartient à la nuit,"
-        " donc une base ajustée sur des étoiles qui n'ont pas été observées"
-        " ensemble est une moyenne sur des conditions qu'aucune n'a connues."
-        " Mesuré sur PROXIMA+GJ1+GJ3090, 2 nuits en commun : la plus brillante"
-        " s'est améliorée et GJ 1 a perdu ce que son passage solo avait gagné.",
+        "%s partagent %d nuits sur %s, ce qui est PEU et n'est pas un problème :"
+        " les composantes observateur sont un parasite toujours présent, et ce"
+        " qu'on mesure est son motif. Des nuits qu'aucune autre étoile n'a vues"
+        " élargissent la gamme de conditions sur laquelle ce motif est"
+        " déterminé, donc le contraignent mieux et non moins bien.",
     "log_command": "lancement : %s",
     "log_ended": "passage terminé, code de sortie %d",
     "log_stopping": "demande d'arrêt du passage",
@@ -507,6 +519,13 @@ FR = {
         " toutes venir du même instrument.",
     "help_all_button":
         "Cocher toutes les cibles de la liste, ou les décocher toutes.",
+    "help_instrument_filter":
+        "Afficher ou masquer les cibles d'un instrument. Un passage, c'est UN"
+        " instrument : masquer les autres est le chemin le plus court vers une"
+        " sélection qui peut vraiment être lancée, et les lignes sont groupées"
+        " et teintées par instrument pour la même raison. Masquer un instrument"
+        " décoche ses cibles, et rien n'est effacé : recochez la case et elles"
+        " reviennent telles quelles.",
     "help_savedefaults_button":
         "Écrire les réglages qui DIFFÈRENT de la configuration dans config.yaml"
         " lui-même, comme défauts dont partira tout passage ultérieur. Les"
@@ -900,6 +919,7 @@ class App:
         self._build_options(right)
         self._build_command(root)
         self._build_log(root)
+        self._propose_out()      # on opening, not only when the data root moves
         self.refresh_objects()
         self.root.after(80, self._drain)
         self.root.protocol("WM_DELETE_WINDOW", self._close)
@@ -1025,6 +1045,12 @@ class App:
             button.pack(side="left", padx=(0, 4))
             self._register(button, key)
             self._tip(button, "help_all_button")
+        # one box per instrument found, filled in when the root is read: a run
+        # is one instrument, so hiding the others is the first thing anybody
+        # does before picking targets
+        self.filters = ttk.Frame(bar)
+        self.filters.pack(side="left", padx=(10, 0))
+        self.instrument_vars = {}
         self.count = ttk.Label(bar, style="Hint.TLabel", text="")
         self.count.pack(side="right")
 
@@ -1112,9 +1138,11 @@ class App:
             return
         self._shared = key
         joined = ", ".join(str(c) for c in counts)
+        # a fact worth knowing, not a fault: a basis measured over a wide range
+        # of nights is a better-determined basis (the user, 2026-09-13)
         if len(common) < 0.2 * min(counts):
             self._say("log_nights_thin", " + ".join(names), len(common), joined,
-                      level="warn")
+                      level="value")
         else:
             self._say("log_nights", " + ".join(names), len(common), joined,
                       level="value")
@@ -1292,19 +1320,71 @@ class App:
         threading.Thread(target=self._scan, args=(root,), daemon=True).start()
 
     def _fill(self, rows):
-        """Draw one row per object, keeping whatever was ticked."""
+        """Draw one row per object, keeping whatever was ticked.
+
+        Grouped by instrument and alphabetical within a group, because a run is
+        one instrument: the targets that can go together are then adjacent, and
+        each row is tinted with its instrument's colour so the grouping survives
+        a glance. Instruments whose box is unticked are not drawn at all.
+        """
+        self.rows = {row["object"]: row for row in rows}
+        self._instrument_boxes(sorted({r.get("instrument") or "?"
+                                       for r in rows}))
+        shown = [r for r in rows if self._instrument_on(r.get("instrument"))]
+        shown.sort(key=lambda r: ((r.get("instrument") or "?").lower(),
+                                  r["object"].lower()))
         self.tree.delete(*self.tree.get_children())
-        self.names, self.rows = {}, {}
-        for row in rows:
+        self.names = {}
+        for row in shown:
             name = row["object"]
-            item = self.tree.insert("", "end", values=self._values(row))
+            tint = self._tint(row.get("instrument") or "?")
+            item = self.tree.insert("", "end", values=self._values(row),
+                                    tags=(tint,))
             self.names[item] = name
-            self.rows[name] = row
             self._draw_check(item, name)
-        self.checked &= set(self.rows)     # an object that is gone is not run
+        # an object that is gone, or whose instrument is hidden, is not run
+        self.checked &= set(self.names.values())
         self.count.configure(text="%d / %d" % (len(self.picked()),
                                                len(self.names)))
         self._sync()
+
+    def _tint(self, instrument):
+        """The row colour of an instrument, made once and kept."""
+        tag = "inst_%s" % instrument
+        if tag not in getattr(self, "_tints", {}):
+            self._tints = getattr(self, "_tints", {})
+            colour = INSTRUMENT_TINT.get(instrument.upper())
+            if colour is None:
+                colour = OTHER_TINTS[len(self._tints) % len(OTHER_TINTS)]
+            self._tints[tag] = colour
+            self.tree.tag_configure(tag, background=colour)
+        return tag
+
+    def _instrument_on(self, instrument):
+        var = self.instrument_vars.get(instrument or "?")
+        return True if var is None else bool(var.get())
+
+    def _instrument_boxes(self, instruments):
+        """One box per instrument the data root holds, all ticked to begin with.
+
+        Rebuilt only when the set of instruments changes, so that boxes somebody
+        just unticked are not silently ticked again by a rescan.
+        """
+        if list(self.instrument_vars) == list(instruments):
+            return
+        for child in self.filters.winfo_children():
+            child.destroy()
+        keep = dict(self.instrument_vars)
+        self.instrument_vars = {}
+        for name in instruments:
+            var = self.tk.BooleanVar(
+                value=bool(keep[name].get()) if name in keep else True)
+            box = self.ttk.Checkbutton(
+                self.filters, text=name, variable=var,
+                command=lambda: self._fill(list(self.rows.values())))
+            box.pack(side="left", padx=(0, 6))
+            self._tip(box, "help_instrument_filter")
+            self.instrument_vars[name] = var
 
     def _values(self, row, approximate=False):
         """One row's columns.
