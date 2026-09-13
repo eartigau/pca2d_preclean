@@ -228,6 +228,31 @@ def test_a_record_from_before_a_field_existed_is_read_again(tmp_path):
     assert all("mag" in f for f in index["objects"]["PROXIMA"]["files"].values())
 
 
+def test_the_nights_two_campaigns_share_are_counted(tmp_path):
+    """What decides whether a joint fit means anything: the atmosphere belongs
+    to the night, so stars not observed together have no common sky to share."""
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    for name, days in (("GJ1", range(0, 20)), ("GJ3090", range(10, 30)),
+                       ("PROXIMA", range(100, 120))):
+        folder = tmp_path / name
+        folder.mkdir()
+        for i, day in enumerate(days):
+            write_tfits(str(folder / ("%04dt.fits" % i)), mjd=60000.0 + day + 0.4)
+    root = str(tmp_path)
+    index, _tally = scan.update(root, home=str(tmp_path / "home"))
+
+    assert len(scan.nights_of(index, "GJ1")) == 20
+    common, counts = scan.shared_nights(index, ["GJ1", "GJ3090"])
+    assert (len(common), counts) == (10, [20, 20]), "half of each"
+    common, counts = scan.shared_nights(index, ["GJ1", "PROXIMA"])
+    assert len(common) == 0, "different seasons, no common sky"
+    common, _counts = scan.shared_nights(index, ["GJ1", "GJ3090", "PROXIMA"])
+    assert len(common) == 0, "all three, so the one that shares nothing decides"
+    assert scan.shared_nights(index, ["GJ1"]) == (set(), [20]), \
+        "one object shares nothing with nobody"
+    assert scan.shared_nights(index, ["NOBODY", "GJ1"]) == (set(), [20])
+
+
 def test_an_unreadable_file_is_recorded_once_and_not_read_again(tmp_path):
     root = root_with(tmp_path, PROXIMA=1)
     (tmp_path / "PROXIMA" / "0002t.fits").write_text("not a FITS file")

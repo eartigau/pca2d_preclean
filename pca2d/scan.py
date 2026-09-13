@@ -338,3 +338,30 @@ def summary(index, name):
 def summaries(index):
     """One summary per object, by name."""
     return [summary(index, name) for name in sorted(index.get("objects") or {})]
+
+
+def nights_of(index, name):
+    """The nights this object was observed on, as integer MJDs.
+
+    The night is what the atmosphere belongs to, so this is what says whether
+    two campaigns can share an observer basis at all (docs/joint_fit.md). A UT
+    date boundary falls in the middle of a night at both sites, but a campaign's
+    nights are counted the same way for every object, so the comparison holds.
+    """
+    files = ((index.get("objects") or {}).get(name) or {}).get("files") or {}
+    return {int(np.floor(f["mjd"])) for f in files.values()
+            if isinstance(f, dict) and f.get("mjd") is not None}
+
+
+def shared_nights(index, names):
+    """(nights common to all of them, [each one's own count]).
+
+    Empty or nearly empty is the warning a joint fit needs: a basis fitted on
+    stars that were not observed together is an average over conditions none of
+    them met. Measured on PROXIMA+GJ1+GJ3090: two nights of 258, 147 and 99.
+    """
+    sets = [nights_of(index, name) for name in names]
+    sets = [s for s in sets if s]
+    if len(sets) < 2:
+        return set(), [len(s) for s in sets]
+    return set.intersection(*sets), [len(s) for s in sets]

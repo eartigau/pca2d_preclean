@@ -107,6 +107,13 @@ EN = {
     "log_no_object": "no object ticked: tick at least one in the list",
     "log_mixed": "two instruments ticked (%s): a run is one instrument",
     "log_mixed_refused": "refusing to run: %s are from two instruments (%s)",
+    "log_nights": "%s: %d nights in common, out of %s",
+    "log_nights_thin":
+        "%s share only %d nights out of %s: the atmosphere belongs to the night,"
+        " so a basis fitted on stars that were not observed together is an"
+        " average over conditions none of them met. Measured on"
+        " PROXIMA+GJ1+GJ3090, 2 nights in common: the brightest improved and"
+        " GJ 1 lost what its solo fit had gained.",
     "log_command": "running: %s",
     "log_ended": "the run ended, exit code %d",
     "log_stopping": "asking the run to stop",
@@ -384,6 +391,13 @@ FR = {
     "log_no_object": "aucun objet coché : en cocher au moins un dans la liste",
     "log_mixed": "deux instruments cochés (%s) : un passage, c'est un instrument",
     "log_mixed_refused": "passage refusé : %s viennent de deux instruments (%s)",
+    "log_nights": "%s : %d nuits en commun, sur %s",
+    "log_nights_thin":
+        "%s ne partagent que %d nuits sur %s : l'atmosphère appartient à la nuit,"
+        " donc une base ajustée sur des étoiles qui n'ont pas été observées"
+        " ensemble est une moyenne sur des conditions qu'aucune n'a connues."
+        " Mesuré sur PROXIMA+GJ1+GJ3090, 2 nuits en commun : la plus brillante"
+        " s'est améliorée et GJ 1 a perdu ce que son passage solo avait gagné.",
     "log_command": "lancement : %s",
     "log_ended": "passage terminé, code de sortie %d",
     "log_stopping": "demande d'arrêt du passage",
@@ -1034,7 +1048,32 @@ class App:
         if len(instruments) > 1 and instruments != getattr(self, "_warned", None):
             self._say("log_mixed", ", ".join(sorted(instruments)), level="warn")
         self._warned = instruments if len(instruments) > 1 else None
+        self._nights(names)
         self._sync()
+
+    def _nights(self, names):
+        """How many nights the ticked campaigns share, said when it changes.
+
+        The criterion that decided the first joint run and the one a list of
+        names cannot show: see docs/joint_fit.md.
+        """
+        if len(names) < 2:
+            self._shared = None
+            return
+        common, counts = scan.shared_nights(self.index, names)
+        if not counts or len(counts) < 2:
+            return
+        key = (tuple(sorted(names)), len(common))
+        if key == getattr(self, "_shared", None):
+            return
+        self._shared = key
+        joined = ", ".join(str(c) for c in counts)
+        if len(common) < 0.2 * min(counts):
+            self._say("log_nights_thin", " + ".join(names), len(common), joined,
+                      level="warn")
+        else:
+            self._say("log_nights", " + ".join(names), len(common), joined,
+                      level="value")
 
     def picked(self):
         """The ticked objects, in the order the list shows them."""
