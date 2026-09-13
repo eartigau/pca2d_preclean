@@ -1265,14 +1265,16 @@ class App:
     def _values(self, row, approximate=False):
         """One row's columns.
 
-        A number not read yet is blank, never a zero. One read from the first
-        few spectra of a campaign carries a tilde: ten of them already give the
-        signal-to-noise and the exposure time to the precision anybody picks a
-        target with, and the value sharpens as the rest are read.
+        A number not read yet is blank, never a zero. The tilde marks what is
+        still an ESTIMATE from the first few spectra and will sharpen as the rest
+        are read: the median signal-to-noise and the median exposure time, which
+        are medians over exposures. The magnitude is not one of them. It is a
+        property of the star, the same in the first file as in the last, so a
+        tilde on it would promise a precision that has nothing to gain.
         """
         tilde = "~" if approximate else ""
         mag = ("" if row.get("mag") is None else
-               "%s%s=%.1f" % (tilde, row.get("mag_band") or "?", row["mag"]))
+               "%s=%.1f" % (row.get("mag_band") or "?", row["mag"]))
         return (row["files"],
                 "" if row.get("snr") is None else "%s%.0f" % (tilde, row["snr"]),
                 "" if row.get("exptime") is None
