@@ -443,6 +443,13 @@ objects:
     target:
       planets: [11.18465, 5.12338]      # b and d; c at 5.2 yr is beyond a
                                         # campaign's baseline
+  GJ328:
+    target:
+      planets: [3771.0, 241.8]          # b, K = 42.6 m/s on a 10.3 yr orbit
+                                        # (e = 0.227), and c at 2.95 m/s. The
+                                        # 851-day campaign covers 3.5 cycles of
+                                        # c and a fifth of b, which shows up as
+                                        # a 25 m/s drift rather than an orbit.
   # GJ1 has no known planet, which is why it is the quiet reference here.
 
 # TOI2120 needs nothing here: APERO wrote OBJTEMP = 3179 K in its headers, and
