@@ -99,6 +99,7 @@ EN = {
     "defaults_ask": "Write these values into %s as the defaults for every"
                     " run?\n\n%s\n\nThe comments in the file are kept.",
     "log_index": "index of this data root: %s",
+    "log_out_proposed": "output root proposed, beside the data: %s",
     "log_scan_start": "reading the data root %s",
     "log_scan_done": "%s: %d objects, %d spectra read, %d already known, %d gone",
     "log_scan_none": "no folder with spectra under %s",
@@ -223,7 +224,10 @@ EN = {
         " merged in it: what is general, what belongs to the spectrograph, and"
         " what belongs to one target.",
     "help_out_dir":
-        "Where a run writes, if not the config's own output root. A run puts its"
+        "Where a run writes. Proposed as `corrected` BESIDE the data root, since"
+        " the corrected spectra are a copy of the campaign, tens of gigabytes,"
+        " and belong on the disk the campaign is already on. Empty uses the"
+        " configuration's own output root. A run puts its"
         " resolved configuration, its report, its corrected spectra and its LBL"
         " folders under <root>/<object>/<M>-<N>/.",
     "help_rescan":
@@ -383,6 +387,7 @@ FR = {
                     " passages ?\n\n%s\n\nLes commentaires du fichier sont"
                     " conservés.",
     "log_index": "index de ce dossier de données : %s",
+    "log_out_proposed": "racine de sortie proposée, à côté des données : %s",
     "log_scan_start": "lecture du dossier de données %s",
     "log_scan_done": "%s : %d objets, %d spectres lus, %d déjà connus, %d disparus",
     "log_scan_none": "aucun dossier contenant des spectres sous %s",
@@ -520,8 +525,10 @@ FR = {
         " sont fusionnées, ce qui est général, ce qui appartient au"
         " spectrographe, et ce qui appartient à une cible.",
     "help_out_dir":
-        "Où le passage écrit, si ce n'est pas la racine de sortie de la"
-        " configuration. Un passage y dépose sa configuration résolue, son"
+        "Où le passage écrit. Proposé comme `corrected` À CÔTÉ du dossier de"
+        " données, puisque les spectres corrigés sont une copie de la campagne,"
+        " des dizaines de gigaoctets, et ont leur place sur le disque où la"
+        " campagne est déjà. Vide, c'est la racine de sortie de la configuration. Un passage y dépose sa configuration résolue, son"
         " rapport, ses spectres corrigés et ses dossiers LBL, sous"
         " <racine>/<objet>/<M>-<N>/.",
     "help_rescan":
@@ -675,6 +682,37 @@ def objects_in(root, pattern="*t.fits"):
     """
     return [(name, len(files))
             for name, files in scan.objects_of(root, pattern).items()]
+
+
+def absolute(path):
+    """A path as it will be read, in full: `~` expanded, relative made absolute.
+
+    The window showed `data` and `config.yaml` as written, which say nothing
+    about WHERE a run will read from: the same two words mean a different folder
+    from a different working directory, and the data here live on a shared disk
+    reached through a link. What is shown is now what is used.
+    """
+    if not path:
+        return ""
+    return os.path.abspath(os.path.expanduser(str(path)))
+
+
+def corrected_dir(data_root):
+    """Where to propose putting the run's products, given where it reads.
+
+    Beside the data and named `corrected`: the corrected spectra are a copy of
+    the campaign, tens of gigabytes, and they belong on the disk the campaign is
+    already on rather than on whatever disk the window happened to start from.
+    A root already called `corrected` is left alone rather than nested inside
+    itself.
+    """
+    full = absolute(data_root)
+    if not full:
+        return ""
+    parent, name = os.path.split(full.rstrip(os.sep))
+    if name.lower() == "corrected":
+        return full
+    return os.path.join(parent or os.sep, "corrected")
 
 
 def instruments_of(rows, names):
@@ -918,9 +956,11 @@ class App:
         button.grid(row=0, column=3, sticky="e")
         self._register(button, "lang")
         self._tip(button, "help_lang")
+        # shown in full, since a relative path means a different folder from a
+        # different working directory and these data are reached through a link
         for i, (key, default) in enumerate((
-                ("data_dir", self.saved.get("data_dir", "data")),
-                ("config", self.saved.get("config", "config.yaml")),
+                ("data_dir", absolute(self.saved.get("data_dir", "data"))),
+                ("config", absolute(self.saved.get("config", "config.yaml"))),
                 ("out_dir", self.saved.get("out_dir", "")))):
             label = ttk.Label(frame, text=self.t(key))
             label.grid(row=i + 1, column=0, sticky="w", pady=2)
@@ -932,6 +972,10 @@ class App:
             self._tip(entry, "help_" + key)
             self._tip(label, "help_" + key)
             var.trace_add("write", lambda *_: self._sync())
+            if key == "data_dir":
+                # proposed when the data root is settled, not at every keystroke
+                entry.bind("<FocusOut>", lambda _e: self._propose_out())
+                entry.bind("<Return>", lambda _e: self._propose_out())
             browse = ttk.Button(frame, text=self.t("browse"),
                                 command=lambda k=key: self._browse(k))
             browse.grid(row=i + 1, column=2)
@@ -1606,6 +1650,20 @@ class App:
         self._register(close, "close")
         window.protocol("WM_DELETE_WINDOW", window.withdraw)
 
+    def _propose_out(self):
+        """Offer a place for the run's products, beside the data it reads.
+
+        Only when the field is empty: a proposal, not a decision. Said in the
+        log, because a folder that is about to receive tens of gigabytes should
+        not appear in a box without a word.
+        """
+        if self.vars["out_dir"].get().strip():
+            return
+        proposed = corrected_dir(self.vars["data_dir"].get())
+        if proposed:
+            self.vars["out_dir"].set(proposed)
+            self._say("log_out_proposed", proposed, level="value")
+
     def _browse(self, key):
         from tkinter import filedialog
         if key == "config":
@@ -1614,8 +1672,9 @@ class App:
         else:
             path = filedialog.askdirectory(title=self.t(key))
         if path:
-            self.vars[key].set(path)
+            self.vars[key].set(absolute(path))
             if key == "data_dir":
+                self._propose_out()
                 self.refresh_objects()
 
     def _close(self):

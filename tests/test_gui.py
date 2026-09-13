@@ -141,3 +141,27 @@ def test_what_the_window_says_is_timestamped_and_in_its_language():
 def test_a_message_whose_placeholders_drifted_does_not_stop_the_window():
     line = speaking("en")("log_scan_done", "only one argument")
     assert "only one argument" in line, "said badly rather than not at all"
+
+
+def test_a_path_is_shown_as_it_will_be_read(tmp_path):
+    """`data` and `config.yaml` say nothing about WHERE: the same two words mean
+    a different folder from a different working directory."""
+    import os
+
+    from pca2d.gui import absolute
+    assert absolute("data") == os.path.join(os.getcwd(), "data")
+    assert absolute("~") == os.path.expanduser("~")
+    assert absolute("/Volumes/irrisor/x") == "/Volumes/irrisor/x"
+    assert absolute("") == "" and absolute(None) == ""
+
+
+def test_the_output_is_proposed_beside_the_data():
+    """Corrected spectra are a copy of the campaign: they belong on the disk the
+    campaign is already on, not on whatever disk the window started from."""
+    from pca2d.gui import corrected_dir
+    assert corrected_dir("/Volumes/irrisor/pca2d_preclean/science") == \
+        "/Volumes/irrisor/pca2d_preclean/corrected"
+    assert corrected_dir("/Volumes/irrisor/data/") == "/Volumes/irrisor/corrected"
+    assert corrected_dir("/Volumes/irrisor/corrected") == \
+        "/Volumes/irrisor/corrected", "not nested inside itself"
+    assert corrected_dir("") == ""
