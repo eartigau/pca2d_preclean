@@ -111,6 +111,12 @@ EN = {
     "variant": "variant", "command": "the command this runs", "output": "output",
     "col_object": "object", "col_files": "files", "col_instrument": "instrument",
     "col_snr": "SNR", "col_exptime": "exp (s)", "col_mag": "mag",
+    'run_name': 'run name',
+    'min_rjd': 'from',
+    'max_rjd': 'to',
+    'exists': '⚠ this run already exists',
+    'help_run_name': 'A name for this run. Its products go to <output root>/_NAME/ and its LBL object is <object>_PCA2D_<M-N>_NAME, so two runs of the same targets at different settings never write into one folder nor under one LBL name, where LBL would measure the mixture without a word. Empty is the nominal path. It is proposed from the dates when they are set, and can be anything.',
+    'help_dates': 'Keep only the exposures between these two dates, in reduced Julian date (BJD - 2400000). What is excluded is neither fitted nor corrected. It is how a campaign is cut to a season, which the barycentric coverage sometimes asks for: two 14-night slices of TOI-4552 at the same signal-to-noise differ by a factor of sixty in coverage and the correction changes sign between them.',
     "berv": "barycentric coverage of the ticked targets",
     "berv_none": "tick a target to see its barycentric coverage",
     "berv_wait": "no barycentric velocity read yet",
@@ -443,6 +449,12 @@ FR = {
     "output": "sortie",
     "col_object": "objet", "col_files": "fichiers", "col_instrument": "instrument",
     "col_snr": "SNR", "col_exptime": "pose (s)", "col_mag": "mag",
+    'run_name': 'nom du passage',
+    'min_rjd': 'du',
+    'max_rjd': 'au',
+    'exists': '⚠ ce passage existe déjà',
+    'help_run_name': "Un nom pour ce passage. Ses produits vont dans <racine de sortie>/_NOM/ et son objet LBL est <objet>_PCA2D_<M-N>_NOM, pour que deux passages des mêmes cibles à des réglages différents n'écrivent jamais dans un même dossier ni sous un même nom LBL, où le LBL mesurerait le mélange sans un mot. Vide, c'est le chemin nominal. Il est proposé à partir des dates quand elles sont fixées, et peut être n'importe quoi.",
+    'help_dates': "Ne garder que les poses entre ces deux dates, en jour julien réduit (BJD - 2400000). Ce qui est exclu n'est ni ajusté ni corrigé. C'est ainsi qu'on coupe une campagne en saisons, ce que la couverture barycentrique réclame parfois : deux tranches de 14 nuits de TOI-4552 au même SNR diffèrent d'un facteur soixante en couverture, et la correction y change de signe.",
     "berv": "couverture en BERV des cibles cochées",
     "berv_none": "cocher une cible pour voir sa couverture en BERV",
     "berv_wait": "aucune vitesse barycentrique encore lue",
@@ -898,6 +910,12 @@ def build_command(state):
         argv += ["--data-dir", state["data_dir"]]
     if state.get("out_dir"):
         argv += ["--out-dir", state["out_dir"]]
+    if str(state.get("run_name") or "").strip():
+        argv += ["--name", str(state["run_name"]).strip()]
+    for flag, key in (("--min-rjd", "min_rjd"), ("--max-rjd", "max_rjd")):
+        value = str(state.get(key) or "").strip()
+        if value:
+            argv += [flag, value]
     if state.get("variant") and state["variant"] != "(none)":
         argv += ["--variant", state["variant"]]
     if state.get("n_star") not in (None, ""):
@@ -1206,6 +1224,30 @@ class App:
         self.badges = self.tk.Canvas(frame, height=26, width=250,
                                      background=BG, highlightthickness=0)
         self.badges.grid(row=0, column=2, sticky="e", padx=(0, 6))
+        # the run's name, proposed and editable, with what it would overwrite
+        row = ttk.Frame(frame)
+        row.grid(row=4, column=0, columnspan=4, sticky="we", pady=(6, 0))
+        label = ttk.Label(row, text=self.t("run_name"))
+        label.pack(side="left")
+        self._register(label, "run_name")
+        self._tip(label, "help_run_name")
+        self.vars["run_name"] = tk.StringVar(value=self.saved.get("run_name", ""))
+        entry = ttk.Entry(row, textvariable=self.vars["run_name"], width=26)
+        entry.pack(side="left", padx=(6, 14))
+        self._tip(entry, "help_run_name")
+        self.vars["run_name"].trace_add("write", lambda *_: self._sync())
+        for key, width in (("min_rjd", 9), ("max_rjd", 9)):
+            lab = ttk.Label(row, text=self.t(key))
+            lab.pack(side="left")
+            self._register(lab, key)
+            self._tip(lab, "help_dates")
+            self.vars[key] = tk.StringVar(value=self.saved.get(key, ""))
+            box = ttk.Entry(row, textvariable=self.vars[key], width=width)
+            box.pack(side="left", padx=(4, 10))
+            self._tip(box, "help_dates")
+            self.vars[key].trace_add("write", lambda *_: self._sync())
+        self.exists = ttk.Label(row, style="Hint.TLabel", text="")
+        self.exists.pack(side="left", padx=(6, 0))
         rescan = ttk.Button(frame, text=self.t("rescan"),
                             command=self.refresh_objects)
         rescan.grid(row=1, column=3, padx=4)
@@ -1601,11 +1643,41 @@ class App:
         state = self.state()
         self.command.delete("1.0", "end")
         self.command.insert("1.0", " ".join(build_command(state)))
+        self._warn_exists(state)
         keep = {k: v for k, v in state.items() if k != "objects"}
         keep["checked"] = sorted(self.checked)
         keep["sort_column"] = getattr(self, "sort_column", None)
         keep["sort_reverse"] = bool(getattr(self, "sort_reverse", False))
         _write_state(keep)
+
+    def _warn_exists(self, state):
+        """Say, beside the name, when this run has already been made.
+
+        Not a refusal: re-running is how a fit is redone. But finding somebody
+        else's fit under your own name, silently, is how two experiments become
+        one set of numbers.
+        """
+        label = getattr(self, "exists", None)
+        if label is None:
+            return
+        names = state.get("objects") or []
+        if not names:
+            label.configure(text="")
+            return
+        root = (state.get("out_dir")
+                or (self._config().get("output") or {}).get("directory")
+                or "outputs")
+        named = str(state.get("run_name") or "").strip()
+        tag = "%s-%s" % (state.get("n_star") or 0, state.get("n_earth") or 3)
+        where = os.path.join(absolute(root), "_" + named if named else "")
+        if len(names) > 1:
+            where = os.path.join(where, "joint", "+".join(names), tag)
+        else:
+            where = os.path.join(where, names[0], tag)
+        if os.path.exists(os.path.join(where, "fit.npz")):
+            label.configure(text=self.t("exists"), foreground="#b26a00")
+        else:
+            label.configure(text="", foreground=MUTED)
 
     def refresh_objects(self):
         """Show what is remembered of this data root, then go and check it.

@@ -289,3 +289,51 @@ def test_the_shown_command_stays_the_one_to_paste_in_a_terminal():
     from pca2d.gui import build_command
     argv = build_command({"objects": ["GL699_SPIROU"], "n_star": 0})
     assert argv[0] == "pca2d-preclean"
+
+
+def test_the_run_name_and_the_dates_reach_the_command():
+    """Two runs of the same targets at different settings must not write into
+    one folder nor under one LBL object name."""
+    from pca2d.gui import build_command
+    argv = build_command({"objects": ["GL699_SPIROU"], "n_star": 0,
+                          "run_name": " saison1 ", "min_rjd": "58383",
+                          "max_rjd": "58700"})
+    assert argv[argv.index("--name") + 1] == "saison1", "trimmed"
+    assert argv[argv.index("--min-rjd") + 1] == "58383"
+    assert argv[argv.index("--max-rjd") + 1] == "58700"
+
+    plain = build_command({"objects": ["GL699_SPIROU"], "run_name": "  ",
+                           "min_rjd": "", "max_rjd": None})
+    assert "--name" not in plain and "--min-rjd" not in plain, \
+        "empty is the nominal path, not a run called nothing"
+
+
+def test_the_command_line_names_a_run_the_same_way_the_window_does():
+    """The window shows `--name X`; the run must put it where the window says."""
+    import types
+
+    from pca2d.cli import name_run, window_label
+
+    config = {"output": {"directory": "outputs"}, "lbl": {"suffix": "_PCA2D_{tag}"}}
+    args = types.SimpleNamespace(name="saison1", min_rjd=None, max_rjd=None)
+    assert name_run(config, args) == "saison1"
+    assert config["output"]["directory"] == "outputs/_saison1"
+    assert config["lbl"]["suffix"] == "_PCA2D_{tag}_saison1"
+
+    # no name: the dates name it themselves
+    config = {"output": {"directory": "outputs"}, "lbl": {"suffix": "_PCA2D_{tag}"}}
+    args = types.SimpleNamespace(name=None, min_rjd=58383.0, max_rjd=58700.0)
+    assert window_label(args) == "rjd58383-58700"
+    assert name_run(config, args) == "rjd58383-58700"
+    assert config["output"]["directory"] == "outputs/_rjd58383-58700"
+
+    # neither: the nominal path, untouched
+    config = {"output": {"directory": "outputs"}, "lbl": {"suffix": "_PCA2D_{tag}"}}
+    args = types.SimpleNamespace(name=None, min_rjd=None, max_rjd=None)
+    assert name_run(config, args) is None
+    assert config["output"]["directory"] == "outputs"
+
+    # a name with a slash in it cannot climb out of the output root
+    config = {"output": {"directory": "outputs"}, "lbl": {"suffix": "_P"}}
+    args = types.SimpleNamespace(name="../../etc", min_rjd=None, max_rjd=None)
+    assert "/" not in name_run(config, args)

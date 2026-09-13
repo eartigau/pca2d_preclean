@@ -470,6 +470,38 @@ def berv_coverage(index, names, width=BERV_BIN):
     return edges, counts, summary
 
 
+def time_coverage(index, names, bins=110):
+    """When the chosen campaigns were observed, binned for drawing.
+
+    Returns (edges in rjd, {object: counts}, summary). The bin width is chosen
+    from the whole span rather than fixed, so a campaign of four months and one
+    of four years both fill the panel. `summary` carries the first and last
+    dates, the number of nights, and the number of exposures.
+    """
+    per_object = {}
+    for name in names:
+        files = ((index.get("objects") or {}).get(name) or {}).get("files") or {}
+        mjd = np.array([f["mjd"] for f in files.values()
+                        if isinstance(f, dict) and f.get("mjd") is not None],
+                       dtype=float)
+        if mjd.size:
+            per_object[name] = mjd
+    if not per_object:
+        return np.array([]), {}, {"first": None, "last": None, "nights": 0,
+                                  "n": 0}
+    every = np.concatenate(list(per_object.values()))
+    lo, hi = float(every.min()), float(every.max())
+    if hi - lo < 1.0:
+        hi = lo + 1.0
+    edges = np.linspace(np.floor(lo), np.ceil(hi), max(int(bins), 4) + 1)
+    counts = {n: np.histogram(v, bins=edges)[0] for n, v in per_object.items()}
+    nights = len({int(np.floor(m)) for m in every})
+    return edges, counts, {"first": lo, "last": hi, "nights": nights,
+                           "n": int(every.size),
+                           "objects": {n: (float(v.min()), float(v.max()))
+                                       for n, v in per_object.items()}}
+
+
 def nights_of(index, name):
     """The nights this object was observed on, as integer MJDs.
 

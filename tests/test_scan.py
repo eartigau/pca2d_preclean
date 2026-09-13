@@ -416,3 +416,25 @@ def test_the_rounds_read_every_file_exactly_once(tmp_path):
     assert scan.summary(index, "BETA")["files"] == 7
     index, tally = scan.update(root, index=index, home=str(tmp_path / "home"))
     assert (tally["read"], tally["kept"]) == (0, 20), "and not once more"
+
+
+def test_the_time_panel_bins_whatever_span_it_is_given(tmp_path):
+    """Four months and four years both have to fill the same panel."""
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    for name, days in (("SHORT", range(0, 120, 4)), ("LONG", range(0, 1400, 40))):
+        folder = tmp_path / name
+        folder.mkdir()
+        for i, day in enumerate(days):
+            write_tfits(str(folder / ("%04dt.fits" % i)), mjd=60000.0 + day + 0.3)
+    index, _tally = scan.update(str(tmp_path), home=str(tmp_path / "home"))
+
+    edges, counts, summary = scan.time_coverage(index, ["SHORT"], bins=50)
+    assert len(edges) == 51 and len(counts["SHORT"]) == 50
+    assert summary["n"] == 30 and summary["nights"] == 30
+    assert abs(summary["last"] - summary["first"] - 116) < 1.5
+
+    edges, counts, both = scan.time_coverage(index, ["SHORT", "LONG"], bins=50)
+    assert set(counts) == {"SHORT", "LONG"}, "one grid, both campaigns on it"
+    assert both["n"] == 30 + 35
+    assert counts["SHORT"][-1] == 0, "the short one ends early on a shared axis"
+    assert scan.time_coverage(index, [])[2]["n"] == 0

@@ -31,6 +31,7 @@ import argparse
 import copy
 import glob
 import os
+import re
 import sys
 import time
 
@@ -68,6 +69,14 @@ def parse_args(argv=None):
                         " returns different photons")
     p.add_argument("--n-star", type=int, default=None)
     p.add_argument("--n-earth", type=int, default=None)
+    p.add_argument("--min-rjd", type=float, default=None, metavar="RJD",
+                   help="keep only exposures from this date on (reduced Julian"
+                        " date, BJD - 2400000). quality.min_rjd for one run:"
+                        " what is excluded is neither fitted nor corrected")
+    p.add_argument("--max-rjd", type=float, default=None, metavar="RJD",
+                   help="and only up to this one. The pair cuts a campaign to"
+                        " a season, which is what the barycentric coverage"
+                        " sometimes asks for (docs/options.md)")
     p.add_argument("--windows", nargs="+", default=None,
                    help="centre:width in nm; default is the list in the config")
     p.add_argument("--rebuild-cube", action="store_true",
@@ -88,6 +97,12 @@ def parse_args(argv=None):
                         " is what makes the shared basis cleaner. Everything"
                         " lands under <output root>/joint/<A+B+C>/, and each"
                         " object is measured by LBL on its own")
+    p.add_argument("--name", default=None, metavar="NAME",
+                   help="name this run. Its products go to <out root>/_NAME/"
+                        " and its LBL object is <object>_PCA2D_<M-N>_NAME, so"
+                        " two runs of the same objects at different settings"
+                        " never write into one folder nor under one LBL name."
+                        " A run whose folder already holds a fit says so")
     p.add_argument("--variant", default=None, metavar="NAME",
                    help="variants/NAME.yaml, beside the config, on top of it:"
                         " the nominal plus what the variant changes. Its"
@@ -129,6 +144,36 @@ def name_variant(config, name, variant, out_dir=None):
     config["variant"] = dict({"name": name},
                              **{k: variant[k] for k in VARIANT_META if k in variant})
     return root
+
+
+def window_label(args):
+    """The name a date window gives itself when none was typed."""
+    lo = getattr(args, "min_rjd", None)
+    hi = getattr(args, "max_rjd", None)
+    if lo is None and hi is None:
+        return None
+    return "rjd%s-%s" % ("%.0f" % lo if lo is not None else "",
+                         "%.0f" % hi if hi is not None else "")
+
+
+def name_run(config, args):
+    """Give this run its own folder and its own LBL object, if it needs one.
+
+    `--name` when it was typed, otherwise the date window's own label when one
+    was given. A run that fits and corrects a different set of exposures is a
+    different result, and two of them must not write into one folder nor under
+    one LBL object name: LBL globs its science folder and would measure the
+    mixture without a word (the {tag} comment in config.yaml).
+    """
+    label = getattr(args, "name", None) or window_label(args)
+    if not label:
+        return None
+    label = re.sub(r"[^0-9A-Za-z._+-]", "_", str(label)).strip("_") or "run"
+    config["output"]["directory"] = os.path.join(config["output"]["directory"],
+                                                 "_" + label)
+    config["lbl"]["suffix"] = "%s_%s" % (config["lbl"].get("suffix")
+                                         or "_PCA2D_{tag}", label)
+    return label
 
 
 def reused_fit(root, base, object_name, tag):
@@ -190,6 +235,13 @@ def joint_members(args, variant):
         cfg = load_config(args.config, object_name=name, data_dir=args.data_dir,
                           out_dir=args.out_dir, instrument=args.instrument,
                           variant=variant)
+        # the date window decides which exposures are IN THE CUBE, so it has to
+        # be on every member's own configuration, not only on the joint copy
+        # made from the first of them: set there alone, the member cubes would
+        # have been built without it and the cut would have done nothing
+        for key in ("min_rjd", "max_rjd"):
+            if getattr(args, key, None) is not None:
+                cfg["quality"][key] = float(getattr(args, key))
         directory = spectra_dir(cfg)
         if not os.path.isdir(directory):
             log("no directory %s: %s has no spectra under the input root"
@@ -232,6 +284,10 @@ def joint_plan(args, variant):
             member["config"]["output"]["use_cache"] = False
     if args.run_lbl:
         config.setdefault("lbl", {})["run"] = True
+    named = name_run(config, args)
+    if named:
+        log("run named %s: its own folder and its own LBL object, since it fits"
+            " and corrects its own set of exposures" % named, "value")
     name = _joint.joint_name(args.objects)
     config["input"]["object"] = name
     # a variant names its own folder and its own LBL objects here, exactly as it
@@ -294,6 +350,13 @@ def resolve(args):
         config["twoframe"]["n_star"] = args.n_star
     if args.n_earth is not None:
         config["twoframe"]["n_earth"] = args.n_earth
+    for key in ("min_rjd", "max_rjd"):
+        if getattr(args, key, None) is not None:
+            config["quality"][key] = float(getattr(args, key))
+    named = name_run(config, args)
+    if named:
+        log("run named %s: its own folder and its own LBL object, since it fits"
+            " and corrects its own set of exposures" % named, "value")
     if args.windows:
         config["output"]["windows"] = list(args.windows)
     if args.rebuild_cube:
@@ -389,6 +452,28 @@ def run_joint_cube(plan, build_main):
     _joint.build([m["cube"] for m in plan["members"]],
                  [m["object"] for m in plan["members"]],
                  plan["cube"], plan["written_config"])
+
+
+def warn_if_run_exists(plan):
+    """Say so when this run's folder already holds a fit.
+
+    Not a refusal: re-running is how a fit is redone with a changed setting,
+    and the stages are skippable precisely so that one can be. But finding
+    somebody else's fit under your own name, silently, is how two experiments
+    become one set of numbers.
+    """
+    fit = os.path.join(plan["outdir"], "fit.npz")
+    if not os.path.exists(fit):
+        return False
+    import datetime as _dt
+    when = _dt.datetime.fromtimestamp(os.path.getmtime(fit))
+    n = len(glob.glob(os.path.join(plan["corrdir"], "**", "*.fits"),
+                      recursive=True))
+    log("this run already exists: %s holds a fit from %s%s. Running again"
+        " overwrites it; --name gives this one a folder of its own."
+        % (plan["outdir"], when.strftime("%d %b %H:%M"),
+           " and %d corrected spectra" % n if n else ""), "warn")
+    return True
 
 
 def run_cube(plan):
@@ -644,6 +729,7 @@ def main(argv=None):
     else:
         plan = resolve(args)
     announce(args, plan)
+    warn_if_run_exists(plan)
     from . import storage as _storage
     where = _storage.check(plan["config"], dry_run=args.dry_run)
     if where:
