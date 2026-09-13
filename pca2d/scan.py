@@ -197,6 +197,25 @@ def usable(record, stamp):
     return all(field in record for field in FIELDS)
 
 
+def spread(items, first=10):
+    """The same items, reordered so that ANY prefix samples the whole list.
+
+    File names sort by date, so the first ten of a campaign are its first night,
+    and a median taken from them is that night's weather rather than the
+    campaign's: on GJ~1 the first ten spectra give a signal-to-noise of 134
+    against the campaign's 163, 18% low. Reading in a comb instead, offset 0 of
+    every `step`, then offset 1, and so on, costs exactly the same total reads
+    and makes the estimate shown after ten files an estimate OF THE CAMPAIGN.
+    """
+    items = list(items)
+    n = len(items)
+    if n <= max(1, first):
+        return items
+    step = max(1, n // first)
+    order = [i for offset in range(step) for i in range(offset, n, step)]
+    return [items[i] for i in order]
+
+
 def update(root, index=None, pattern="*t.fits", objects=None, on_file=None,
            home=None, on_listed=None, on_object=None, every=10):
     """Bring the index level with the root, reading only what changed.
@@ -252,7 +271,9 @@ def update(root, index=None, pattern="*t.fits", objects=None, on_file=None,
         entry["files"] = fresh
         if on_object is not None and fresh:
             on_object(name, len(fresh), len(files))
-        for i, (filename, path, stamp) in enumerate(todo):
+        # read in a comb, so the numbers shown after ten files describe the
+        # campaign and not its first night
+        for i, (filename, path, stamp) in enumerate(spread(todo, every or 10)):
             try:
                 record = scan_file(path)
             except Exception:                                     # noqa: BLE001

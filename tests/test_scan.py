@@ -150,6 +150,54 @@ def test_the_summary_is_what_a_row_shows(tmp_path):
     assert scan.summary(index, "NOBODY")["files"] == 0
 
 
+def test_the_first_files_read_are_spread_over_the_campaign(tmp_path):
+    """Names sort by date, so the first ten files are the first night and their
+    median is that night's weather. Measured on GJ 1: 134 against 163."""
+    order = scan.spread(list(range(100)), first=10)
+    assert sorted(order) == list(range(100)), "the same files, once each"
+    assert order[:10] == [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
+    assert len(set(order[:10])) == 10
+    for prefix in (10, 20, 50):
+        half = sum(1 for i in order[:prefix] if i >= 50)
+        assert abs(half - prefix / 2) <= 1, \
+            "any prefix covers both halves of the campaign"
+    assert scan.spread([1, 2, 3], first=10) == [1, 2, 3], "nothing to spread"
+    assert scan.spread([], first=10) == []
+
+    # and a real scan reads in that order
+    root = root_with(tmp_path, PROXIMA=30)
+    seen = []
+    scan.update(root, home=str(tmp_path / "home"), every=10,
+                on_file=lambda name, i, n: seen.append(i))
+    assert seen == list(range(1, 31))
+
+
+def test_a_partial_median_is_of_the_campaign_not_of_its_first_night(tmp_path):
+    """The SNR rises through the campaign; ten spread files must not report the
+    beginning of it."""
+    root = str(tmp_path)
+    folder = tmp_path / "PROXIMA"
+    folder.mkdir(parents=True)
+    for i in range(100):
+        write_tfits(str(folder / ("%04dt.fits" % i)), snr=(float(i + 1),),
+                    exptime=60.0, mjd=60000.0 + i)
+    seen = {}
+
+    def on_object(name, known, total):
+        if known == 10:
+            seen["ten"] = scan.summary(index[0], name)["snr"]
+
+    index = [scan.load(root, str(tmp_path / "home"))]
+    index[0], _tally = scan.update(root, index=index[0], every=10,
+                                   home=str(tmp_path / "home"),
+                                   on_object=on_object)
+    assert seen["ten"] == 46.0, "the median of 1, 11, 21, ... 91"
+    assert scan.summary(index[0], "PROXIMA")["snr"] == 50.5, "all of them"
+    # read in order, the first ten would have given 5.5, an order of magnitude
+    # away from the campaign's value
+    assert abs(seen["ten"] - 50.5) < 6.0
+
+
 def test_the_magnitude_comes_with_the_band_it_is_in(tmp_path):
     """NIRPS writes J, SPIRou's OBJMAG is H (checked against SIMBAD on both
     SPIRou campaigns). One unlabelled column would be wrong by a magnitude."""
