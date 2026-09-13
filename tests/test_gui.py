@@ -102,7 +102,7 @@ def test_every_item_explains_itself_in_both_languages():
             "help_dry_button", "help_export_button", "help_savelog_button",
             "help_openout_button", "help_savedefaults_button",
             "help_lblwin_button", "help_all_button", "help_check",
-            "help_col_snr", "help_col_exptime"]
+            "help_col_snr", "help_col_exptime", "help_col_mag"]
     keys += ["help_" + key for key, _p, _k in ALL_OPTIONS]
     keys += ["help_stage_" + stage for stage in STAGES]
     for key in keys:

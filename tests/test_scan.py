@@ -11,11 +11,22 @@ from pca2d import scan
 
 
 def write_tfits(path, instrument="NIRPS", snr=(100.0, 120.0, 140.0),
-                exptime=300.0, mjd=60000.5):
-    """A file with the headers a scan reads, and nothing else in it."""
+                exptime=300.0, mjd=60000.5, mag=None):
+    """A file with the headers a scan reads, and nothing else in it.
+
+    The brightness goes in under the keyword that instrument writes, and those
+    are not the same band: NIRPS gives J, SPIRou's OBJMAG is H.
+    """
     primary = fits.PrimaryHDU()
     primary.header["INSTRUME"] = instrument
     primary.header["EXPTIME"] = exptime
+    if mag is not None:
+        if instrument == "SPIROU":
+            primary.header["OBJMAG"] = mag
+        else:
+            primary.header["ESO OCS TARG JMAG"] = mag
+            primary.header["ESO OCS TARG IMAG"] = 0.0   # a field not filled in
+            primary.header["GUIMAGN"] = -9999.9         # a guider with no value
     name = "FluxAB" if instrument == "SPIROU" else "FluxA"
     science = fits.ImageHDU(data=np.zeros((2, 4), dtype=np.float32), name=name)
     for i, value in enumerate(snr):
@@ -100,13 +111,29 @@ def test_the_names_come_before_the_numbers_and_each_object_is_announced(tmp_path
     """A first scan of a campaign is minutes: the list cannot stay empty for it."""
     root = root_with(tmp_path, PROXIMA=3, GJ1=2)
     listed, done, files = {}, [], []
-    scan.update(root, home=str(tmp_path / "home"),
-                on_listed=listed.update, on_object=done.append,
+    scan.update(root, home=str(tmp_path / "home"), on_listed=listed.update,
+                on_object=lambda name, k, n: done.append((name, k, n)),
                 on_file=lambda name, i, n: files.append((name, i, n)))
     assert listed == {"GJ1": 2, "PROXIMA": 3}, \
         "the names and the counts cost one folder listing, before any header"
-    assert done == ["GJ1", "PROXIMA"], "each object is announced as it finishes"
+    assert done == [("GJ1", 2, 2), ("PROXIMA", 3, 3)], \
+        "each object is announced when it is finished, known == total"
     assert files[0] == ("GJ1", 1, 2) and files[-1] == ("PROXIMA", 3, 3)
+
+
+def test_the_numbers_arrive_every_ten_spectra_marked_as_estimates(tmp_path):
+    """Ten spectra already give a campaign's SNR and exposure time: they go up
+    at once, and the caller shows them as estimates until the rest are read."""
+    root = root_with(tmp_path, PROXIMA=25)
+    done = []
+    index, _tally = scan.update(root, home=str(tmp_path / "home"), every=10,
+                                on_object=lambda n, k, t: done.append((k, t)))
+    assert done == [(10, 25), (20, 25), (25, 25)], \
+        "every ten, then once complete"
+    partial = [(k, t) for k, t in done if k < t]
+    assert partial and all(k < t for k, t in partial), \
+        "an estimate is recognisable by known < total"
+    assert scan.summary(index, "PROXIMA")["files"] == 25
 
 
 def test_the_summary_is_what_a_row_shows(tmp_path):
@@ -121,6 +148,36 @@ def test_the_summary_is_what_a_row_shows(tmp_path):
     assert rows["PROXIMA"]["exptime"] == 120.0
     assert (rows["PROXIMA"]["first"], rows["PROXIMA"]["last"]) == (60000.0, 60002.0)
     assert scan.summary(index, "NOBODY")["files"] == 0
+
+
+def test_the_magnitude_comes_with_the_band_it_is_in(tmp_path):
+    """NIRPS writes J, SPIRou's OBJMAG is H (checked against SIMBAD on both
+    SPIRou campaigns). One unlabelled column would be wrong by a magnitude."""
+    nirps = str(tmp_path / "n.fits")
+    spirou = str(tmp_path / "s.fits")
+    write_tfits(nirps, instrument="NIRPS", mag=5.328)
+    write_tfits(spirou, instrument="SPIROU", mag=10.452)
+    assert scan.scan_file(nirps)["mag"] == 5.328
+    assert scan.scan_file(nirps)["mag_band"] == "J"
+    assert scan.scan_file(spirou)["mag"] == 10.452
+    assert scan.scan_file(spirou)["mag_band"] == "H"
+    write_tfits(nirps, instrument="NIRPS")          # no magnitude at all
+    assert scan.scan_file(nirps)["mag"] is None
+    assert scan.scan_file(nirps)["mag_band"] is None, \
+        "a zero in a field nobody filled is not a magnitude"
+
+
+def test_a_record_from_before_a_field_existed_is_read_again(tmp_path):
+    """Adding a column must not throw a campaign's whole index away, and must
+    not leave the new column empty for ever either."""
+    root = root_with(tmp_path, PROXIMA=2)
+    home = str(tmp_path / "home")
+    index, _tally = scan.update(root, home=home)
+    for record in index["objects"]["PROXIMA"]["files"].values():
+        del record["mag"]                  # an index written before the column
+    index, tally = scan.update(root, index=index, home=home)
+    assert tally["read"] == 2 and tally["kept"] == 0
+    assert all("mag" in f for f in index["objects"]["PROXIMA"]["files"].values())
 
 
 def test_an_unreadable_file_is_recorded_once_and_not_read_again(tmp_path):

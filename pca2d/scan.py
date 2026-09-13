@@ -32,9 +32,24 @@ import numpy as np
 
 #: where the indexes live, outside every data root
 INDEX_HOME = os.path.expanduser("~/.pca2d/scans")
-#: bumped when an entry gains a field, so an old index is rebuilt instead of
-#: being read as if it held the new one
+#: bumped only when the SHAPE of an index changes. A new per-file field does not
+#: need it: FIELDS below re-reads the files that lack it and keeps the rest.
 VERSION = 1
+#: every field a cached record must carry to be taken as it is. A record from
+#: before a field existed is re-read rather than believed, and the campaign's
+#: other numbers stay on screen while that happens: throwing the whole index
+#: away instead would cost the minutes of a first scan for one new column.
+FIELDS = ("snr", "exptime", "mjd", "instrument", "mag", "mag_band")
+
+#: The brightness each pipeline writes, and WHICH BAND it is, which is not the
+#: same for the two: NIRPS writes the J magnitude of the ESO target package,
+#: SPIRou writes OBJMAG, which is H. Checked against SIMBAD on both SPIRou
+#: campaigns here: TOI-2120 OBJMAG 10.45 against H 10.452 (J is 11.100) and
+#: TOI-1452 10.03 against H 10.026 (J 10.604). So the band travels with the
+#: number and is shown beside it; one column holding J for some targets and H
+#: for others, unlabelled, would be wrong by a magnitude and say nothing about it.
+MAG_KEYS = (("ESO OCS TARG JMAG", "J"), ("OBJMAG", "H"), ("HMAG", "H"),
+            ("JMAG", "J"))
 
 
 def index_path(root, home=None):
@@ -101,7 +116,8 @@ def scan_file(path):
 
     from .tfits import INSTRUMENTS
 
-    out = {"instrument": "?", "snr": None, "exptime": None, "mjd": None}
+    out = {"instrument": "?", "snr": None, "exptime": None, "mjd": None,
+           "mag": None, "mag_band": None}
     with fits.open(path, memmap=True) as hdulist:
         instrument = ""
         for hdu in hdulist:
@@ -133,6 +149,13 @@ def scan_file(path):
                 if value is not None:
                     out[name] = round(value, 6)
                     break
+        for key, band in MAG_KEYS:
+            value = next((_number(h[key]) for h in headers if key in h), None)
+            # 0.0 is what NIRPS writes in the fields it did not fill, and a
+            # guide magnitude of -9999.9 is a missing one, not a bright star
+            if value is not None and 0.0 < value < 30.0:
+                out["mag"], out["mag_band"] = round(value, 3), band
+                break
     return out
 
 
@@ -160,8 +183,22 @@ def objects_of(root, pattern="*t.fits"):
     return out
 
 
+def usable(record, stamp):
+    """Whether a cached record can be taken as it is, rather than re-read.
+
+    The same file, by size and modification time, AND carrying every field the
+    current code shows. A file that could not be read is remembered as such so
+    it is not re-read at every visit.
+    """
+    if not isinstance(record, dict) or record.get("stamp") != stamp:
+        return False
+    if record.get("unreadable"):
+        return True
+    return all(field in record for field in FIELDS)
+
+
 def update(root, index=None, pattern="*t.fits", objects=None, on_file=None,
-           home=None, on_listed=None, on_object=None):
+           home=None, on_listed=None, on_object=None, every=10):
     """Bring the index level with the root, reading only what changed.
 
     A file already in the index with the same size and modification time is
@@ -169,14 +206,17 @@ def update(root, index=None, pattern="*t.fits", objects=None, on_file=None,
     is dropped, as is an object folder that is. `objects` limits the work to
     some of them.
 
-    Three callbacks, so that a window can show what is happening instead of
-    waiting for the whole campaign:
+    Three callbacks, so that a window shows a campaign's properties from its
+    first few spectra instead of waiting for all of them:
       `on_listed(found)`  once the folders are listed, before anything is read
       `on_file(object, done, total)`  as files are read
-      `on_object(name)`   when one object is finished, so it can be drawn and
-                          the index saved; a first scan of a few thousand
-                          spectra on a shared disk is minutes, and losing it
-                          because a window was closed would be a waste
+      `on_object(name, known, total)`  every `every` files AND when the object is
+                          finished. `known` is how many of its spectra the index
+                          now holds numbers for and `total` how many the folder
+                          has, so known < total says "this is an estimate from
+                          the first few", which is what a caller shows with a
+                          tilde. The index is saved at those points too, so a
+                          scan interrupted halfway keeps what it read.
 
     Returns (index, {"read": n, "kept": n, "gone": n}).
     """
@@ -203,11 +243,15 @@ def update(root, index=None, pattern="*t.fits", objects=None, on_file=None,
             except OSError:
                 continue
             old = cached.get(filename)
-            if isinstance(old, dict) and old.get("stamp") == stamp:
+            if usable(old, stamp):
                 fresh[filename] = old
                 tally["kept"] += 1
             else:
                 todo.append((filename, path, stamp))
+        # what the row can already show, before this object's first read
+        entry["files"] = fresh
+        if on_object is not None and fresh:
+            on_object(name, len(fresh), len(files))
         for i, (filename, path, stamp) in enumerate(todo):
             try:
                 record = scan_file(path)
@@ -215,26 +259,44 @@ def update(root, index=None, pattern="*t.fits", objects=None, on_file=None,
                 # a file that cannot be read is recorded as unreadable rather
                 # than re-read at every visit, and its fields stay empty
                 record = {"instrument": "?", "snr": None, "exptime": None,
-                          "mjd": None, "unreadable": True}
+                          "mjd": None, "mag": None, "mag_band": None,
+                          "unreadable": True}
             record["stamp"] = stamp
             fresh[filename] = record
             tally["read"] += 1
             if on_file is not None:
                 on_file(name, i + 1, len(todo))
+            # the numbers so far, every `every` files: ten spectra of a campaign
+            # already give its signal-to-noise and its exposure time to the
+            # precision anybody chooses a target with
+            if on_object is not None and every and (i + 1) % every == 0:
+                entry["files"] = fresh
+                on_object(name, len(fresh), len(files))
         tally["gone"] += len([f for f in cached if f not in fresh])
         entry["files"] = fresh
         entry["scanned"] = datetime.datetime.now().isoformat(timespec="seconds")
         if on_object is not None:
-            on_object(name)
+            on_object(name, len(fresh), len(files))
     return index, tally
 
 
 def summary(index, name):
-    """What a window shows on one row: counts, medians, instrument, dates."""
+    """What a window shows on one row: counts, medians, instrument, dates.
+
+    `files` is how many spectra the index holds numbers for, which during a scan
+    is fewer than the folder has: the caller knows the folder's count and says
+    so, and marks the medians as estimates.
+    """
     files = ((index.get("objects") or {}).get(name) or {}).get("files") or {}
     out = {"object": name, "files": len(files), "snr": None, "exptime": None,
-           "instrument": "?", "first": None, "last": None}
-    for field in ("snr", "exptime"):
+           "instrument": "?", "first": None, "last": None,
+           "mag": None, "mag_band": None}
+    bands = [f.get("mag_band") for f in files.values()
+             if isinstance(f, dict) and f.get("mag_band")]
+    if bands:
+        # the band is a property of the pipeline, so one campaign has one band
+        out["mag_band"] = max(set(bands), key=bands.count)
+    for field in ("snr", "exptime", "mag"):
         values = [f[field] for f in files.values()
                   if isinstance(f, dict) and f.get(field) is not None]
         if values:

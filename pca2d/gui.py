@@ -26,6 +26,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 
 from . import scan
 from .logger import stamp
@@ -79,7 +80,7 @@ EN = {
     "objects": "objects", "settings": "settings", "stages": "stages",
     "variant": "variant", "command": "the command this runs", "output": "output",
     "col_object": "object", "col_files": "files", "col_instrument": "instrument",
-    "col_snr": "SNR", "col_exptime": "exp (s)",
+    "col_snr": "SNR", "col_exptime": "exp (s)", "col_mag": "mag",
     "run": "Run", "stop": "Stop", "dry": "Dry run", "export": "Export YAML...",
     "savelog": "Save log...", "openout": "Open outputs",
     "savedefaults": "Save as defaults...", "lblwin": "LBL settings...",
@@ -188,6 +189,11 @@ EN = {
         "The median exposure time of this target's files, in seconds. With the"
         " SNR and the file count, it says what kind of campaign this is: many"
         " short exposures of a bright star, or few long ones of a faint one.",
+    "help_col_mag":
+        "The target's brightness as ITS OWN pipeline recorded it, with the band"
+        " it is in: NIRPS writes the J magnitude, SPIRou writes H, and the two"
+        " differ by about a magnitude on an M dwarf, so the band is shown rather"
+        " than assumed. Read from the headers, never from a catalogue.",
     "help_check":
         "Tick a target to run it. Several ticked are fitted TOGETHER against one"
         " observer basis. Click the box, double-click the row, or press the space"
@@ -348,7 +354,7 @@ FR = {
     "variant": "variante", "command": "la commande qui sera lancée",
     "output": "sortie",
     "col_object": "objet", "col_files": "fichiers", "col_instrument": "instrument",
-    "col_snr": "SNR", "col_exptime": "pose (s)",
+    "col_snr": "SNR", "col_exptime": "pose (s)", "col_mag": "mag",
     "run": "Lancer", "stop": "Arrêter", "dry": "Essai à blanc",
     "export": "Exporter le YAML...", "savelog": "Enregistrer le journal...",
     "openout": "Ouvrir les sorties",
@@ -469,6 +475,12 @@ FR = {
         " SNR et le nombre de fichiers, il dit quel genre de campagne c'est :"
         " beaucoup de poses courtes d'une étoile brillante, ou peu de longues"
         " d'une faible.",
+    "help_col_mag":
+        "L'éclat de la cible tel que SON pipeline l'a noté, avec la bande où il"
+        " est mesuré : NIRPS écrit la magnitude J, SPIRou écrit H, et les deux"
+        " diffèrent d'environ une magnitude sur une naine M ; la bande est donc"
+        " affichée plutôt que supposée. Lu dans les en-têtes, jamais dans un"
+        " catalogue.",
     "help_check":
         "Cocher une cible pour la traiter. Plusieurs cochées sont ajustées"
         " ENSEMBLE contre une seule base observateur. Cliquer la case,"
@@ -747,8 +759,12 @@ def _write_state(state):
 class Tip:
     """What an item means, in a small window, after a moment on it.
 
-    The same text also goes to the status line, so it can be read without
-    waiting and without covering anything.
+    The window, and nothing else. This used to write the same text into the
+    status line as well, truncated, which made that line flicker with every
+    mouse movement and, worse, wiped the scan's progress from it: leaving an
+    item reset the line to "idle" while a scan was still reading files. The
+    status line reports what the window is DOING; the floating window is what
+    explains an item.
     """
 
     def __init__(self, app, widget, key):
@@ -765,7 +781,6 @@ class Tip:
         return self.app.t(self.key() if callable(self.key) else self.key)
 
     def enter(self, _event=None):
-        self.app.status.configure(text=self.says()[:110])
         self.after = self.widget.after(500, self.show)
 
     def show(self):
@@ -788,8 +803,6 @@ class Tip:
         if self.window is not None:
             self.window.destroy()
             self.window = None
-        self.app.status.configure(
-            text=self.app.t("running" if self.app.proc else "idle"))
 
 
 class App:
@@ -843,6 +856,16 @@ class App:
     def t(self, key):
         return text(self.lang, key)
 
+    def _state(self):
+        """The status line says what the window is doing, and only that.
+
+        Left alone while a scan is reading files: its progress is the most
+        useful thing the line can hold, and a language switch or a finished
+        subprocess must not wipe it.
+        """
+        if not self.scanning:
+            self.status.configure(text=self.t("running" if self.proc else "idle"))
+
     def _register(self, widget, key, how="text"):
         self.labels.append((widget, key, how))
         return widget
@@ -861,7 +884,7 @@ class App:
                     self.tree.heading(key[0], text=self.t(key[1]))
             except Exception:                                 # noqa: BLE001
                 pass
-        self.status.configure(text=self.t("running" if self.proc else "idle"))
+        self._state()
         if self.lbl_window is not None:
             self.lbl_window.title(self.t("lbl_title"))
         self._sync()
@@ -911,20 +934,21 @@ class App:
         box = ttk.Labelframe(parent, text=self.t("objects"))
         box.pack(fill="both", expand=True, pady=4)
         self._register(box, "objects")
-        self.tree = ttk.Treeview(box, columns=("files", "snr", "exptime",
+        self.tree = ttk.Treeview(box, columns=("files", "snr", "exptime", "mag",
                                                "instrument"),
                                  show="tree headings", selectmode="extended",
                                  height=13)
         for column, key in (("#0", "col_object"), ("files", "col_files"),
                             ("snr", "col_snr"), ("exptime", "col_exptime"),
-                            ("instrument", "col_instrument")):
+                            ("mag", "col_mag"), ("instrument", "col_instrument")):
             self.tree.heading(column, text=self.t(key))
             self._register(self.tree, (column, key), how="heading")
-        self.tree.column("#0", width=190)
-        self.tree.column("files", width=54, anchor="e")
-        self.tree.column("snr", width=54, anchor="e")
+        self.tree.column("#0", width=180)
+        self.tree.column("files", width=52, anchor="e")
+        self.tree.column("snr", width=56, anchor="e")
         self.tree.column("exptime", width=62, anchor="e")
-        self.tree.column("instrument", width=84)
+        self.tree.column("mag", width=66, anchor="e")
+        self.tree.column("instrument", width=80)
         self.tree.pack(fill="both", expand=True, padx=6, pady=(6, 2))
         # the box is in the first column, so a click on it toggles and a click
         # on the name still selects the row the usual way
@@ -949,16 +973,16 @@ class App:
     #: what each column of the list is, for the explanation that follows the
     #: pointer: the box, the counts, then the two numbers read from the headers
     COLUMN_HELP = {"#0": "help_check", "#1": "help_objects", "#2": "help_col_snr",
-                   "#3": "help_col_exptime", "#4": "help_objects"}
+                   "#3": "help_col_exptime", "#4": "help_col_mag",
+                   "#5": "help_objects"}
 
     def _tree_key(self):
         return self.COLUMN_HELP.get(getattr(self, "_column", "#0"), "help_check")
 
     def _hover_column(self, event):
-        column = self.tree.identify_column(event.x)
-        if column != getattr(self, "_column", None):
-            self._column = column
-            self.status.configure(text=self.t(self._tree_key())[:110])
+        """Which column the pointer is over, so the floating window explains
+        THAT one. Nothing is written anywhere until it opens."""
+        self._column = self.tree.identify_column(event.x)
 
     # ---- the ticks -----------------------------------------------------
     def _clicked(self, event):
@@ -1199,11 +1223,22 @@ class App:
                                                len(self.names)))
         self._sync()
 
-    def _values(self, row):
-        """One row's columns. A number not read yet is blank, never a zero."""
+    def _values(self, row, approximate=False):
+        """One row's columns.
+
+        A number not read yet is blank, never a zero. One read from the first
+        few spectra of a campaign carries a tilde: ten of them already give the
+        signal-to-noise and the exposure time to the precision anybody picks a
+        target with, and the value sharpens as the rest are read.
+        """
+        tilde = "~" if approximate else ""
+        mag = ("" if row.get("mag") is None else
+               "%s%s=%.1f" % (tilde, row.get("mag_band") or "?", row["mag"]))
         return (row["files"],
-                "" if row.get("snr") is None else "%.0f" % row["snr"],
-                "" if row.get("exptime") is None else "%.0f" % row["exptime"],
+                "" if row.get("snr") is None else "%s%.0f" % (tilde, row["snr"]),
+                "" if row.get("exptime") is None
+                else "%s%.0f" % (tilde, row["exptime"]),
+                mag,
                 row.get("instrument") or "?")
 
     def _listed(self, counts):
@@ -1215,13 +1250,18 @@ class App:
             rows.append(row)
         self._fill(rows)
 
-    def _one(self, name):
-        """One object finished its scan: its numbers, in place."""
+    def _one(self, name, known, total):
+        """This object's numbers so far, in place, marked if they are partial.
+
+        `known` spectra of `total` have been read. Fewer than all of them is an
+        estimate and says so with a tilde; the count shown stays the folder's.
+        """
         row = scan.summary(self.index, name)
+        row["files"] = total
         self.rows[name] = row
-        for item, known in self.names.items():
-            if known == name:
-                self.tree.item(item, values=self._values(row))
+        for item, shown in self.names.items():
+            if shown == name:
+                self.tree.item(item, values=self._values(row, known < total))
                 return
 
     def _scan(self, root):
@@ -1240,9 +1280,17 @@ class App:
             # shared disk is minutes, and an empty list says nothing meanwhile
             self.lines.put(("listed", counts))
 
-        def on_object(name):
-            scan.save(self.index, root)     # a first scan is not lost on a close
-            self.lines.put(("object", name))
+        saved = [0.0]
+
+        def on_object(name, known, total):
+            # saved when an object is done, and otherwise at most every 20 s: a
+            # scan interrupted halfway keeps what it read, without writing the
+            # whole index 220 times on the way
+            now = time.time()
+            if known >= total or now - saved[0] > 20.0:
+                scan.save(self.index, root)
+                saved[0] = now
+            self.lines.put(("object", name, known, total))
         try:
             index, tally = scan.update(root, index=self.index, on_file=on_file,
                                        on_listed=on_listed, on_object=on_object)
@@ -1258,7 +1306,7 @@ class App:
         self.index = index
         rows = scan.summaries(index)
         self._fill(rows)
-        self.status.configure(text=self.t("running" if self.proc else "idle"))
+        self._state()
         if not rows:
             self._say("log_scan_none", root, level="warn")
             return
@@ -1317,7 +1365,7 @@ class App:
     def _finished(self):
         self.run_button.configure(state="normal")
         self.stop_button.configure(state="disabled")
-        self.status.configure(text=self.t("idle"))
+        self._state()
 
     def stop(self):
         if self.proc is not None:
@@ -1345,7 +1393,7 @@ class App:
             elif item[0] == "listed":
                 self._listed(item[1])
             elif item[0] == "object":
-                self._one(item[1])
+                self._one(*item[1:])
             elif item[0] == "scanned":
                 self._scanned(*item[1:])
             elif item[0] == "finished":
