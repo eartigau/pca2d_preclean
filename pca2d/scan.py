@@ -309,6 +309,14 @@ def update(root, index=None, pattern="*t.fits", objects=None, on_file=None,
                 fresh[filename] = old
                 tally["kept"] += 1
             else:
+                # The SAME file, only missing a field this version shows: it
+                # stays on screen, as it was, while it is read again. Dropped
+                # instead, adding one column emptied every row of everything it
+                # already knew, and the object being re-read lost its instrument,
+                # its SNR and its count until the last of its spectra was back
+                # (2026-09-13, GJ 1 and GL699_SPIROU showing no instrument).
+                if isinstance(old, dict) and old.get("stamp") == stamp:
+                    fresh[filename] = old
                 todo.append((filename, path, stamp))
         # what the row can already show, before this object's first read
         entry["files"] = fresh

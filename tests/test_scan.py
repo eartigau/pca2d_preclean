@@ -349,3 +349,32 @@ def test_the_coverage_says_what_the_sky_allowed_as_well(tmp_path):
     assert summary["span"] == 4.0
     assert abs(summary["possible"] - 9.86) < 0.1, \
         "twice 29.78 cos(80.5 deg): what this target could ever have"
+
+
+def test_a_row_keeps_what_it_knew_while_a_new_field_is_read(tmp_path):
+    """Adding a column must not empty the rows. The object being re-read lost
+    its instrument, its SNR and its count until the last of its spectra was
+    back: the whole point of not throwing the index away."""
+    root = root_with(tmp_path, PROXIMA=30)
+    home = str(tmp_path / "home")
+    index, _tally = scan.update(root, home=home)
+    assert scan.summary(index, "PROXIMA")["instrument"] == "NIRPS"
+
+    for record in index["objects"]["PROXIMA"]["files"].values():
+        del record["ecl_lat"]              # an index written before the column
+
+    seen = []
+
+    def on_object(name, known, total):
+        row = scan.summary(index, name)
+        seen.append((known, row["instrument"], row["files"]))
+
+    index, tally = scan.update(root, index=index, home=home, every=10,
+                               on_object=on_object)
+    assert tally["read"] == 30, "every file is read again for the new field"
+    assert seen, "the row is redrawn as it goes"
+    for known, instrument, files in seen:
+        assert instrument == "NIRPS", "never blank on the way"
+        assert files == 30, "and the count never drops either"
+    assert all("ecl_lat" in f
+               for f in index["objects"]["PROXIMA"]["files"].values())
