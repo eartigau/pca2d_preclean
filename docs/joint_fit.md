@@ -75,10 +75,19 @@ it was wrong.)
 
 The window reports the overlap when targets are ticked, as information.
 
-**Comparable SNR** is the one to watch: a much brighter star dominates the basis
-by weight alone, and the weights of one star against another differ all along
-the spectrum, since their lines and their signal-to-noise do. Proxima holds 773
-of the 1453 rows of that run and has the highest signal-to-noise of the three.
+**Nor is comparable brightness a requirement.** The weights are `1 / sigma^2`,
+absolute and shared: a Proxima exposure at a band SNR of 286 carries about four
+times the weight of a GJ~3090 exposure at 145, and it should, since it says four
+times as much about the pattern being measured. The brighter star dominating the
+shared basis is the fit working, not a hazard to guard against, and the weights
+of one star against another differ all along the spectrum, since their lines and
+their signal-to-noise do.
+
+What IS per star is the relative **signal-to-noise cut**, which drops a spectrum
+below half the median. That is meant to catch a campaign's bad nights, so the
+median is its own star's: taken over the joint cube it read "below half the
+brightest stars' median" and GJ~3090 lost 56 of its 198 rows to Proxima's
+brightness, where its own threshold drops 12 (fixed 2026-09-13).
 
 **What went wrong in that run was neither of those.** GJ~1's joint velocities came
 back worse than its solo ones (3.04 against 2.61 robust), and the cause found on
