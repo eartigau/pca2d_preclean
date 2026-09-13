@@ -33,9 +33,24 @@ from .logger import stamp
 
 HOME_STATE = os.path.expanduser("~/.pca2d_gui.json")
 ANSI = re.compile(r"\033\[(\d+)m")
-#: the logger's colours, and how this window paints them
-LEVELS = {"32": ("info", "#1a7f37"), "34": ("value", "#0a58ca"),
-          "33": ("warn", "#b26a00"), "31": ("error", "#c1121f")}
+#: One palette, taken from the family the rest of these tools belong to
+#: (themes_outils/DESIGN_SYSTEM.md): the same sky-blue accent and the same dark
+#: ground, so that going from one of them to another feels like one place. The
+#: surfaces here are light, because this window is mostly a table of numbers,
+#: and the log alone is dark, because it is a terminal stream and reads better
+#: that way.
+BG = "#eef2f8"          # the window's ground
+SURFACE = "#ffffff"     # cards, the table, the entries
+INK = "#16202e"         # text
+MUTED = "#5d6b81"       # secondary text
+ACCENT = "#0b6ba8"      # the family's #62c2ff, darkened to sit on white
+ACCENT_SOFT = "#d8ecfa"
+LINE = "#c9d4e4"
+LOG_BG = "#0d1826"      # the family's --bg
+LOG_INK = "#dfe8f5"
+#: the logger's colours, and how this window paints them, on the dark log
+LEVELS = {"32": ("info", "#5fd78a"), "34": ("value", "#62c2ff"),
+          "33": ("warn", "#ffb454"), "31": ("error", "#ff6b6b")}
 STAGES = ("cube", "fit", "figures", "correct", "lbl")
 #: what the window can change, and the config key each one is
 OPTIONS = [
@@ -927,8 +942,10 @@ class Tip:
         self.window.wm_overrideredirect(True)
         self.window.wm_geometry("+%d+%d" % (x, y))
         tk.Label(self.window, text=self.says(), justify="left",
-                 background="#ffffe0", relief="solid", borderwidth=1,
-                 wraplength=460, font=("Helvetica", 11), padx=8, pady=6).pack()
+                 background=LOG_BG, foreground=LOG_INK, relief="flat",
+                 borderwidth=0, wraplength=460,
+                 font=self.app.fonts.get("small", ("Helvetica", 11)),
+                 padx=10, pady=8).pack()
 
     def leave(self, _event=None):
         if self.after is not None:
@@ -964,20 +981,19 @@ class App:
         self.sort_reverse = bool(self.saved.get("sort_reverse"))
         self.lbl_window = None
         root.title("pca2d-preclean")
-        root.geometry("1200x780")
+        root.geometry("1240x860")
         style = ttk.Style()
-        for theme in ("aqua", "clam", "default"):
-            if theme in style.theme_names():
-                style.theme_use(theme)
-                break
-        style.configure("Head.TLabel", font=("Helvetica", 13, "bold"))
-        style.configure("Hint.TLabel", foreground="#666")
+        # clam rather than the native aqua: aqua ignores most colour options, so
+        # a window styled under it stays the grey it was born with
+        style.theme_use("clam" if "clam" in style.theme_names() else "default")
+        self._style(style)
+        root.configure(background=BG)
 
         self.vars = {}
         self.status = ttk.Label(root, text=self.t("idle"), style="Hint.TLabel")
         self._build_top(root)
         panes = ttk.Panedwindow(root, orient="horizontal")
-        panes.pack(fill="both", expand=False, padx=10)
+        panes.pack(fill="both", expand=False, padx=14)
         left, right = ttk.Frame(panes), ttk.Frame(panes)
         panes.add(left, weight=1)
         panes.add(right, weight=2)
@@ -989,6 +1005,59 @@ class App:
         self.refresh_objects()
         self.root.after(80, self._drain)
         self.root.protocol("WM_DELETE_WINDOW", self._close)
+
+    # ---- the look -----------------------------------------------------
+    def _style(self, style):
+        """Every widget class, once, so nothing is styled at its call site."""
+        body = ("Helvetica Neue" if sys.platform == "darwin" else "Helvetica")
+        mono = ("Menlo" if sys.platform == "darwin" else "DejaVu Sans Mono")
+        self.fonts = {"body": (body, 12), "small": (body, 11),
+                      "head": (body, 15, "bold"), "mono": (mono, 11)}
+        style.configure(".", background=BG, foreground=INK,
+                        font=self.fonts["body"], borderwidth=0)
+        style.configure("TFrame", background=BG)
+        style.configure("TLabel", background=BG, foreground=INK)
+        style.configure("Head.TLabel", font=self.fonts["head"], foreground=ACCENT)
+        style.configure("Hint.TLabel", foreground=MUTED, font=self.fonts["small"])
+        style.configure("TLabelframe", background=BG, bordercolor=LINE,
+                        relief="solid", borderwidth=1)
+        style.configure("TLabelframe.Label", background=BG, foreground=ACCENT,
+                        font=(body, 11, "bold"))
+        style.configure("TCheckbutton", background=BG, foreground=INK,
+                        focuscolor=BG)
+        style.map("TCheckbutton", background=[("active", BG)])
+        style.configure("TEntry", fieldbackground=SURFACE, background=SURFACE,
+                        bordercolor=LINE, lightcolor=LINE, darkcolor=LINE,
+                        insertcolor=INK, padding=4)
+        style.configure("TCombobox", fieldbackground=SURFACE, background=SURFACE,
+                        bordercolor=LINE, arrowcolor=ACCENT, padding=3)
+        style.map("TCombobox", fieldbackground=[("readonly", SURFACE)])
+        style.configure("TButton", background=SURFACE, foreground=INK,
+                        bordercolor=LINE, focuscolor=BG, padding=(10, 5),
+                        relief="solid", borderwidth=1)
+        style.map("TButton",
+                  background=[("pressed", ACCENT_SOFT), ("active", ACCENT_SOFT)],
+                  foreground=[("disabled", "#9aa6b8")])
+        # the one action this window exists for
+        style.configure("Run.TButton", background=ACCENT, foreground="#ffffff",
+                        bordercolor=ACCENT, font=(body, 12, "bold"),
+                        padding=(16, 6))
+        style.map("Run.TButton",
+                  background=[("pressed", "#08557f"), ("active", "#0d7cc2"),
+                              ("disabled", "#9dbdd4")],
+                  foreground=[("disabled", "#eef4f8")])
+        style.configure("Treeview", background=SURFACE, fieldbackground=SURFACE,
+                        foreground=INK, rowheight=23, bordercolor=LINE,
+                        font=self.fonts["body"])
+        style.configure("Treeview.Heading", background=BG, foreground=MUTED,
+                        font=(body, 11, "bold"), relief="flat", padding=(4, 5))
+        style.map("Treeview.Heading", background=[("active", ACCENT_SOFT)],
+                  foreground=[("active", ACCENT)])
+        style.map("Treeview", background=[("selected", ACCENT_SOFT)],
+                  foreground=[("selected", INK)])
+        style.configure("TPanedwindow", background=BG)
+        style.configure("Vertical.TScrollbar", background=BG, troughcolor=BG,
+                        bordercolor=BG, arrowcolor=MUTED)
 
     # ---- language -----------------------------------------------------
     def t(self, key):
@@ -1032,12 +1101,13 @@ class App:
     def _build_top(self, parent):
         ttk, tk = self.ttk, self.tk
         frame = ttk.Frame(parent)
-        frame.pack(fill="x", padx=10, pady=(10, 6))
-        ttk.Label(frame, text="pca2d-preclean", style="Head.TLabel").grid(
+        frame.pack(fill="x", padx=14, pady=(12, 8))
+        ttk.Label(frame, text="pca2d", style="Head.TLabel").grid(
             row=0, column=0, sticky="w")
-        self._register(ttk.Label(frame, style="Hint.TLabel",
+        self._register(ttk.Label(frame, style="Hint.TLabel", wraplength=640,
+                                 justify="left",
                                  text=self.t("subtitle")), "subtitle").grid(
-            row=0, column=1, columnspan=2, sticky="w", padx=8)
+            row=0, column=1, columnspan=2, sticky="w", padx=10)
         button = ttk.Button(frame, text=self.t("lang"),
                             command=self.switch_language, width=10)
         button.grid(row=0, column=3, sticky="e")
@@ -1134,8 +1204,8 @@ class App:
         box = ttk.Labelframe(parent, text=self.t("berv"))
         box.pack(fill="x", padx=6, pady=(0, 6))
         self._register(box, "berv")
-        self.berv_canvas = self.tk.Canvas(box, height=120, highlightthickness=0,
-                                          background="white")
+        self.berv_canvas = self.tk.Canvas(box, height=128, highlightthickness=0,
+                                          background=SURFACE)
         self.berv_canvas.pack(fill="x", padx=6, pady=(4, 2))
         self.berv_note = ttk.Label(box, style="Hint.TLabel", text="")
         self.berv_note.pack(anchor="w", padx=8, pady=(0, 4))
@@ -1368,14 +1438,17 @@ class App:
     def _build_command(self, parent):
         ttk, tk = self.ttk, self.tk
         box = ttk.Labelframe(parent, text=self.t("command"))
-        box.pack(fill="x", padx=10, pady=6)
+        box.pack(fill="x", padx=14, pady=8)
         self._register(box, "command")
-        self.command = tk.Text(box, height=2, wrap="word", font=("Menlo", 11),
-                               background="#f6f6f6", relief="flat")
+        self.command = tk.Text(box, height=2, wrap="word",
+                               font=self.fonts["mono"], background=SURFACE,
+                               foreground=INK, relief="flat", padx=8, pady=6,
+                               highlightthickness=1,
+                               highlightbackground=LINE, highlightcolor=LINE)
         self.command.pack(fill="x", padx=6, pady=6)
         self._tip(self.command, "help_command")
         bar = ttk.Frame(parent)
-        bar.pack(fill="x", padx=10)
+        bar.pack(fill="x", padx=14, pady=(2, 6))
         for key, command, attr, tip in (
                 ("run", self.start, "run_button", "help_run_button"),
                 ("stop", self.stop, "stop_button", "help_stop_button"),
@@ -1386,8 +1459,10 @@ class App:
                  "help_savedefaults_button"),
                 ("savelog", self.save_log, None, "help_savelog_button"),
                 ("openout", self.open_outputs, None, "help_openout_button")):
-            button = ttk.Button(bar, text=self.t(key), command=command)
-            button.pack(side="left", padx=(0 if key == "run" else 4, 0))
+            button = ttk.Button(bar, text=self.t(key), command=command,
+                                style="Run.TButton" if key == "run"
+                                else "TButton")
+            button.pack(side="left", padx=(0 if key == "run" else 5, 0))
             self._register(button, key)
             self._tip(button, tip)
             if attr:
@@ -1398,17 +1473,19 @@ class App:
     def _build_log(self, parent):
         ttk, tk = self.ttk, self.tk
         box = ttk.Labelframe(parent, text=self.t("output"))
-        box.pack(fill="both", expand=True, padx=10, pady=8)
+        box.pack(fill="both", expand=True, padx=14, pady=(4, 12))
         self._register(box, "output")
-        self.log = tk.Text(box, wrap="none", font=("Menlo", 11),
-                           background="white", relief="flat")
+        self.log = tk.Text(box, wrap="none", font=self.fonts["mono"],
+                           background=LOG_BG, foreground=LOG_INK,
+                           insertbackground=LOG_INK, relief="flat",
+                           padx=8, pady=6, highlightthickness=0)
         bar = ttk.Scrollbar(box, command=self.log.yview)
         self.log.configure(yscrollcommand=bar.set)
         bar.pack(side="right", fill="y")
         self.log.pack(fill="both", expand=True, padx=6, pady=6)
         for _code, (name, colour) in LEVELS.items():
             self.log.tag_configure(name, foreground=colour)
-        self.log.tag_configure("plain", foreground="#222")
+        self.log.tag_configure("plain", foreground=LOG_INK)
         self._tip(self.log, "help_log")
 
     # ---- state --------------------------------------------------------
