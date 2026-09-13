@@ -183,10 +183,22 @@ def window_arrays(cube, fit, means, group, grid, dv, delta, centre, width,
     alive = live_mask(shifter.rows(w0, -delta))
     if correct and str(correct.get("mask")) == "common":
         # the files blank every sample any exposure left unweighted, so the
-        # panels hide it in every row too, carried the same way
-        shared = live_mask(w0).all(axis=0).astype(w0.dtype)
-        alive &= live_mask(shifter.rows(
-            np.broadcast_to(shared, w0.shape).copy(), -delta))
+        # panels hide it in every row too, carried the same way.
+        #
+        # WITHIN A GROUP, which is what a corrected file's mask is taken over:
+        # one order parity of one object. Taken over every row instead, this
+        # asked a sample to be alive in rows of the OTHER parity, which never
+        # cover that wavelength at all, since orders n and n+2 do not overlap.
+        # The intersection was then empty everywhere the two parities do not
+        # meet: the three H-band windows of the joint run came out with no row
+        # to draw and vanished from the report, and the J-band ones kept only
+        # the 15-20% of columns that two orders reach (2026-09-13).
+        live = live_mask(w0)
+        shared = np.empty_like(w0)
+        for g in np.unique(group):
+            rows_g = group == g
+            shared[rows_g] = live[rows_g].all(axis=0).astype(w0.dtype)
+        alive &= live_mask(shifter.rows(shared, -delta))
     for name, build, _ in steps:
         z = shifter.rows(build(), -delta)
         z[~alive] = np.nan

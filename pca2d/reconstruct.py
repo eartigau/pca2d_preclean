@@ -548,10 +548,25 @@ def fit_weights_mask(cube, mode="exposure"):
         out.setdefault(name, np.zeros((2, w.shape[1]), dtype=bool))
         out[name][int(parity[i]) % 2] = live_mask(w[i:i + 1])[0]
     if str(mode) == "common":
-        shared = np.ones((2, w.shape[1]), dtype=bool)
-        for mask in out.values():
-            shared &= mask
-        out = {name: shared.copy() for name in out}
+        # one set of lines per CAMPAIGN, and a joint cube holds several of them.
+        # Intersected over all of them instead, a sample lost by one night of the
+        # faintest star was blanked in every exposure of the brightest: on
+        # PROXIMA+GJ1+GJ3090 that took the H band of a corrected Proxima file
+        # from 9.9% NaN to 17.1% (2026-09-13). Each object keeps its own.
+        names_of = {}
+        # an astropy Table or a FITS record array, depending on the caller
+        columns = (list(getattr(meta, "colnames", None) or [])
+                   or list(getattr(getattr(meta, "dtype", None), "names", None) or []))
+        objects = (np.asarray(meta["object"]) if "object" in columns
+                   else np.zeros(w.shape[0], dtype=int))
+        for i, name in enumerate(names):
+            names_of.setdefault(str(objects[i]), set()).add(name)
+        for group in names_of.values():
+            shared = np.ones((2, w.shape[1]), dtype=bool)
+            for name in group:
+                shared &= out[name]
+            for name in group:
+                out[name] = shared.copy()
     return out
 
 
