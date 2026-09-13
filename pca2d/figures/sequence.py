@@ -428,10 +428,15 @@ def draw_window(ctx, centre, width, n_overplot=5, only=None, label=None):
         y0, y1 = min(p.y0 for p in low), max(p.y1 for p in low)
         fig.colorbar(im_resid, cax=fig.add_axes([box.x0, y0, box.width, y1 - y0]),
                      label="residual, ln f")
-    fig.suptitle("%s%.2f-%.2f nm, %s: every step, in order, in the STAR'S REST"
-                 " FRAME\nvertical structure belongs to the star;"
-                 " anything slanted does not"
-                 % ("%s   " % label if label else "", lo, hi, count), fontsize=10)
+    # the star's name on its own line, big and bold and centred: with four pages
+    # per window, which star a page is about has to be readable at a glance and
+    # not found inside a sentence
+    if label:
+        fig.suptitle(label, fontsize=15, fontweight="bold", y=0.995)
+    fig.text(0.5, 0.968 if label else 0.985,
+             "%.2f-%.2f nm, %s: every step, in order, in the STAR'S REST FRAME\n"
+             "vertical structure belongs to the star; anything slanted does not"
+             % (lo, hi, count), ha="center", va="top", fontsize=10)
     log("  %s%.1f-%.1f nm: given %.4f | corrected %.4f (%+.0f%%) |"
           " residual %.4f"
           % ("%s " % label if label else "", lo, hi, np.nanstd(block["given"]),

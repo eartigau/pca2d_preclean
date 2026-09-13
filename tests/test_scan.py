@@ -274,3 +274,46 @@ def test_an_index_from_another_version_is_rebuilt_rather_than_believed(tmp_path)
     index["version"] = scan.VERSION + 1
     scan.save(index, root, home)
     assert scan.load(root, home)["objects"] == {}
+
+
+def test_the_barycentric_coverage_is_bins_that_hold_something(tmp_path):
+    """The span and the coverage differ exactly where it matters: a campaign
+    observed at two extremes and nowhere between has a wide span and almost no
+    coverage, and it is the coverage that says whether the two frames can be
+    told apart."""
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    for name, bervs in (("SPREAD", np.arange(-15.0, 15.1, 3.0)),
+                        ("TWOENDS", np.array([-15.0, -14.0, 14.0, 15.0]))):
+        folder = tmp_path / name
+        folder.mkdir()
+        for i, berv in enumerate(bervs):
+            path = str(folder / ("%04dt.fits" % i))
+            write_tfits(path, mjd=60000.0 + i)
+            with fits.open(path, mode="update") as h:
+                h[1].header["BERV"] = float(berv)
+    root = str(tmp_path)
+    index, _tally = scan.update(root, home=str(tmp_path / "home"))
+
+    assert scan.bervs_of(index, "SPREAD").size == 11
+    _edges, _counts, wide = scan.berv_coverage(index, ["SPREAD"])
+    assert wide["span"] == 30.0
+    assert wide["effective"] == 30.0, \
+        "eleven points from -15 to 15 fill ten bins of 3 km/s"
+
+    _edges, _counts, ends = scan.berv_coverage(index, ["TWOENDS"])
+    assert ends["span"] == 30.0, "the same span"
+    assert ends["effective"] == 6.0, "but two bins: the coverage says so"
+
+    edges, counts, both = scan.berv_coverage(index, ["SPREAD", "TWOENDS"])
+    assert set(counts) == {"SPREAD", "TWOENDS"}
+    assert all(len(c) == len(edges) - 1 for c in counts.values()), "one grid"
+    assert both["n"] == 15 and both["effective"] == 30.0
+    assert both["objects"]["TWOENDS"]["effective"] == 6.0
+
+
+def test_a_coverage_asked_of_nothing_is_zero_rather_than_a_crash(tmp_path):
+    root = root_with(tmp_path, PROXIMA=2)     # written without a BERV keyword
+    index, _tally = scan.update(root, home=str(tmp_path / "home"))
+    edges, counts, summary = scan.berv_coverage(index, ["PROXIMA"])
+    assert edges.size == 0 and counts == {} and summary["effective"] == 0.0
+    assert scan.berv_coverage(index, [])[2]["span"] == 0.0

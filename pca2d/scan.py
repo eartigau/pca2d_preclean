@@ -39,7 +39,8 @@ VERSION = 1
 #: before a field existed is re-read rather than believed, and the campaign's
 #: other numbers stay on screen while that happens: throwing the whole index
 #: away instead would cost the minutes of a first scan for one new column.
-FIELDS = ("snr", "exptime", "mjd", "instrument", "mag", "mag_band")
+FIELDS = ("snr", "exptime", "mjd", "instrument", "mag", "mag_band",
+          "berv")
 
 #: The brightness each pipeline writes, and WHICH BAND it is, which is not the
 #: same for the two: NIRPS writes the J magnitude of the ESO target package,
@@ -117,7 +118,7 @@ def scan_file(path):
     from .tfits import INSTRUMENTS
 
     out = {"instrument": "?", "snr": None, "exptime": None, "mjd": None,
-           "mag": None, "mag_band": None}
+           "mag": None, "mag_band": None, "berv": None}
     with fits.open(path, memmap=True) as hdulist:
         instrument = ""
         for hdu in hdulist:
@@ -143,7 +144,11 @@ def scan_file(path):
         if snr:
             out["snr"] = round(float(np.median(snr)), 2)
         for name, keys in (("exptime", ["EXPTIME"]),
-                           ("mjd", ["MJDMID", "MJDATE", "BJD"])):
+                           ("mjd", ["MJDMID", "MJDATE", "BJD"]),
+                           # what the star's motion through the observer's frame
+                           # amounts to over a campaign, which is what decides
+                           # whether the correction helps at all
+                           ("berv", ["BERV"])):
             for key in keys:
                 value = next((_number(h[key]) for h in headers if key in h), None)
                 if value is not None:
@@ -281,7 +286,7 @@ def update(root, index=None, pattern="*t.fits", objects=None, on_file=None,
                 # than re-read at every visit, and its fields stay empty
                 record = {"instrument": "?", "snr": None, "exptime": None,
                           "mjd": None, "mag": None, "mag_band": None,
-                          "unreadable": True}
+                          "berv": None, "unreadable": True}
             record["stamp"] = stamp
             fresh[filename] = record
             tally["read"] += 1
@@ -338,6 +343,53 @@ def summary(index, name):
 def summaries(index):
     """One summary per object, by name."""
     return [summary(index, name) for name in sorted(index.get("objects") or {})]
+
+
+#: the width of a BERV bin, in km/s
+BERV_BIN = 3.0
+
+
+def bervs_of(index, name):
+    """Every barycentric velocity this object was observed at, in km/s."""
+    files = ((index.get("objects") or {}).get(name) or {}).get("files") or {}
+    return np.array([f["berv"] for f in files.values()
+                     if isinstance(f, dict) and f.get("berv") is not None],
+                    dtype=float)
+
+
+def berv_coverage(index, names, width=BERV_BIN):
+    """What the chosen stars' barycentric coverage actually is.
+
+    Returns (edges, {object: counts per bin}, summary), the bins `width` km/s
+    wide and shared by every object so the bars stack.
+
+    `summary` carries, for the union and for each object, the span (max minus
+    min) and the EFFECTIVE coverage, which is the number of bins that hold at
+    least one exposure times the bin width. The two differ exactly where it
+    matters: a campaign observed at two extremes and nowhere between has a wide
+    span and little coverage, and it is the coverage that says how well the two
+    frames can be told apart (docs, the barycentric span decides).
+    """
+    per_object = {n: bervs_of(index, n) for n in names}
+    per_object = {n: v for n, v in per_object.items() if v.size}
+    if not per_object:
+        return np.array([]), {}, {"span": 0.0, "effective": 0.0, "objects": {}}
+    every = np.concatenate(list(per_object.values()))
+    lo = float(np.floor(every.min() / width) * width)
+    hi = float(np.ceil(every.max() / width) * width)
+    edges = np.arange(lo, hi + width, width)
+    counts = {n: np.histogram(v, bins=edges)[0] for n, v in per_object.items()}
+    filled = np.zeros(len(edges) - 1, dtype=bool)
+    for c in counts.values():
+        filled |= c > 0
+    summary = {"span": float(every.max() - every.min()),
+               "effective": float(filled.sum() * width),
+               "n": int(every.size),
+               "objects": {n: {"span": float(v.max() - v.min()),
+                               "effective": float((counts[n] > 0).sum() * width),
+                               "n": int(v.size)}
+                           for n, v in per_object.items()}}
+    return edges, counts, summary
 
 
 def nights_of(index, name):
