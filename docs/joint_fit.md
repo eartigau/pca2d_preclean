@@ -64,22 +64,29 @@ cube keys with the object taken out of them and stops if they differ.
 
 Two things it cannot check, and which decide whether the result is any good.
 
-**Nights in common, above all.** The premise is that the atmosphere belongs to
-the night: two stars observed on the same night saw the same sky, and a basis
-fitted on both cannot follow either. Two stars observed in different seasons did
-not, and the shared basis is then an average over conditions neither of them
-met. Measured on the first joint run, PROXIMA+GJ~1+GJ~3090, whose campaigns
-overlap hardly at all: 26 nights of 258 and 147 for the first pair, 6 of 258 and
-99 for the second, 47 of 147 and 99 for the third, and **two nights common to
-all three**. The result followed: Proxima, which holds 773 of the 1453 rows and
-has the highest signal-to-noise, improved (2.91 against 3.04 for its best solo
-fit), while GJ~1 lost what a solo fit had gained (3.04 against 2.61, the
-delivered series being 2.70). A basis mostly fitted on nights a star never saw
-is not that star's sky. Check the overlap before choosing the objects; the
-window's list shows each campaign's dates, and `pca2d.scan`'s index holds them.
+**Nights in common are NOT the criterion, and few of them are an advantage.**
+The observer components are a parasite that is always present: what the fit
+measures is their PATTERN, not one night's sky. Nights that no other star of the
+group saw widen the range of conditions that pattern is measured over, which
+determines it better rather than worse. The first joint run,
+PROXIMA+GJ~1+GJ~3090, shares two nights out of campaigns of 258, 147 and 99, and
+that is a feature of it. (An earlier version of this file argued the opposite;
+it was wrong.)
 
-**Comparable SNR**, second: a much brighter star dominates the basis by weight
-alone, which is what made Proxima the one the shared basis describes.
+The window reports the overlap when targets are ticked, as information.
+
+**Comparable SNR** is the one to watch: a much brighter star dominates the basis
+by weight alone, and the weights of one star against another differ all along
+the spectrum, since their lines and their signal-to-noise do. Proxima holds 773
+of the 1453 rows of that run and has the highest signal-to-noise of the three.
+
+**What went wrong in that run was neither of those.** GJ~1's joint velocities came
+back worse than its solo ones (3.04 against 2.61 robust), and the cause found on
+2026-09-13 is the common mask: it was intersected over every object of the joint
+cube, so a sample lost by one night of the faintest star was blanked in every
+exposure of the others. A joint-corrected Proxima file was 17.1% NaN in the H
+band against 9.9% for its solo run. Fixed; the joint result has to be measured
+again before anything is concluded from it.
 
 ## What it does not do
 

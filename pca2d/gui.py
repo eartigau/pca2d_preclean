@@ -116,11 +116,10 @@ EN = {
     "log_mixed_refused": "refusing to run: %s are from two instruments (%s)",
     "log_nights": "%s: %d nights in common, out of %s",
     "log_nights_thin":
-        "%s share %d nights out of %s, which is FEW and not a problem: the"
-        " observer components are a parasite that is always there, and what is"
-        " being measured is its pattern. Nights that no other star saw widen the"
-        " range of conditions the pattern is determined over, which constrains"
-        " it better rather than worse.",
+        "%s: %d nights in common out of %s. Few is an ADVANTAGE here: the"
+        " observer components are a parasite that is always present, what is"
+        " being measured is its pattern, and nights no other star saw widen the"
+        " range of conditions that pattern is measured over.",
     "log_command": "running: %s",
     "log_ended": "the run ended, exit code %d",
     "log_stopping": "asking the run to stop",
@@ -410,11 +409,10 @@ FR = {
     "log_mixed_refused": "passage refusé : %s viennent de deux instruments (%s)",
     "log_nights": "%s : %d nuits en commun, sur %s",
     "log_nights_thin":
-        "%s partagent %d nuits sur %s, ce qui est PEU et n'est pas un problème :"
-        " les composantes observateur sont un parasite toujours présent, et ce"
-        " qu'on mesure est son motif. Des nuits qu'aucune autre étoile n'a vues"
-        " élargissent la gamme de conditions sur laquelle ce motif est"
-        " déterminé, donc le contraignent mieux et non moins bien.",
+        "%s : %d nuits en commun sur %s. En avoir peu est un AVANTAGE ici : les"
+        " composantes observateur sont un parasite toujours présent, ce qu'on"
+        " mesure est son motif, et des nuits qu'aucune autre étoile n'a vues"
+        " élargissent la gamme de conditions sur laquelle ce motif est mesuré.",
     "log_command": "lancement : %s",
     "log_ended": "passage terminé, code de sortie %d",
     "log_stopping": "demande d'arrêt du passage",
@@ -1138,8 +1136,10 @@ class App:
             return
         self._shared = key
         joined = ", ".join(str(c) for c in counts)
-        # a fact worth knowing, not a fault: a basis measured over a wide range
-        # of nights is a better-determined basis (the user, 2026-09-13)
+        # a fact worth knowing, and when the overlap is small it is good news,
+        # not a fault: the observer components are a parasite that is always
+        # there, so a pattern measured over a WIDER range of conditions is
+        # better determined (the user, 2026-09-13)
         if len(common) < 0.2 * min(counts):
             self._say("log_nights_thin", " + ".join(names), len(common), joined,
                       level="value")
