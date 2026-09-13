@@ -253,7 +253,20 @@ The atmosphere and the instrument belong to the night, not to the target, so
 several campaigns can be fitted against a single observer basis while each star
 keeps its own spectrum per order parity. No basis can follow one star when
 three of them, with different barycentric coverage and systemic velocities,
-constrain it. `docs/joint_fit.md`.
+constrain it.
+
+Measured, and narrower than it sounds: the stars have to have been observed on the
+SAME NIGHTS. PROXIMA, GJ~1 and GJ~3090 share two nights out of campaigns of 258,
+147 and 99, and the result split accordingly, Proxima improving on its best solo
+fit (2.91 against 3.04) while GJ 1 lost what its solo fit had gained (3.04
+against 2.61). The window reports the nights a selection shares before anything
+is run. `docs/joint_fit.md`.
+
+## Which choices are nominal, and what each one was worth
+
+`docs/options.md` is the inventory: every parameter that is a choice, the
+measurement that settled it, what is still open, and what is a candidate for
+removal once understood. It is the document to read before changing a default.
 
 ## Running it
 
