@@ -143,3 +143,46 @@ def test_a_joint_variant_names_its_own_folder_and_its_own_lbl_objects():
     assert nominal["config"]["lbl"]["suffix"].endswith("_joint")
     assert mine["cube"] != nominal["cube"], \
         "fewer nights is a different cube, so it has its own key"
+
+
+def test_the_joint_cube_carries_its_members_snippets(tmp_path):
+    """Each cube keeps the raw flux around every figure window. Without them the
+    joint cube's figures re-read every spectrum of every object from the shared
+    disk: 31 minutes for one window against a fraction of a second."""
+    import numpy as np
+
+    from pca2d import cache as _cache
+    from pca2d.joint import merge_snippets
+
+    members = []
+    for k, name in enumerate(("PROXIMA", "GJ1")):
+        cube = tmp_path / ("cube_%s" % name)
+        cube.mkdir()
+        _cache.write_snippet(str(cube), 100, 140,
+                             {"%s_%02d.fits" % (name, i):
+                              np.full((2, 40), float(k + 1)) for i in range(3)})
+        _cache.write_snippet(str(cube), 900, 950,
+                             {"%s_%02d.fits" % (name, i):
+                              np.full((2, 50), float(k + 1)) for i in range(3)})
+        members.append(str(cube))
+
+    target = tmp_path / "joint"
+    target.mkdir()
+    assert merge_snippets(members, str(target)) == 2, "two blocks"
+    got = _cache.read_snippet(str(target), 100, 140)
+    assert len(got) == 6, "every spectrum of both objects"
+    assert set(got) == {"%s_%02d.fits" % (n, i) for n in ("PROXIMA", "GJ1")
+                        for i in range(3)}
+    assert got["PROXIMA_00.fits"][0][0] == 1.0
+    assert got["GJ1_00.fits"][0][0] == 2.0, "each row keeps its own object's flux"
+    assert _cache.read_snippet(str(target), 900, 950) is not None
+    assert _cache.read_snippet(str(target), 500, 540) is None, "no block invented"
+
+
+def test_merging_snippets_survives_a_member_that_has_none(tmp_path):
+    from pca2d.joint import merge_snippets
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    target = tmp_path / "joint2"
+    target.mkdir()
+    assert merge_snippets([str(bare)], str(target)) == 0

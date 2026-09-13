@@ -50,6 +50,45 @@ def cube_path(cache_dir, fmt, key, objects):
     return os.path.join(cache_dir, "cube_%s_%s_j%s" % (fmt, key, stamp))
 
 
+def merge_snippets(cubes, target):
+    """Carry the members' raw-flux snippets into the joint cube.
+
+    Each cube keeps the raw flux around every figure window, written while the
+    build had the spectra open anyway, so that a figure never reopens hundreds
+    of files to draw five of them. They are keyed by file NAME, and no two
+    objects share one, so the joint cube's snippet for a block is simply the
+    union of its members'.
+
+    Without this the joint cube had none, and every window of the report fell
+    back to re-reading every spectrum of every object from the shared disk and
+    resampling it: 31 minutes for ONE window against a fraction of a second,
+    and an hour and a half for the figures of a three-star run (2026-09-13).
+    """
+    from . import cache as _cache
+
+    blocks = {}
+    for cube in cubes:
+        folder = os.path.join(cube, "snippets")
+        if not os.path.isdir(folder):
+            continue
+        for name in sorted(os.listdir(folder)):
+            if not name.startswith("cols_") or not name.endswith(".npz"):
+                continue
+            try:
+                a0, b0 = (int(v) for v in name[5:-4].split("_"))
+            except ValueError:
+                continue
+            stored = _cache.read_snippet(cube, a0, b0)
+            if stored:
+                blocks.setdefault((a0, b0), {}).update(stored)
+    for (a0, b0), by_file in sorted(blocks.items()):
+        _cache.write_snippet(target, a0, b0, by_file)
+    if blocks:
+        log("  carried %d snippet blocks, %d spectra in all, into the joint cube"
+            % (len(blocks), len(next(iter(blocks.values())))))
+    return len(blocks)
+
+
 def build(cubes, objects, path, config_file=None, chunk=64):
     """Write the joint cube of `cubes`, in that order, at `path`.
 
@@ -106,6 +145,7 @@ def build(cubes, objects, path, config_file=None, chunk=64):
                                              overwrite=True)
     if config_file and os.path.exists(config_file):
         shutil.copy(config_file, os.path.join(tmp, "cube_config.yaml"))
+    merge_snippets(cubes, tmp)
     shutil.rmtree(path, ignore_errors=True)
     os.rename(tmp, path)
     log("joint cube %s: %d rows, %d objects, %d columns"

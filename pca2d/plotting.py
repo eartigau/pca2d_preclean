@@ -383,5 +383,9 @@ def raw_log_flux_window(cube_dir, source_dir, names, parities, grid, a0, b0):
     for i, name in enumerate(names):
         block = stored.get(os.path.basename(str(name)))
         if block is not None:
-            out[i] = block[int(parities[i])]
+            # a snippet's two rows are the two ORDER parities, which is what the
+            # detector has. A joint cube labels its rows 2 * object + parity, so
+            # the label itself runs 0..2N-1 and indexed raw it walked off the end
+            # of the block at the first row of the second object (2026-09-13).
+            out[i] = block[int(parities[i]) % block.shape[0]]
     return out
