@@ -87,6 +87,22 @@ EN = {
     "variant": "variant", "command": "the command this runs", "output": "output",
     "col_object": "object", "col_files": "files", "col_instrument": "instrument",
     "col_snr": "SNR", "col_exptime": "exp (s)", "col_mag": "mag",
+    "berv": "barycentric coverage of the ticked targets",
+    "berv_none": "tick a target to see its barycentric coverage",
+    "berv_wait": "no barycentric velocity read yet",
+    "berv_building": "UNDER CONSTRUCTION: still reading",
+    "berv_note": "effective coverage %.0f km/s over a span of %.0f,"
+                 " in bins of %.0f km/s, from %d exposures",
+    "help_berv":
+        "How much of the barycentric range the ticked campaigns actually cover,"
+        " in bins of 3 km/s, one colour per instrument and stacked. This is the"
+        " quantity that decides whether the correction helps: the observer block"
+        " is identifiable only because the star moves through it. Two 14-night"
+        " slices of TOI-4552 at the same signal-to-noise, one spanning"
+        " 42.8 km/s and the other 0.7, went from a gain of a factor two to a"
+        " loss of a factor 2.4. The EFFECTIVE coverage counts only the bins that"
+        " hold an exposure, so a campaign observed at two extremes and nowhere"
+        " between is not credited with the range between them.",
     "run": "Run", "stop": "Stop", "dry": "Dry run", "export": "Export YAML...",
     "savelog": "Save log...", "openout": "Open outputs",
     "savedefaults": "Save as defaults...", "lblwin": "LBL settings...",
@@ -377,6 +393,22 @@ FR = {
     "output": "sortie",
     "col_object": "objet", "col_files": "fichiers", "col_instrument": "instrument",
     "col_snr": "SNR", "col_exptime": "pose (s)", "col_mag": "mag",
+    "berv": "couverture en BERV des cibles cochées",
+    "berv_none": "cocher une cible pour voir sa couverture en BERV",
+    "berv_wait": "aucune vitesse barycentrique encore lue",
+    "berv_building": "EN COURS DE CONSTRUCTION : lecture en cours",
+    "berv_note": "couverture effective %.0f km/s sur une étendue de %.0f,"
+                 " en bins de %.0f km/s, sur %d poses",
+    "help_berv":
+        "Quelle part de la gamme barycentrique les campagnes cochées couvrent"
+        " réellement, en bins de 3 km/s, une couleur par instrument et empilées."
+        " C'est la quantité qui décide si la correction aide : le bloc"
+        " observateur n'est identifiable que parce que l'étoile s'y déplace."
+        " Deux tranches de 14 nuits de TOI-4552 au même SNR, l'une couvrant"
+        " 42,8 km/s et l'autre 0,7, passent d'un gain d'un facteur deux à une"
+        " perte d'un facteur 2,4. La couverture EFFECTIVE ne compte que les bins"
+        " qui contiennent une pose : une campagne observée à deux extrêmes et"
+        " nulle part entre les deux n'est pas créditée de l'intervalle.",
     "run": "Lancer", "stop": "Arrêter", "dry": "Essai à blanc",
     "export": "Exporter le YAML...", "savelog": "Enregistrer le journal...",
     "openout": "Ouvrir les sorties",
@@ -1051,6 +1083,27 @@ class App:
         self.instrument_vars = {}
         self.count = ttk.Label(bar, style="Hint.TLabel", text="")
         self.count.pack(side="right")
+        self._build_berv(box)
+
+    def _build_berv(self, parent):
+        """The barycentric coverage of what is ticked, as a histogram.
+
+        The quantity that decides whether the correction helps at all, drawn
+        where the choice is made. Plain canvas rather than a plotting library:
+        it is redrawn on every tick and must cost nothing.
+        """
+        ttk = self.ttk
+        box = ttk.Labelframe(parent, text=self.t("berv"))
+        box.pack(fill="x", padx=6, pady=(0, 6))
+        self._register(box, "berv")
+        self.berv_canvas = self.tk.Canvas(box, height=120, highlightthickness=0,
+                                          background="white")
+        self.berv_canvas.pack(fill="x", padx=6, pady=(4, 2))
+        self.berv_note = ttk.Label(box, style="Hint.TLabel", text="")
+        self.berv_note.pack(anchor="w", padx=8, pady=(0, 4))
+        self._tip(self.berv_canvas, "help_berv")
+        self._tip(self.berv_note, "help_berv")
+        self.berv_canvas.bind("<Configure>", lambda _e: self._draw_berv())
 
     #: what each column of the list is, for the explanation that follows the
     #: pointer: the box, the counts, then the two numbers read from the headers
@@ -1117,6 +1170,7 @@ class App:
             self._say("log_mixed", ", ".join(sorted(instruments)), level="warn")
         self._warned = instruments if len(instruments) > 1 else None
         self._nights(names)
+        self._draw_berv()
         self._sync()
 
     def _nights(self, names):
@@ -1347,6 +1401,83 @@ class App:
         self.count.configure(text="%d / %d" % (len(self.picked()),
                                                len(self.names)))
         self._sync()
+
+    def _draw_berv(self):
+        """Redraw the coverage histogram for whatever is ticked."""
+        canvas = getattr(self, "berv_canvas", None)
+        if canvas is None:
+            return
+        canvas.delete("all")
+        names = self.picked()
+        width = max(int(canvas.winfo_width()), 50)
+        height = max(int(canvas.winfo_height()), 40)
+        if not names:
+            canvas.create_text(width // 2, height // 2, text=self.t("berv_none"),
+                               fill="#888", font=("Helvetica", 10))
+            self.berv_note.configure(text="")
+            return
+        edges, counts, summary = scan.berv_coverage(self.index, names)
+        if not counts:
+            canvas.create_text(width // 2, height // 2, text=self.t("berv_wait"),
+                               fill="#b26a00", font=("Helvetica", 10))
+            self.berv_note.configure(text="")
+            return
+        pad, foot = 6, 16
+        top = height - foot
+        tallest = max(1, max(int(c.max()) for c in counts.values() if c.size))
+        n_bins = len(edges) - 1
+        step = (width - 2 * pad) / max(n_bins, 1)
+        for i in range(n_bins):
+            x0 = pad + i * step
+            bottom = top
+            for name in names:
+                c = counts.get(name)
+                if c is None or not c[i]:
+                    continue
+                # stacked, each star in the colour its row has in the list
+                h = (top - pad) * c[i] / tallest
+                canvas.create_rectangle(x0, bottom - h, x0 + max(step - 1, 1),
+                                        bottom,
+                                        fill=self._tint_colour(name),
+                                        outline="")
+                bottom -= h
+        canvas.create_line(pad, top, width - pad, top, fill="#bbb")
+        for value in (edges[0], 0.0, edges[-1]):
+            if not edges[0] <= value <= edges[-1]:
+                continue
+            x = pad + (value - edges[0]) / max(edges[-1] - edges[0], 1e-9) * (
+                width - 2 * pad)
+            canvas.create_line(x, top, x, top + 3, fill="#888")
+            canvas.create_text(x, top + 9, text="%+.0f" % value, fill="#555",
+                               font=("Helvetica", 8))
+        # said while the scan is still reading, since the histogram is then
+        # drawn from part of the campaign and would otherwise look final
+        if self._berv_partial(names):
+            canvas.create_text(width // 2, pad + 8, text=self.t("berv_building"),
+                               fill="#b26a00", font=("Helvetica", 10, "bold"))
+        self.berv_note.configure(
+            text=self.t("berv_note") % (summary["effective"], summary["span"],
+                                        scan.BERV_BIN, summary["n"]))
+
+    def _berv_partial(self, names):
+        """Whether some spectrum of a ticked object has not been read yet."""
+        if self.scanning:
+            return True
+        for name in names:
+            row = self.rows.get(name) or {}
+            known = len(((self.index.get("objects") or {}).get(name) or {})
+                        .get("files") or {})
+            if known < int(row.get("files") or 0):
+                return True
+        return False
+
+    def _tint_colour(self, name):
+        """The colour this object's row has, so the bars match the list."""
+        instrument = (self.rows.get(name) or {}).get("instrument") or "?"
+        tag = self._tint(instrument)
+        base = getattr(self, "_tints", {}).get(tag, "#cccccc")
+        # the row tint is pale by design; the bars want the same hue, darker
+        return {"#eaf3ff": "#0072b2", "#fff1e6": "#d55e00"}.get(base, "#009e73")
 
     def _tint(self, instrument):
         """The row colour of an instrument, made once and kept."""
