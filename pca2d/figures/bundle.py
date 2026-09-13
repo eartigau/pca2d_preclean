@@ -228,7 +228,7 @@ def run(cmd, failures):
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
         failures.append((" ".join(cmd),
-                         (r.stderr or r.stdout or "").strip()[-400:]))
+                         (r.stderr or r.stdout or "").strip()[-400:], False))
         log("      failed, see the bundle's last page")
     else:
         # A figure that SUCCEEDS can still have drawn less than it was asked
@@ -239,7 +239,7 @@ def run(cmd, failures):
         for line in (r.stdout or "").splitlines():
             if SKIPPED.search(line):
                 log("   " + line.split("| ", 1)[-1].strip(), "warn")
-                failures.append((" ".join(cmd[:4]) + " ...", line.strip()))
+                failures.append((" ".join(cmd[:4]) + " ...", line.strip(), True))
     return r.returncode == 0
 
 
@@ -350,11 +350,23 @@ def main(argv=None):
             writer.add_page(p)
             page += 1
         bound += 1
+    broke = [f for f in failures if not (len(f) > 2 and f[2])]
+    skipped = [f for f in failures if len(f) > 2 and f[2]]
     if failures:
         note = os.path.join(tmp, "_failures.pdf")
+        body = []
+        if broke:
+            body.append("FAILED\n" + "\n\n".join("%s\n    %s" % (c, e)
+                                                  for c, e, *_ in broke))
+        if skipped:
+            # not errors: a figure deciding it had nothing to draw there. Said
+            # out loud all the same, because a page that is not in the report is
+            # not something anybody notices missing.
+            body.append("NOT DRAWN, AND WHY\n"
+                        + "\n\n".join("%s\n    %s" % (c, e)
+                                       for c, e, *_ in skipped))
         with PdfPages(note) as pdf:
-            text_pages(pdf, "What did not build",
-                       "\n\n".join("%s\n    %s" % (c, e) for c, e in failures))
+            text_pages(pdf, "What did not build", "\n\n".join(body))
         reader = PdfReader(note)
         writer.add_outline_item("What did not build", page)
         for p in reader.pages:
@@ -389,9 +401,11 @@ def main(argv=None):
         shutil.copytree(tmp, keep)
         log("  individual figures kept in %s" % keep)
     shutil.rmtree(tmp, ignore_errors=True)
-    log("wrote %s: %d pages from %d figures%s"
+    log("wrote %s: %d pages from %d figures%s%s"
           % (out, page, bound,
-             ", %d failed" % len(failures) if failures else ""))
+             ", %d failed" % len(broke) if broke else "",
+             ", %d window%s not drawn" % (len(skipped), "" if len(skipped) == 1
+                                          else "s") if skipped else ""))
     return None
 
 

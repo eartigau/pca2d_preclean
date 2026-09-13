@@ -67,3 +67,20 @@ def test_the_runner_collects_them(monkeypatch):
     assert bundle.run(["python", "sequence.py"], failures) is True
     assert len(failures) == 1, failures
     assert "too few rows" in failures[0][1]
+    assert failures[0][2] is True, "a skip is marked as one, not as a failure"
+
+
+def test_a_real_failure_is_not_marked_as_a_skip(monkeypatch):
+    import subprocess
+
+    from pca2d.figures import bundle
+
+    class Broke:
+        returncode = 1
+        stdout = ""
+        stderr = "Traceback ... IndexError"
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: Broke())
+    failures = []
+    assert bundle.run(["python", "x.py"], failures) is False
+    assert failures[0][2] is False and "IndexError" in failures[0][1]
