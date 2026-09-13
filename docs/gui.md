@@ -18,17 +18,17 @@ run is written out so that it can be copied into a terminal.
   gigabytes, and belong on the disk the campaign is already on.
 - **The targets**, each with how many spectra it has, **its median SNR**, **its
   median exposure time**, **its magnitude with the band it is in** and its
-  instrument. The rows are grouped and tinted by instrument, and one box per
-  instrument shows or hides its targets. **Click a column heading to sort by
-  it**, again to reverse, and the object heading a third time for the default
-  order. What is not known sorts last, never first.
-- **The objects, with a box each.** Tick one for a solo run. **Tick several and
-  they are fitted together against one observer basis**, each keeping its own
-  star spectrum per order parity (`docs/joint_fit.md`). Click the box,
-  double-click the row, or press the space bar; `all` and `none` do the whole
-  list. They must come from ONE instrument: two ticked instruments refuse to
-  run, because a run is one domain, one grid and one set of extensions, all
-  read from the instrument.
+  instrument. The rows are grouped and tinted by instrument, one box per
+  instrument shows or hides its targets, and clicking a column heading sorts by
+  it, again to reverse, the object heading a third time for the default order.
+  What is not known sorts last, never first.
+- **A box per target.** Tick one for a solo run. **Tick several and they are
+  fitted together against one observer basis**, each keeping its own star
+  spectrum per order parity (`docs/joint_fit.md`). Click the box, double-click
+  the row, or press the space bar; `all` and `none` do the whole list. They must
+  come from ONE instrument: two ticked instruments refuse to run, because a run
+  is one domain, one grid and one set of extensions, all read from the
+  instrument.
 - **The settings that change a result**, and only those: how many components in
   each frame, the static part, the star basis, the velocity term, the number of
   sweeps, the shrinkage, which samples a corrected file blanks, the high pass,
