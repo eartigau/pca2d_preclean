@@ -1,0 +1,14 @@
+# sameseason: the period GJ 1's and GJ 3090's campaigns overlap in, rjd 60145 to
+# 60866, with every exposure either star took in it.
+#
+# The control for `nightsshared`. Same objects, same everything else, same span
+# of time, but the two stars were NOT observed on the same nights inside it: GJ 1
+# has 204 exposures on 102 nights there and GJ 3090 314 on 90. If a shared observer
+# basis needs the same NIGHT, this one behaves like the three-star run and
+# `nightsshared` does not; if the season is enough, both work.
+note: "GJ1+GJ3090, 2026-09-12: the overlapping period, not the shared nights"
+quality:
+  min_rjd: 60145
+  max_rjd: 60866
+lbl:
+  before: false

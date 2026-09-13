@@ -1,0 +1,20 @@
+# nightsshared: the ONLY nights GJ 1 and GJ 3090 were both observed on.
+#
+# Why this exists. A joint fit assumes the atmosphere belongs to the night, so
+# it holds only for stars observed on the SAME nights. The first joint run,
+# PROXIMA+GJ1+GJ3090, had two such nights out of campaigns of 258, 147 and 99,
+# and its result split accordingly: Proxima, which holds half the rows and has
+# the highest SNR, improved (2.91 against 3.04 solo), while GJ 1 lost what its
+# solo fit had gained (3.04 against 2.61, delivered 2.70). This variant is the
+# test of the premise itself, on the only pair here that shares a real number of
+# nights: 47 of GJ 1's 147 and GJ 3090's 99.
+#
+# It keeps 94 of GJ 1's 292 exposures and 164 of GJ 3090's 379. Run it as
+#   pca2d-preclean --objects GJ1,GJ3090 --n-star 0 --variant nightsshared
+# and compare with `sameseason`, which keeps the same period but NOT the same
+# nights: the pair separates "the same sky" from "the same season".
+note: "GJ1+GJ3090, 2026-09-12: only the 47 nights both stars were observed on"
+quality:
+  nights: [60227, 60263, 60267, 60269, 60270, 60271, 60272, 60276, 60543, 60558, 60562, 60565, 60567, 60569, 60571, 60572, 60573, 60580, 60581, 60582, 60583, 60586, 60595, 60597, 60598, 60599, 60600, 60604, 60605, 60607, 60608, 60609, 60622, 60623, 60627, 60628, 60635, 60637, 60638, 60639, 60640, 60645, 60649, 60651, 60652, 60656, 60662]
+lbl:
+  before: false

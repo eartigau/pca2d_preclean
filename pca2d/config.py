@@ -195,6 +195,7 @@ DEFAULTS = {
         "isolated_window": None,
         "min_rjd": None,
         "max_rjd": None,
+        "nights": None,
     },
     "weights": {
         "mode": "photon",            # 'photon' or 'uniform'
@@ -908,7 +909,7 @@ def cache_key(config: dict) -> str:
     # computed by earlier versions still match.
     relevant["quality"] = {k: v for k, v in relevant["quality"].items()
                            if not (k in ("min_rjd", "max_rjd", "max_sky_ratio",
-                                         "isolated_window")
+                                         "isolated_window", "nights")
                                    and v is None)}
     relevant["weights"] = {k: v for k, v in relevant["weights"].items()
                            if not (k == "empirical_noise_box" and v is None)}

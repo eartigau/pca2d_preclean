@@ -118,3 +118,28 @@ def test_the_joint_cube_is_named_after_its_objects(tmp_path):
     other = joint.cube_path("cache", "tfits", "abc123", ["B", "A"])
     assert one == same and one != other, "the order of the objects is part of it"
     assert one.startswith(os.path.join("cache", "cube_tfits_abc123_j"))
+
+
+def test_a_joint_variant_names_its_own_folder_and_its_own_lbl_objects():
+    """Two joint variants must not write into one folder, and above all not into
+    one LBL science folder: LBL globs it and would measure the mixture."""
+    import types
+
+    from pca2d.cli import joint_plan
+
+    def plan_for(variant_name, variant):
+        args = types.SimpleNamespace(
+            objects=["GJ1", "GJ3090"], object="GJ1", config="config.yaml",
+            data_dir=None, out_dir=None, instrument=None, n_star=0, n_earth=None,
+            windows=None, rebuild_cube=False, run_lbl=False,
+            variant=variant_name)
+        return joint_plan(args, variant)
+
+    nominal = plan_for(None, None)
+    mine = plan_for("nightsshared", {"quality": {"nights": [60227, 60230]}})
+    assert nominal["outdir"] != mine["outdir"]
+    assert "_nightsshared" in mine["outdir"]
+    assert mine["config"]["lbl"]["suffix"].endswith("_nightsshared_joint")
+    assert nominal["config"]["lbl"]["suffix"].endswith("_joint")
+    assert mine["cube"] != nominal["cube"], \
+        "fewer nights is a different cube, so it has its own key"

@@ -672,6 +672,16 @@ def _quality_reason(meta, wave, quality):
         return "rjd %.2f is before the %.0f window start" % (rjd, quality["min_rjd"])
     if quality.get("max_rjd") is not None and rjd > float(quality["max_rjd"]):
         return "rjd %.2f is after the %.0f window end" % (rjd, quality["max_rjd"])
+    # A LIST of nights, where the window above is a range. What it is for: a
+    # joint fit assumes the atmosphere belongs to the night, which only holds for
+    # stars observed on the SAME nights, and the nights two campaigns share are
+    # not a contiguous range (GJ 1 and GJ 3090 share 47, scattered through two
+    # seasons of 147 and 99). Integer rjd, the same night label pca2d.scan uses.
+    nights = quality.get("nights")
+    if nights:
+        if int(np.floor(rjd)) not in {int(n) for n in nights}:
+            return "rjd %.2f is not one of the %d nights asked for" % (
+                rjd, len(nights))
     return None
 
 

@@ -226,6 +226,17 @@ def joint_plan(args, variant):
         config.setdefault("lbl", {})["run"] = True
     name = _joint.joint_name(args.objects)
     config["input"]["object"] = name
+    # a variant names its own folder and its own LBL objects here, exactly as it
+    # does for a solo run (resolve). Without this, two joint variants wrote into
+    # ONE folder and their corrected spectra into ONE LBL science folder, where
+    # LBL globs the folder and would have measured the mixture of two different
+    # corrections without a word.
+    variant_name = getattr(args, "variant", None)
+    name_variant(config, variant_name, variant, args.out_dir)
+    if variant and variant.get("reuse_fit"):
+        log("variant %s asks to reuse a fit, which a joint run does not do: it"
+            " will fit these objects together from the cube" % variant_name,
+            "warn")
     # its own LBL objects, so a joint measurement is never taken for a solo one
     config["lbl"]["suffix"] = "%s_joint" % (config["lbl"].get("suffix")
                                             or "_PCA2D_{tag}")
