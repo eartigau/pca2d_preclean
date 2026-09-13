@@ -420,6 +420,12 @@ EN = {
     "help_savelog_button": "Writes what the window has shown to a file.",
     "help_openout_button": "Opens the output root in the file browser.",
     "help_lang": "Switch the window between English and French.",
+    "help_apero":
+        "APERO, the pipeline that reduced every spectrum this window reads"
+        " (Cook et al. 2022, PASP 134, 114509). It is what wrote the extensions,"
+        " the wavelength solution, the per-order signal-to-noise and the"
+        " barycentric velocities used here; this package starts from its t.fits"
+        " and never re-derives any of it.",
     "help_log":
         "The run's own log, in the colours a terminal would give it: green for"
         " progress, blue for a number, orange for something skipped, red for"
@@ -774,6 +780,12 @@ FR = {
     "help_openout_button":
         "Ouvre la racine de sortie dans le navigateur de fichiers.",
     "help_lang": "Bascule la fenêtre entre l'anglais et le français.",
+    "help_apero":
+        "APERO, le pipeline qui a réduit tous les spectres que cette fenêtre"
+        " lit (Cook et al. 2022, PASP 134, 114509). C'est lui qui a écrit les"
+        " extensions, la solution en longueur d'onde, le SNR par ordre et les"
+        " vitesses barycentriques employées ici ; ce paquet part de ses t.fits"
+        " et n'en redérive rien.",
     "help_log":
         "Le journal du passage, dans les couleurs qu'un terminal lui donnerait :"
         " vert pour la progression, bleu pour une valeur, orange pour ce qui est"
@@ -1150,6 +1162,15 @@ class App:
                                  justify="left",
                                  text=self.t("subtitle")), "subtitle").grid(
             row=0, column=1, columnspan=2, sticky="w", padx=10)
+        # APERO's own logo, from its repository: every spectrum here was
+        # reduced by it, so it belongs in the header of a window that reads
+        # nothing else. Its file is in the package, not fetched at run time.
+        logo = self._logo("apero_logo.png", height=26)
+        if logo is not None:
+            self.logo_label = ttk.Label(frame, image=logo, background=BG)
+            self.logo_label.image = logo      # or the garbage collector eats it
+            self.logo_label.grid(row=1, column=3, sticky="e", padx=(6, 0))
+            self._tip(self.logo_label, "help_apero")
         button = ttk.Button(frame, text=self.t("lang"),
                             command=self.switch_language, width=10)
         button.grid(row=0, column=3, sticky="e")
@@ -1740,6 +1761,31 @@ class App:
             self._star_colours[name] = STAR_COLOURS[len(self._star_colours)
                                                     % len(STAR_COLOURS)]
         return self._star_colours[name]
+
+    def _logo(self, name, height=26):
+        """A PNG from the package's assets, scaled to `height`, or None.
+
+        None rather than a raised exception: a missing or unreadable image is a
+        decoration that did not appear, never a window that did not open.
+        """
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "assets", name)
+        if not os.path.exists(path):
+            return None
+        try:
+            from PIL import Image, ImageTk
+            image = Image.open(path)
+            scale = height / float(image.height)
+            return ImageTk.PhotoImage(
+                image.resize((max(1, int(image.width * scale)), height),
+                             Image.LANCZOS))
+        except Exception:                                       # noqa: BLE001
+            try:
+                photo = self.tk.PhotoImage(file=path)
+                step = max(1, int(round(photo.height() / float(height))))
+                return photo.subsample(step, step)
+            except Exception:                                   # noqa: BLE001
+                return None
 
     def _draw_badges(self):
         """One badge per instrument in the data root, count included."""
