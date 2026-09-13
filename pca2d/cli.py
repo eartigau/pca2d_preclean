@@ -231,6 +231,15 @@ def joint_plan(args, variant):
     # ONE folder and their corrected spectra into ONE LBL science folder, where
     # LBL globs the folder and would have measured the mixture of two different
     # corrections without a word.
+    # every member's known periods, not the first member's: one shared basis
+    # must not vary at ANY of these stars' planet periods, and config is a copy
+    # of member 0's, which would have marked only Proxima's
+    periods = []
+    for member in members:
+        for p in ((member["config"].get("target") or {}).get("planets") or []):
+            if p not in periods:
+                periods.append(float(p))
+    config.setdefault("target", {})["planets"] = sorted(periods)
     variant_name = getattr(args, "variant", None)
     name_variant(config, variant_name, variant, args.out_dir)
     if variant and variant.get("reuse_fit"):

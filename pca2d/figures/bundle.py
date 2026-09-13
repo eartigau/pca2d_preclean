@@ -166,6 +166,28 @@ def summary(config, args, fit):
     return "\n".join("%-*s   %s" % (width, k, v) for k, v in rows)
 
 
+def periodogram_args(py, script, fit_path, out, config):
+    """The periodogram's command, carrying the periods a component must not
+    vary at.
+
+    That is what makes the figure a check rather than a picture: a basis
+    component varying at a planet's period subtracts that planet out of the
+    spectra, the velocities come back cleaner BECAUSE the signal is gone, and
+    nothing in the residuals looks wrong. No period was ever passed before
+    2026-09-12, so the question the figure exists to answer was never put to it.
+    The periods are published values, per object, under objects.<NAME>.target.
+    """
+    known = config.get("target") or {}
+    argv = [py, script, "--fit", fit_path, "--out", out]
+    if known.get("planets"):
+        # every digit the archive gives: truncating a period is how a
+        # marked line lands beside the peak instead of on it
+        argv += ["--planets", *["%.10g" % float(p) for p in known["planets"]]]
+    if known.get("prot"):
+        argv += ["--prot", "%.10g" % float(known["prot"])]
+    return argv
+
+
 def has_oh_model(source_dir):
     """Whether the spectra carry the OHLine extension oh_residual.py draws.
 
@@ -236,8 +258,8 @@ def main(argv=None):
     else:
         log("   oh_residual.py skipped: these spectra carry no OHLine"
             " extension, which only SPIRou writes", "warn")
-    run([py, d("coeff_periodogram.py"), "--fit", fit_path,
-         "--out", os.path.join(tmp, "periodogram.pdf")], failures)
+    run(periodogram_args(py, d("coeff_periodogram.py"), fit_path,
+                         os.path.join(tmp, "periodogram.pdf"), config), failures)
     run([py, d("ancillary_time.py"), "--cube", args.cube, "--fit", fit_path,
          "--title", str(obj), "--out", os.path.join(tmp, "ancillary.pdf")], failures)
     # Only scripts that take --windows are used, so the cube is loaded once per

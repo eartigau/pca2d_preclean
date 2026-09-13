@@ -417,7 +417,33 @@ instruments:
 # Anything one target needs and the others do not. Keys here are OBJECT names
 # and match --object. Everything is optional; most targets need nothing.
 # ---------------------------------------------------------------------------
-objects: {}
+objects:
+  # What is PUBLISHED about each target, which this pipeline never measures. The
+  # periods below are marked on the coefficient periodograms, and they are the
+  # check that decides whether a correction is safe: a basis component varying at
+  # a planet's period will subtract that planet out of the spectra, the
+  # velocities will come back CLEANER because the signal is gone, and nothing in
+  # the residuals will look wrong. Every value is from the NASA Exoplanet
+  # Archive's composite parameters table (pscomppars), queried 2026-09-12.
+  GJ3090:
+    target:
+      planets: [2.85310198, 15.9407]    # b transits; c is the 15.9 d companion
+  TOI2120:
+    target:
+      planets: [5.7998164]
+  TOI4552:
+    target:
+      planets: [0.30110032]             # ultra-short period, below the figure's
+                                        # 1.2 d lower bound: it is marked, not
+                                        # resolved
+  TOI1452:
+    target:
+      planets: [11.06201]
+  PROXIMA:
+    target:
+      planets: [11.18465, 5.12338]      # b and d; c at 5.2 yr is beyond a
+                                        # campaign's baseline
+  # GJ1 has no known planet, which is why it is the quiet reference here.
 
 # TOI2120 needs nothing here: APERO wrote OBJTEMP = 3179 K in its headers, and
 # that is the same number the TIC carries for TIC 389900760 (TIC v8.2 via

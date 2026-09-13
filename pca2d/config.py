@@ -142,6 +142,16 @@ DEFAULTS = {
             "K": [2030.0, 2370.0],
         },
     },
+    # What is PUBLISHED about the target, which the pipeline never measures and
+    # never needs, except to mark the periods a component must not vary at. The
+    # coefficient periodogram takes them: a basis component varying at a planet's
+    # period subtracts that planet out of the spectra, and the velocities then
+    # come back cleaner precisely because the signal is gone. Per object, under
+    # objects.<NAME>.target.
+    "target": {
+        "planets": [],               # known orbital periods, days
+        "prot": None,                # published rotation period, days
+    },
     "registration": {
         "frame": "barycentric",      # 'barycentric' (stellar rest frame) or
                                      # 'observer' (telluric rest frame, no shift)
