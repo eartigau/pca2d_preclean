@@ -173,19 +173,24 @@ measured with LBL \citep{artigau2022}.
 \begin{table}[h]
 \centering
 \small
-\begin{tabular}{lllrrr}
+\begin{tabular}{lllrrrrr}
 \toprule
-Target & Instrument & $T_{\rm eff}$ (K) & exposures & nights & delivered rms (m\,s$^{-1}$)\\
+Target & Instrument & $T_{\rm eff}$ (K) & exposures & nights & $t_{\rm exp}$ (s)
+& SNR$_H$ & delivered rms (m\,s$^{-1}$)\\
 \midrule
-TOI-2120 & SPIRou & 3179 & 321 & --- & 47.7\\
-Proxima  & NIRPS  & 3050 & 782 & 259 & 2.9\\
-GJ~1     & NIRPS  & 3478 & 292 & 146 & 2.7\\
-TOI-4552 & NIRPS  & 3304 & 119 & 60  & 12.6\\
+TOI-2120 & SPIRou & 3179 & 321 & --- & 903 &  51 & 47.7\\
+Proxima  & NIRPS  & 3050 & 782 & 259 & 201 & 262 &  2.9\\
+GJ~1     & NIRPS  & 3478 & 292 & 146 & 178 & 217 &  2.7\\
+TOI-4552 & NIRPS  & 3304 & 119 & 60  & 897 &  43 & 12.6\\
 \bottomrule
 \end{tabular}
-\caption{The campaigns. Nights are the nightly coadds the NIRPS fits use; the
-delivered rms is the line-by-line velocity scatter of the spectra as reduced,
-with no precleaning.}
+\caption{The campaigns. Nights are the nightly coadds the NIRPS fits use;
+$t_{\rm exp}$ and SNR$_H$ are medians over every exposure of the campaign, the
+latter of the per-order extraction signal-to-noise of the orders whose centres
+fall in 1490--1780~nm, a band both instruments cover, so that the two can be
+compared; the delivered rms is the line-by-line velocity scatter of the spectra
+as reduced, with no precleaning.}
+\label{tab:campaigns}
 \end{table}
 
 \section{Results}
@@ -213,9 +218,14 @@ and costs where the delivered velocities are already good.}
 \label{tab:overall}
 \end{table}
 
-The pattern of Table~\ref{tab:overall} is not a signal-to-noise effect: GJ~1 is
-four magnitudes brighter than TOI-4552 and both are NIRPS campaigns stacked by
-night, yet one is neutral and the other loses 3~m\,s$^{-1}$.
+The pattern of Table~\ref{tab:overall} is not a signal-to-noise effect, and the
+cleanest case against that reading is TOI-2120 against TOI-4552. Their exposures
+are of the same length, 903 and 897~s, and their spectra reach the same
+signal-to-noise in the band both instruments cover, 51 and 43 per order in $H$
+(Table~\ref{tab:campaigns}), yet the correction removes more than half of the
+velocity scatter of one and adds to the other's. The two brighter campaigns,
+whose spectra have four to six times that signal-to-noise, are the ones where
+the correction has the least to remove.
 
 \subsection{The barycentric span decides}
 
