@@ -430,6 +430,22 @@ def coefficient_cards(model, row, k, j):
     return cards
 
 
+def mean_divided(model, n_earth):
+    """Whether an observer-frame mean was actually taken out of this file.
+
+    Not whether one would have been ADDED: the nominal, `mean: star`, keeps no
+    observer mean at all, so its means are zero everywhere and order_correction
+    adds nothing. The card used to say bool(n_earth), which read True on every
+    nominal file while no mean of the kind existed. A provenance card that has
+    to be interpreted is worse than no card, because it is read by whoever was
+    not there when the run was made.
+    """
+    if not n_earth:
+        return False
+    return any(np.any(np.asarray(m) != 0.0)
+               for m in (model.get("means") or {}).values())
+
+
 def order_correction(model, correction, n_earth, order, wave):
     """What correct_file divides out of one order, on that order's own pixels.
 
@@ -634,7 +650,8 @@ def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
     head["PCA2REF"] = (True, "two-frame PCA correction applied")
     head["PCA2BERV"] = (float(row["berv"]), "km/s used to carry the star basis")
     head["PCA2NPIX"] = (touched, "samples corrected")
-    head["PCA2MEAN"] = (bool(j), "observer-frame parity mean divided out")
+    head["PCA2MEAN"] = (mean_divided(model, j),
+                        "observer-frame parity mean divided out")
     if alive is not None:
         head["PCA2WNAN"] = (blanked, "samples the fit gave no weight, set to NaN")
     if clipped is not None:
