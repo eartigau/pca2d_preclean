@@ -228,6 +228,11 @@ EN = {
         " SNR and the file count, it says what kind of campaign this is: many"
         " short exposures of a bright star, or few long ones of a faint one.",
     "help_col_mag":
+        "Click a column heading to sort by it, again to reverse, and the object"
+        " heading twice to go back to instrument-then-name. Sorting by THIS one"
+        " compares bands that are not the same: NIRPS writes J and SPIRou H, so"
+        " a J of 5.3 and an H of 10.5 are ordered as numbers and not as"
+        " brightnesses.\n\n"
         "The target's brightness as ITS OWN pipeline recorded it, with the band"
         " it is in: NIRPS writes the J magnitude, SPIRou writes H, and the two"
         " differ by about a magnitude on an M dwarf, so the band is shown rather"
@@ -554,6 +559,11 @@ FR = {
         " beaucoup de poses courtes d'une étoile brillante, ou peu de longues"
         " d'une faible.",
     "help_col_mag":
+        "Cliquer un en-tête de colonne pour trier dessus, encore pour inverser,"
+        " et deux fois sur l'en-tête des objets pour revenir à instrument puis"
+        " nom. Trier sur CELLE-CI compare des bandes différentes : NIRPS écrit J"
+        " et SPIRou H, donc un J de 5,3 et un H de 10,5 sont ordonnés comme des"
+        " nombres, pas comme des éclats.\n\n"
         "L'éclat de la cible tel que SON pipeline l'a noté, avec la bande où il"
         " est mesuré : NIRPS écrit la magnitude J, SPIRou écrit H, et les deux"
         " diffèrent d'environ une magnitude sur une naine M ; la bande est donc"
@@ -943,6 +953,9 @@ class App:
         self.checked = set(self.saved.get("checked") or [])
         self.index = {}
         self.scanning = False
+        # None = the default order, by instrument then name
+        self.sort_column = self.saved.get("sort_column") or None
+        self.sort_reverse = bool(self.saved.get("sort_reverse"))
         self.lbl_window = None
         root.title("pca2d-preclean")
         root.geometry("1200x780")
@@ -1000,9 +1013,10 @@ class App:
                 if how == "text":
                     widget.configure(text=self.t(key))
                 elif how == "heading":
-                    self.tree.heading(key[0], text=self.t(key[1]))
+                    pass                  # redrawn together, below
             except Exception:                                 # noqa: BLE001
                 pass
+        self._draw_headings()
         self._state()
         if self.lbl_window is not None:
             self.lbl_window.title(self.t("lbl_title"))
@@ -1063,11 +1077,12 @@ class App:
                                                "instrument"),
                                  show="tree headings", selectmode="extended",
                                  height=13)
-        for column, key in (("#0", "col_object"), ("files", "col_files"),
-                            ("snr", "col_snr"), ("exptime", "col_exptime"),
-                            ("mag", "col_mag"), ("instrument", "col_instrument")):
-            self.tree.heading(column, text=self.t(key))
-            self._register(self.tree, (column, key), how="heading")
+        self.headings = (("#0", "col_object"), ("files", "col_files"),
+                         ("snr", "col_snr"), ("exptime", "col_exptime"),
+                         ("mag", "col_mag"), ("instrument", "col_instrument"))
+        for column, _key in self.headings:
+            self.tree.heading(column, command=lambda c=column: self._sort_by(c))
+        self._draw_headings()
         self.tree.column("#0", width=180)
         self.tree.column("files", width=52, anchor="e")
         self.tree.column("snr", width=56, anchor="e")
@@ -1127,6 +1142,71 @@ class App:
     COLUMN_HELP = {"#0": "help_check", "#1": "help_objects", "#2": "help_col_snr",
                    "#3": "help_col_exptime", "#4": "help_col_mag",
                    "#5": "help_objects"}
+
+    #: which row value each column sorts on, and whether it is a number
+    SORT_KEY = {"#0": ("object", False), "files": ("files", True),
+                "snr": ("snr", True), "exptime": ("exptime", True),
+                "mag": ("mag", True), "instrument": ("instrument", False)}
+
+    def _draw_headings(self):
+        """The column names, with an arrow on the one the list is sorted by."""
+        for column, key in self.headings:
+            arrow = ""
+            if column == getattr(self, "sort_column", None):
+                arrow = "  ▼" if self.sort_reverse else "  ▲"
+            self.tree.heading(column, text=self.t(key) + arrow)
+
+    def _sort_by(self, column):
+        """Sort by this column, and reverse it if it is already the one.
+
+        Clicking the object column a second time goes back to the default,
+        which is by instrument and then by name: a run is one instrument, so
+        that grouping is what the list is for most of the time.
+        """
+        if column == getattr(self, "sort_column", None):
+            if self.sort_reverse:
+                self.sort_column, self.sort_reverse = None, False
+            else:
+                self.sort_reverse = True
+        else:
+            self.sort_column, self.sort_reverse = column, False
+        self._draw_headings()
+        self._fill(list(self.rows.values()))
+
+    def _sorted(self, rows):
+        """The rows in the order the list should show them.
+
+        By instrument then name unless a column was clicked. A value that is
+        missing sorts LAST either way: a blank is not a small number, and a
+        target whose scan has not reached it should not head the list.
+        """
+        column = getattr(self, "sort_column", None)
+        if column is None:
+            # an instrument not read yet goes last here too, rather than first
+            # because "?" precedes "nirps" in the alphabet
+            return sorted(rows, key=lambda r: (
+                (0, (r["instrument"] or "").lower())
+                if r.get("instrument") and r["instrument"] != "?" else (1, ""),
+                r["object"].lower()))
+        field, numeric = self.SORT_KEY.get(column, ("object", False))
+        reverse = bool(getattr(self, "sort_reverse", False))
+
+        def key(row):
+            value = row.get(field)
+            if value is None or value == "":
+                # last whichever way round, so the sort is reversed on the
+                # values and never on what is not known
+                return (1, 0.0 if numeric else "")
+            if numeric:
+                return (0, -float(value) if reverse else float(value))
+            text = str(value).lower()
+            return (0, text)
+
+        out = sorted(rows, key=key)
+        if not numeric and reverse:
+            known = [r for r in out if r.get(field) not in (None, "")]
+            out = known[::-1] + [r for r in out if r.get(field) in (None, "")]
+        return out
 
     def _tree_key(self):
         return self.COLUMN_HELP.get(getattr(self, "_column", "#0"), "help_check")
@@ -1363,6 +1443,8 @@ class App:
         self.command.insert("1.0", " ".join(build_command(state)))
         keep = {k: v for k, v in state.items() if k != "objects"}
         keep["checked"] = sorted(self.checked)
+        keep["sort_column"] = getattr(self, "sort_column", None)
+        keep["sort_reverse"] = bool(getattr(self, "sort_reverse", False))
         _write_state(keep)
 
     def refresh_objects(self):
@@ -1402,9 +1484,8 @@ class App:
         self._instrument_boxes(sorted({r.get("instrument") for r in rows
                                        if r.get("instrument")
                                        and r.get("instrument") != "?"}))
-        shown = [r for r in rows if self._instrument_on(r.get("instrument"))]
-        shown.sort(key=lambda r: ((r.get("instrument") or "?").lower(),
-                                  r["object"].lower()))
+        shown = self._sorted([r for r in rows
+                              if self._instrument_on(r.get("instrument"))])
         self.tree.delete(*self.tree.get_children())
         self.names = {}
         for row in shown:

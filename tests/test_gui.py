@@ -207,3 +207,58 @@ def test_the_column_says_not_read_yet_rather_than_unknown():
                         {"files": 3, "snr": 100.0, "exptime": 60.0,
                          "mag": None, "instrument": "SPIROU"})
     assert known[-1] == "SPIROU"
+
+
+def rows_for_sorting():
+    return [
+        {"object": "PROXIMA", "instrument": "NIRPS", "files": 782, "snr": 182.0,
+         "exptime": 201.0, "mag": 5.36},
+        {"object": "GJ1", "instrument": "NIRPS", "files": 292, "snr": 163.0,
+         "exptime": 178.0, "mag": 5.33},
+        {"object": "TOI2120", "instrument": "SPIROU", "files": 321, "snr": 33.0,
+         "exptime": 903.0, "mag": 10.45},
+        {"object": "GL699_SPIROU", "instrument": None, "files": 535, "snr": None,
+         "exptime": None, "mag": None},
+    ]
+
+
+def order(window, rows):
+    from pca2d.gui import App
+    return [r["object"] for r in App._sorted(window, rows)]
+
+
+def window_with(column=None, reverse=False):
+    from pca2d.gui import App
+    w = App.__new__(App)
+    w.sort_column, w.sort_reverse = column, reverse
+    return w
+
+
+def test_the_default_order_groups_by_instrument_then_name():
+    rows = rows_for_sorting()
+    assert order(window_with(), rows) == ["GJ1", "PROXIMA", "TOI2120",
+                                          "GL699_SPIROU"], \
+        "a run is one instrument, so that is the order the list is for"
+
+
+def test_a_column_sorts_and_a_second_click_reverses():
+    rows = rows_for_sorting()
+    assert order(window_with("mag"), rows)[:3] == ["GJ1", "PROXIMA", "TOI2120"]
+    assert order(window_with("mag", True), rows)[:3] == ["TOI2120", "PROXIMA",
+                                                         "GJ1"]
+    assert order(window_with("snr"), rows)[:3] == ["TOI2120", "GJ1", "PROXIMA"]
+    assert order(window_with("files"), rows) == ["GJ1", "TOI2120",
+                                                 "GL699_SPIROU", "PROXIMA"], \
+        "the file count IS known for the one still being scanned"
+    assert order(window_with("#0"), rows)[0] == "GJ1", "by name"
+    assert order(window_with("#0", True), rows)[0] == "TOI2120"
+
+
+def test_what_is_not_known_sorts_last_either_way():
+    """A blank is not a small number, and a target the scan has not reached
+    should not head the list because of it."""
+    rows = rows_for_sorting()
+    for column in ("mag", "snr", "exptime", "instrument"):
+        for reverse in (False, True):
+            assert order(window_with(column, reverse), rows)[-1] == \
+                "GL699_SPIROU", (column, reverse)
