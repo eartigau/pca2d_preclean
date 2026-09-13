@@ -235,6 +235,7 @@ least to remove, and there it neither helps nor costs more than a tenth of a
 m\,s$^{-1}$.
 
 \subsection{The barycentric span decides}
+\label{sec:span}
 
 TOI-4552 was observed in two seasons. In the first the barycentric velocity
 spans 52.6~km\,s$^{-1}$; in the second, 9.8. Fitting each season alone, the
@@ -270,6 +271,86 @@ series in grey. Right: the narrow-span slice. Nightly means above, exposures
 below.}
 \label{fig:berv}
 \end{figure}
+
+\subsection{What the coverage is, and what a target can ever have}
+\label{sec:coverage}
+
+Two campaigns of equal barycentric span are not equally informative, and a
+target's span is not a free parameter of the observing plan. Both distinctions
+are visible before a single spectrum is fitted.
+
+The first is the difference between a span and a \emph{coverage}. Binning the
+barycentric velocities of a campaign 3~km\,s$^{-1}$ at a time and counting the
+bins that hold at least one exposure gives what the campaign actually samples;
+TOI-4552 spans 52.6~km\,s$^{-1}$ and covers 33, its two seasons sitting at the
+ends with a hole between them, while GJ~1 spans 48.1 and covers 51, every bin
+filled. Of the seven campaigns here the two on which the correction fails hold
+the two smallest coverages.
+
+The second is a property of the sky. The barycentric velocity of a target never
+exceeds $29.78 \cos\beta$~km\,s$^{-1}$ with $\beta$ its ecliptic latitude, so the
+widest span it can ever show is twice that. TOI-1452 lies at
+$\beta = +80.5^\circ$: its entire possible span is 9.8~km\,s$^{-1}$, and the
+3.1 observed over 126 nights is most of what there is to have. No amount of
+observing will separate the two frames for that target.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrrrl}
+\toprule
+Target & $\beta$ (deg) & possible & covered & the correction there\\
+\midrule
+GJ~328   & $-15.2$ & 57.4 & 45.0 & helps\\
+TOI-4552 & $-24.3$ & 54.2 & 33.0 & \textbf{hurts}\\
+GJ~1     & $-34.4$ & 49.2 & 51.0 & helps a little\\
+Proxima  & $-44.8$ & 42.2 & 48.0 & neutral\\
+GJ~3090  & $-49.7$ & 38.4 & 36.0 & helps\\
+TOI-2120 & $+50.3$ & 38.0 & 39.0 & transforms it\\
+TOI-1452 & $+80.5$ & \phantom{0}9.8 & \phantom{0}6.0 & \textbf{eats the signal}\\
+\bottomrule
+\end{tabular}
+\caption{Barycentric coverage, in km\,s$^{-1}$. `possible' is
+$2 \times 29.78\cos\beta$, what the target's position allows; `covered' counts
+the 3~km\,s$^{-1}$ bins that hold an exposure. A coverage short of the span
+means gaps, which more nights fill; a small `possible' means the target is the
+wrong one. Coverage may exceed the span by up to one bin, since a bin is counted
+whole.}
+\label{tab:coverage}
+\end{table}
+
+\subsection{What the rms hides}
+\label{sec:hides}
+
+On TOI-1452, the campaign at the ecliptic pole, the correction cut the velocity
+scatter by a third, from 99.97 to 68.45~m\,s$^{-1}$. It did so by removing
+astrophysics. The star is a known binary, and over these 126 nights its velocity
+traces 412~m\,s$^{-1}$ of smooth curvature, of which 226 remain after the
+correction: 45\% of a real signal is gone. What was removed is anti-correlated
+with the delivered velocity at $\rho = -0.85$ with a slope of $-0.35$, so the
+correction takes out a third of whatever the star does. Every measure of actual
+precision moved the other way: the scatter within a night from 9.03 to
+9.46~m\,s$^{-1}$, the error per exposure from 5.62 to 6.69.
+
+The mechanism is the degeneracy of Sect.~\ref{sec:span} in another guise. The
+model holds the star's spectrum fixed in the star's frame and carries it by the
+barycentric velocity alone; a star that moves 400~m\,s$^{-1}$ is not where the
+template says it is, the residual looks like the template's derivative, and with
+a barycentric span of 3~km\,s$^{-1}$ there is nothing to stop the observer block
+from absorbing it.
+
+GJ~328 is the same situation with the coverage the method needs, and it comes
+out the other way. Its companion, a 3771-day orbit of semi-amplitude
+42.6~m\,s$^{-1}$, shows as a 25.6~m\,s$^{-1}$ drift across the 851-night
+campaign; after the correction that drift is 24.97, and the amplitude fitted at
+the orbital period is unchanged within its error, 19.97$\,\pm\,$3.76 against
+19.56$\,\pm\,$4.17. What improves is the scatter \emph{within} a night, 2.92 to
+2.21~m\,s$^{-1}$, which no signal of months can reach.
+
+So the rms of a campaign is not the figure of merit when the star has a signal
+of its own. The drift, the amplitude at each known period, and the scatter
+within a night say what happened; the rms rewards removing the very thing the
+observations are for.
 
 \subsection{What does not explain it}
 
@@ -392,6 +473,15 @@ it takes below its delivered velocities.
 \item Blanking the samples a fit could not weight must be done with one set of
 lines for the whole campaign. Blanking each exposure's own costs
 1.8~m\,s$^{-1}$ with no correction applied at all.
+\item Whether a target can be corrected at all is fixed by its ecliptic
+latitude, since $|$BERV$| \le 29.78\cos\beta$~km\,s$^{-1}$. TOI-1452, at
+$+80.5^\circ$, can never span more than 9.8~km\,s$^{-1}$, and on it the
+correction removed 45\% of a real binary signal while the rms improved by a
+third.
+\item The rms is therefore not the figure of merit for a star that has a signal
+of its own. The drift, the amplitude at each known period and the scatter within
+a night are; on GJ~328 they show a companion's drift preserved to within its
+error and the within-night scatter improved by 24\%.
 \end{enumerate}
 
 \begin{thebibliography}{9}
