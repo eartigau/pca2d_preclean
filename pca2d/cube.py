@@ -430,7 +430,8 @@ def _build_tfits(config: dict, files: list[str], grid: np.ndarray,
             continue
 
         meta = dict(payload["meta"])
-        if inp["object"] is not None and not same_object(meta, inp["object"]):
+        if inp["object"] is not None and not same_object(
+                meta, inp.get("object_header") or inp["object"]):
             log("skipping %s (OBJECT=%s, not %s)"
                 % (meta["filename"], meta["object"], inp["object"]), "warn")
             continue
@@ -545,7 +546,8 @@ def _build_s1d(config: dict, files: list[str], grid: np.ndarray):
             log("skipping %s (%s)" % (os.path.basename(path), exc), "warn")
             continue
 
-        if inp["object"] is not None and not same_object(meta, inp["object"]):
+        if inp["object"] is not None and not same_object(
+                meta, inp.get("object_header") or inp["object"]):
             log("skipping %s (OBJECT=%s, not %s)"
                 % (meta["filename"], meta["object"], inp["object"]), "warn")
             continue

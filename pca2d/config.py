@@ -93,7 +93,15 @@ DEFAULTS = {
         "directory": "data",
         "pattern": "*t.fits",
         "max_files": None,           # None = all; small int for quick tests
-        "object": None,              # keep only this OBJECT (None = no filter)
+        "object": None,              # keep only this OBJECT (None = no filter).
+                                     # It is also the FOLDER: one run reads
+                                     # <directory>/<object>/.
+        # What to match in the headers, when the folder is not named as the
+        # observer typed the target. Barnard's star is `Gl699` in both
+        # pipelines' headers, and its two campaigns live here in GL699_SPIROU
+        # and GL699_NIRPS, since a run is one instrument and the two must not
+        # share a folder or an LBL object. None means the folder's own name.
+        "object_header": None,
         # "auto" (the default), True or False. Coadding a night is not a
         # modelling choice, it exists so the fit holds in memory, and fitting
         # the individual spectra is strictly more information. "auto" weighs
@@ -917,6 +925,11 @@ def cache_key(config: dict) -> str:
     # appeared in the dictionary. Only these two are treated this way: the older
     # entries are hashed exactly as before, including their Nones, so keys
     # computed by earlier versions still match.
+    # a name matched in the headers describes which files are read, so it is
+    # hashed when it is set; unset it describes nothing and must not re-key
+    # every cube already built
+    relevant["input"] = {k: v for k, v in relevant["input"].items()
+                         if not (k == "object_header" and v is None)}
     relevant["quality"] = {k: v for k, v in relevant["quality"].items()
                            if not (k in ("min_rjd", "max_rjd", "max_sky_ratio",
                                          "isolated_window", "nights")

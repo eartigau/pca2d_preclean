@@ -450,6 +450,20 @@ objects:
                                         # 851-day campaign covers 3.5 cycles of
                                         # c and a fifth of b, which shows up as
                                         # a 25 m/s drift rather than an orbit.
+  # Barnard's star, whose two campaigns cannot share a folder: a run is one
+  # instrument, and one LBL object name per data set. Both pipelines write
+  # OBJECT = Gl699, which is what the files are matched on.
+  GL699_SPIROU:
+    input:
+      object_header: Gl699
+    target:
+      planets: []                       # the 2024 candidate is contested; none
+                                        # is marked until it is settled
+  GL699_NIRPS:
+    input:
+      object_header: Gl699
+    target:
+      planets: []
   # GJ1 has no known planet, which is why it is the quiet reference here.
 
 # TOI2120 needs nothing here: APERO wrote OBJTEMP = 3179 K in its headers, and

@@ -1,0 +1,25 @@
+# The whole pipeline end to end on 40 spectra, in four minutes, so that a change
+# is proven on real files before a run that takes a night is started on it.
+#
+#   pca2d-preclean --object GL699_SPIROU --n-star 0 --variant smoke
+#
+# It builds a cube, fits it, draws the bundle, writes the corrected spectra and
+# stops before LBL. Two windows, one in J and one in K, so a SPIRou domain is
+# exercised at both ends. Its products land in outputs/_smoke/ and can be
+# deleted at any time.
+#
+# It found its first defect the day it was written: a folder named otherwise
+# than the headers say (GL699_SPIROU against OBJECT = Gl699) had every one of
+# its spectra skipped, and the run died with "every exposure was rejected".
+note: "the four-minute end-to-end check, on whatever object is named"
+input:
+  max_files: 40
+  nightly_stack: false
+output:
+  directory: outputs/_smoke
+  windows: ["1200.3:2", "2196.2:2"]
+twoframe:
+  iters: 3
+lbl:
+  prepare: false
+  run: false
