@@ -341,6 +341,38 @@ def report_correlations(rho, comps, labels, flag=0.7):
         log("    %-4s %-22s %+.2f" % (name, label, value))
 
 
+def rows_of(meta, fit):
+    """Which cube rows the FIT used, in the fit's own order, or None if all.
+
+    Shared by every figure that reads a cube and a fit together.
+
+    A fit records the file and the order parity of every row it kept. Deriving
+    them again from the cube instead, as this used to, ties a figure to whatever
+    the row selection happened to be when the fit was made: the day the
+    signal-to-noise cut became per object, every figure of every existing fit
+    died on a shape mismatch, because the cube now yielded rows the fit had never
+    seen. Aligning on what the fit says is immune to that.
+    """
+    import os
+
+    names = [os.path.basename(str(v)) for v in meta["filename"]]
+    parity = (np.asarray(meta["parity"], dtype=int)
+              if "parity" in getattr(meta, "colnames", []) else np.zeros(len(names), int))
+    where = {(n, int(p)): i for i, (n, p) in enumerate(zip(names, parity))}
+    want = [(os.path.basename(str(n)), int(p))
+            for n, p in zip(fit["filename"], fit["parity"])]
+    if len(want) == len(names) and all(where.get(k) == i
+                                       for i, k in enumerate(want)):
+        return None                       # already row for row, the usual case
+    missing = [k for k in want if k not in where]
+    if missing:
+        raise SystemExit("the fit has %d rows this cube does not hold, the first"
+                         " being %s: this fit was made from another cube"
+                         % (len(missing), missing[0]))
+    return np.array([where[k] for k in want], dtype=int)
+
+
+
 def raw_log_flux_window(cube_dir, source_dir, names, parities, grid, a0, b0):
     """ln(flux) before the high-pass, every cube row, on grid[a0:b0].
 

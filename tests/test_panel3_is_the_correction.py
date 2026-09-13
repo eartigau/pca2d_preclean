@@ -232,3 +232,36 @@ def test_a_joint_cube_gets_one_page_per_star_and_one_of_them_all():
     assert solo == [(None, "TOI2120")], "one object, one page, named"
     assert pages_for(None) == [(None, None)], "a cube without the column"
     assert pages_for(np.array(["", ""])) == [(None, None)]
+
+
+def test_a_figure_draws_the_rows_its_fit_used(fitted):
+    """The fit's own row list is the authority. Deriving the selection again
+    from the cube ties a figure to whatever the cut was the day the fit was
+    made: the day the signal-to-noise cut became per object, every figure of
+    every existing fit died on a shape mismatch."""
+    from astropy.table import Table
+
+    from pca2d.figures.sequence import rows_of
+    cube, out = fitted
+    fit = np.load(out / "fit.npz")
+    meta = Table.read(os.path.join(cube, "meta.fits"))
+
+    # the cube as it is, uncut: the fit kept a subset of it
+    select = rows_of(meta, fit)
+    n_fit = len(fit["filename"])
+    if select is None:
+        assert n_fit == len(meta), "None means row for row"
+    else:
+        assert len(select) == n_fit
+        names = [os.path.basename(str(v)) for v in meta["filename"]]
+        for i, j in enumerate(select):
+            assert names[j] == os.path.basename(str(fit["filename"][i]))
+            assert int(meta["parity"][j]) == int(fit["parity"][i])
+
+    # a fit whose rows the cube does not hold is refused, not drawn wrong
+    class Alien(dict):
+        files = ["filename", "parity"]
+    alien = Alien(filename=np.array(["nowhere.fits"]), parity=np.array([0]))
+    with pytest.raises(SystemExit) as caught:
+        rows_of(meta, alien)
+    assert "another cube" in str(caught.value)

@@ -40,7 +40,8 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 from pca2d.logger import log  # noqa: E402
 from pca2d.grids import parse_window, pixel_shift, window_block  # noqa: E402
-from pca2d.plotting import (live_mask, nan_cmap, raw_log_flux_window,  # noqa: E402
+from pca2d.plotting import (rows_of,  # noqa: F401
+                            live_mask, nan_cmap, raw_log_flux_window,  # noqa: E402
                             sample_source_file, window_parity)
 from pca2d.twoframe import (LanczosShifter, cube_grid, fit_means,  # noqa: E402
                             load_cube, mean_rows, row_parity, star_model,
@@ -109,7 +110,7 @@ def panel(ax, image, x, scale, title, cmap=None, unit="rows"):
 
 
 def window_arrays(cube, fit, means, group, grid, dv, delta, centre, width,
-                  templates=None, correct=None):
+                  templates=None, correct=None, select=None):
     """The panels of one window, on the grid block around it, in the star's frame.
 
     Everything one page needs, computed on window_block's columns alone: the
@@ -127,7 +128,10 @@ def window_arrays(cube, fit, means, group, grid, dv, delta, centre, width,
     if block is None:
         return None
     a0, b0 = block
-    g, data, w0, _ = load_cube(cube, columns=np.arange(a0, b0))
+    g, data, w0, _ = load_cube(cube, columns=np.arange(a0, b0),
+                               min_snr_frac=0.0)
+    if select is not None:
+        data, w0 = data[select], w0[select]
     n, m = data.shape
     shifter = LanczosShifter(m, a=8, max_shift=int(np.ceil(np.abs(delta).max())) + 2)
     offset = mean_rows(means[:, a0:b0], group, n)
@@ -235,14 +239,22 @@ def load_context(cube, fit_path, source_dir=None, shrink=False, shrink_smooth=Fa
                    "mask": str(mask or "exposure")}
     grid = cube_grid(cube)
     # the rows and their metadata; one column is the cheapest way to get them
-    _, _, _, meta = load_cube(cube, columns=np.arange(1))
+    # NO cut here: the fit's own row list decides what is drawn. Re-deriving the
+    # selection ties a figure to whatever the cut was the day the fit was made,
+    # and the day it changed every existing fit stopped being drawable.
+    _, _, _, meta = load_cube(cube, columns=np.arange(1), min_snr_frac=0.0)
+    select = rows_of(meta, fit)
+    if select is not None:
+        log("  keeping the %d rows the fit used, of the cube's %d"
+            % (len(select), len(meta)))
+        meta = meta[select]
     n = len(meta)
     means, group = fit_means(fit, meta, n, grid.size)
     return {"cube": cube, "fit": fit, "dv": dv, "grid": grid,
             "delta": -pixel_shift(np.asarray(fit["berv"], dtype=float), dv),
             "parity": row_parity(meta, n),
             "berv": np.asarray(meta["berv"], dtype=float),
-            "means": means, "group": group,
+            "means": means, "group": group, "select": select,
             "templates": fit_templates(fit, meta, n, grid.size),
             "names": [os.path.basename(str(v)) for v in meta["filename"]],
             "objects": (np.asarray([str(v) for v in meta["object"]])
@@ -289,7 +301,7 @@ def draw_window(ctx, centre, width, n_overplot=5, only=None, label=None):
     lo, hi = centre - 0.5 * width, centre + 0.5 * width
     arrays = window_arrays(ctx["cube"], fit, ctx["means"], ctx["group"], grid, dv,
                            delta, centre, width, templates=ctx["templates"],
-                           correct=ctx.get("correct"))
+                           correct=ctx.get("correct"), select=ctx.get("select"))
     if arrays is None:
         log("  %.1f-%.1f nm: outside the grid, skipped" % (lo, hi), "warn")
         return None
@@ -306,8 +318,11 @@ def draw_window(ctx, centre, width, n_overplot=5, only=None, label=None):
     # Where two orders reach this window, keep the one whose middle it
     # sits nearest: the other measures the same wavelengths at an order
     # edge, where the blaze has fallen away.
-    if own is not None and ncov > 1 and (keep & (parity == own)).sum() >= 6:
-        keep &= parity == own
+    # parity % 2, not parity: a joint cube labels its rows 2 * object + parity,
+    # so comparing the label itself to an ORDER parity of 0 or 1 kept the first
+    # object alone and left every other object's page with no row to draw
+    if own is not None and ncov > 1 and (keep & (parity % 2 == own)).sum() >= 6:
+        keep &= parity % 2 == own
         log("  %.1f-%.1f nm: two orders reach it, drawing the one"
               " %.2f of a half-width from its centre" % (lo, hi, off))
     if only is not None:

@@ -31,6 +31,7 @@ import numpy as np
 
 from pca2d.grids import pixel_shift
 from pca2d.logger import log
+from pca2d.plotting import rows_of
 from pca2d.twoframe import LanczosShifter, load_cube
 
 
@@ -61,8 +62,14 @@ def binned(grid, values, step, how="sum"):
 
 def main(argv=None):
     args = parse_args(argv)
-    grid, data, w, meta = load_cube(args.cube)
+    # the cube whole, then the rows the FIT used: its own list is the authority,
+    # and re-deriving the selection ties the figure to whatever the
+    # signal-to-noise cut was the day the fit was made
+    grid, data, w, meta = load_cube(args.cube, min_snr_frac=0.0)
     fit = np.load(args.fit)
+    select = rows_of(meta, fit)
+    if select is not None:
+        data, w, meta = data[select], w[select], meta[select]
     P, Q, a, b = fit["P"], fit["Q"], fit["a"], fit["b"]
     dv = float(fit["dv"])
     delta = -pixel_shift(np.asarray(fit["berv"], dtype=float), dv)
@@ -70,14 +77,18 @@ def main(argv=None):
                              max_shift=int(np.ceil(np.abs(delta).max())) + 2)
 
     # weighted power each block puts on each column, which is what decides
-    # what the components describe
-    prepared = shifter.prepare(P)
+    # what the components describe. With NO star component, which is the
+    # nominal, there is no star block to weigh: the einsum was then asked to
+    # contract a zero-length axis and refused, so every run at n_star 0 lost
+    # this page (2026-09-13).
     star = np.zeros(data.shape[1])
-    for start in range(0, data.shape[0], 32):
-        stop = min(start + 32, data.shape[0])
-        carried = shifter.carry(prepared, delta[start:stop])
-        star += np.einsum("nm,nkm->m", w[start:stop],
-                          (a[start:stop, :, None] * carried) ** 2)
+    if P.ndim == 2 and P.shape[0]:
+        prepared = shifter.prepare(P)
+        for start in range(0, data.shape[0], 32):
+            stop = min(start + 32, data.shape[0])
+            carried = shifter.carry(prepared, delta[start:stop])
+            star += np.einsum("nm,nkm->m", w[start:stop],
+                              (a[start:stop, :, None] * carried) ** 2)
     earth = np.einsum("nm,nm->m", w, (b @ Q) ** 2)
 
     x, wt = binned(grid, w.sum(axis=0), args.bin)
