@@ -135,14 +135,28 @@ pose, de 0,97 à 1,67 m/s. ☑ adopté
 **Le masque commun** (`correct.mask: common`). Un jeu de raies par campagne et non
 par époque : sur TOI-4552 le masque par pose coûtait à lui seul 1,8 m/s. ☑ adopté
 
-**Le fit conjoint exige des nuits partagées, pas des SNR semblables.** Mesuré sur
-PROXIMA+GJ1+GJ3090 : 2 nuits communes aux trois, sur des campagnes de 258, 147 et
-99 nuits. PROXIMA y gagne (2,91 / 2,42 contre 3,04 / 2,52 en solo) parce qu'il
-pèse 773 des 1453 lignes et que la base partagée est la sienne, simplement
-empêchée de le suivre ; **GJ 1 y perd ce que son solo avait gagné** (3,04 / 2,85
-contre 2,61 / 2,38). L'expérience qui tranche est écrite en deux variantes,
-`nightsshared` (les 47 nuits que GJ 1 et GJ 3090 partagent) et `sameseason` (la
-même période, pas les mêmes nuits), non lancées. ☐
+**Le fit conjoint : mes deux critères étaient faux, corrigés par vous le 13.**
+J'avais conclu de PROXIMA+GJ1+GJ3090 (2 nuits communes aux trois, sur 258, 147 et
+99) qu'il fallait des nuits partagées, puis des SNR semblables. Ni l'un ni
+l'autre :
+
+- **peu de nuits communes est un avantage.** Les composantes observateur sont un
+  parasite toujours présent ; ce qu'on mesure est son *motif*, et des nuits
+  qu'aucune autre étoile n'a vues élargissent la gamme de conditions sur laquelle
+  il est déterminé.
+- **la pondération entre étoiles est correcte.** Les poids sont `1/σ²`, absolus :
+  une pose de PROXIMA à SNR 286 pèse ≈ 3,9 fois une pose de GJ 3090 à 145, et
+  c'est ce qu'il faut, elle porte autant plus d'information sur le motif.
+
+Ce qui *devait* être par étoile, et ne l'était pas, c'est la **coupe relative en
+SNR** (sous la moitié de la médiane), faite pour écarter les mauvaises nuits d'une
+campagne : sur le cube conjoint elle lisait « sous la moitié de la médiane des
+plus brillantes » et GJ 3090 perdait 56 de ses 198 lignes. Corrigé le 13.
+
+Les vitesses conjointes du 12 (PROXIMA 2,91/2,42 ; **GJ 1 3,04/2,85 contre
+2,61/2,38 en solo** ; GJ 3090 8,83/8,11) ont donc été mesurées sur un ajustement
+amputé d'un quart de GJ 3090 et sur des spectres blanchis par le masque croisé
+entre objets. **Elles ne décident de rien**, le passage est à refaire. ☐
 
 ### Options ajoutées le 12 septembre
 
