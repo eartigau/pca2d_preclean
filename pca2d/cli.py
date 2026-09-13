@@ -163,9 +163,17 @@ def run_tag(config):
 
 def without_object(config):
     """The config with the object taken out, so two objects built the same way
-    give the same cube key."""
+    give the same cube key.
+
+    BOTH names of it: the folder and the name matched in the headers. They say
+    which object a cube is of, never how it is built, so a target whose folder
+    is named otherwise than its headers (GL699_SPIROU for OBJECT = Gl699) is
+    built the same way as one whose folder is not. Left in, it gave that target
+    a different shared key and a joint run refused the whole set.
+    """
     other = copy.deepcopy(config)
     other["input"]["object"] = ""
+    other["input"]["object_header"] = None
     return other
 
 

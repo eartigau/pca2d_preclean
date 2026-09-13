@@ -78,6 +78,12 @@ UNREAD = "…"
 #: the selection still read over them.
 INSTRUMENT_TINT = {"NIRPS": "#eaf3ff", "SPIROU": "#fff1e6"}
 OTHER_TINTS = ("#eefaf0", "#f6eeff", "#fdf6e3", "#f0f0f0")
+#: one per STAR, for the bars of the coverage histogram. Not per instrument: a
+#: pool of four NIRPS campaigns stacked in one blue says nothing about which
+#: star fills which bin, which is the whole reason for stacking them. A
+#: colour-blind safe categorical palette, and it survives being printed.
+STAR_COLOURS = ("#0072b2", "#d55e00", "#009e73", "#cc79a7", "#56b4e9",
+                "#e69f00", "#332288", "#882255")
 
 EN = {
     "subtitle": "two-frame precleaning, then LBL. Pick a data root, pick"
@@ -1537,10 +1543,23 @@ class App:
                 h = (top - pad) * c[i] / tallest
                 canvas.create_rectangle(x0, bottom - h, x0 + max(step - 1, 1),
                                         bottom,
-                                        fill=self._tint_colour(name),
+                                        fill=self._star_colour(name),
                                         outline="")
                 bottom -= h
         canvas.create_line(pad, top, width - pad, top, fill="#bbb")
+        # a legend, or the colours say nothing: one square and one name per star,
+        # in the order they are stacked
+        x = pad + 2
+        for name in names:
+            if name not in counts:
+                continue
+            canvas.create_rectangle(x, pad, x + 8, pad + 8,
+                                    fill=self._star_colour(name), outline="")
+            label = canvas.create_text(x + 11, pad + 4, text=name, anchor="w",
+                                       fill="#444", font=("Helvetica", 8))
+            x = canvas.bbox(label)[2] + 10
+            if x > width - 60:
+                break
         for value in (edges[0], 0.0, edges[-1]):
             if not edges[0] <= value <= edges[-1]:
                 continue
@@ -1552,7 +1571,9 @@ class App:
         # said while the scan is still reading, since the histogram is then
         # drawn from part of the campaign and would otherwise look final
         if self._berv_partial(names):
-            canvas.create_text(width // 2, pad + 8, text=self.t("berv_building"),
+            # below the legend, never over it
+            canvas.create_text(width // 2, pad + 24,
+                               text=self.t("berv_building"),
                                fill="#b26a00", font=("Helvetica", 10, "bold"))
         possible = summary.get("possible")
         self.berv_note.configure(
@@ -1573,13 +1594,18 @@ class App:
                 return True
         return False
 
-    def _tint_colour(self, name):
-        """The colour this object's row has, so the bars match the list."""
-        instrument = (self.rows.get(name) or {}).get("instrument") or "?"
-        tag = self._tint(instrument)
-        base = getattr(self, "_tints", {}).get(tag, "#cccccc")
-        # the row tint is pale by design; the bars want the same hue, darker
-        return {"#eaf3ff": "#0072b2", "#fff1e6": "#d55e00"}.get(base, "#009e73")
+    def _star_colour(self, name):
+        """One colour per STAR, stable for as long as the window is open.
+
+        Not per instrument: a pool of four NIRPS campaigns stacked in one blue
+        shows nothing about which star fills which bin, and which star fills
+        which bin is the whole reason for stacking them.
+        """
+        self._star_colours = getattr(self, "_star_colours", {})
+        if name not in self._star_colours:
+            self._star_colours[name] = STAR_COLOURS[len(self._star_colours)
+                                                    % len(STAR_COLOURS)]
+        return self._star_colours[name]
 
     def _tint(self, instrument):
         """The row colour of an instrument, made once and kept.

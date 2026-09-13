@@ -44,3 +44,19 @@ def test_an_unset_header_name_does_not_re_key_every_cube():
     config["input"]["object_header"] = "Proxima"
     assert cache_key(config) != "13269e89fc73", \
         "but a value describes which files are read, so it is hashed"
+
+
+def test_the_header_name_is_part_of_the_object_and_not_of_the_build():
+    """A joint run demands that its objects be built the same way, comparing
+    their keys with the object taken out. Both NAMES of the object have to come
+    out: left in, GL699_NIRPS had a different shared key and the four-object run
+    would have refused the whole set."""
+    from pca2d.cli import without_object
+
+    keys = {}
+    for name in ("PROXIMA", "GJ1", "GJ3090", "GL699_NIRPS"):
+        config = load_config("config.yaml", object_name=name, instrument="NIRPS")
+        keys[name] = cache_key(without_object(config))
+    assert len(set(keys.values())) == 1, keys
+    assert keys["GL699_NIRPS"] == keys["PROXIMA"], \
+        "a folder named otherwise than its headers is built like any other"
