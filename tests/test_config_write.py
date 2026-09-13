@@ -60,6 +60,23 @@ def test_a_key_that_is_not_there_is_added_under_its_section(tmp_path):
     assert yaml.safe_load(open(path))["general"]["twoframe"]["star_smooth"] == 7
 
 
+def test_a_value_that_would_not_read_back_leaves_the_file_alone(tmp_path):
+    """A line can be written and still be ignored: a key that appears twice in
+    its section is resolved by the last one. Written, read back, compared."""
+    path = str(tmp_path / "config.yaml")
+    lines = open(CONFIG).read().split("\n")
+    head = next(i for i, line in enumerate(lines)
+                if line.strip().startswith("mask:"))
+    indent = len(lines[head]) - len(lines[head].lstrip())
+    lines.insert(head + 1, "%smask: none   # a second one, which wins" % (" " * indent))
+    open(path, "w").write("\n".join(lines))
+    before = open(path).read()
+    with pytest.raises(SystemExit) as caught:
+        config.update_file(path, {"correct.mask": "exposure"})
+    assert "reads back as" in str(caught.value)
+    assert open(path).read() == before, "nothing written when it would not hold"
+
+
 def test_a_section_that_is_not_there_is_refused_rather_than_guessed(tmp_path):
     path = str(tmp_path / "config.yaml")
     shutil.copy(CONFIG, path)

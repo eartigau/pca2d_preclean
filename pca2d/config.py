@@ -849,8 +849,24 @@ def update_file(path, values):
                 text = "%s%s# %s" % (text, " " * pad, comment[1].strip())
             lines[at] = text
         written.append(name)
+    body = "\n".join(lines)
+
+    # Read back what was written and check that YAML agrees, BEFORE replacing
+    # the file. A line can be written and still not be read: a key that appears
+    # twice in its section is resolved by the last one, an indentation that does
+    # not match its block belongs to another key, and either way the value would
+    # be accepted here and ignored by every run afterwards. This is somebody's
+    # configuration, so it is verified rather than assumed.
+    check = yaml.safe_load(body) or {}
+    general = check.get("general") or {}
+    for name, value in (values or {}).items():
+        section, key = name.split(".")
+        got = (general.get(section) or {}).get(key)
+        if got != value and not (isinstance(got, float) and got == value):
+            raise SystemExit("%s: wrote %s: %r but it reads back as %r, so the"
+                             " file was left as it was" % (path, name, value, got))
     with open(path, "w") as handle:
-        handle.write("\n".join(lines))
+        handle.write(body)
     return written
 
 
