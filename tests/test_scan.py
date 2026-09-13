@@ -378,3 +378,41 @@ def test_a_row_keeps_what_it_knew_while_a_new_field_is_read(tmp_path):
         assert files == 30, "and the count never drops either"
     assert all("ecl_lat" in f
                for f in index["objects"]["PROXIMA"]["files"].values())
+
+
+def test_every_campaign_gets_its_estimate_in_the_first_round(tmp_path):
+    """Ten files of each, then ten more of each, rather than one campaign from
+    end to end: with a dozen of them the last used to wait for the eleven
+    before it."""
+    root = root_with(tmp_path, ALPHA=25, BETA=25, GAMMA=25)
+    seen = []
+    scan.update(root, home=str(tmp_path / "home"), every=10,
+                on_object=lambda n, k, t: seen.append((n, k)))
+
+    # the first time each object is announced with something read
+    first = {}
+    for name, known in seen:
+        if known and name not in first:
+            first[name] = seen.index((name, known))
+    order = [name for name, _k in seen[:3]]
+    assert set(order) == {"ALPHA", "BETA", "GAMMA"}, \
+        "all three are heard from before any of them is finished"
+
+    # nobody reaches 25 before everybody has reached 10
+    reached = {}
+    for i, (name, known) in enumerate(seen):
+        if known >= 25 and name not in reached:
+            reached[name] = i
+    ten = max(i for i, (_n, k) in enumerate(seen) if k == 10)
+    assert min(reached.values()) > ten, \
+        "no campaign is finished while another has not had its first ten"
+
+
+def test_the_rounds_read_every_file_exactly_once(tmp_path):
+    root = root_with(tmp_path, ALPHA=13, BETA=7)
+    index, tally = scan.update(root, home=str(tmp_path / "home"), every=5)
+    assert tally["read"] == 20
+    assert scan.summary(index, "ALPHA")["files"] == 13
+    assert scan.summary(index, "BETA")["files"] == 7
+    index, tally = scan.update(root, index=index, home=str(tmp_path / "home"))
+    assert (tally["read"], tally["kept"]) == (0, 20), "and not once more"

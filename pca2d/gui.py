@@ -23,6 +23,7 @@ import json
 import os
 import queue
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -175,6 +176,14 @@ EN = {
     "log_saved_log": "log written: %s",
     "log_no_outputs": "nothing written there yet: %s",
     "log_failed": "could not start it: %s",
+    "log_no_command": "nothing was installed, so there is nothing to run",
+    "log_installing": "installing the command into this environment, from %s",
+    "no_command_title": "the command is not installed",
+    "no_command":
+        "pca2d-preclean cannot be found for\n\n  %s\n\nInstall it now from"
+        " %s?\n\nThat runs `pip install -e . --no-deps` there, which puts the"
+        " command in this interpreter's own bin and touches nothing else.",
+    "no_command_still": "still not found after installing",
     "opt_n_star": "star components", "opt_n_earth": "observer components",
     "opt_mean": "static part", "opt_star_basis": "star basis",
     "opt_velocity_term": "fit a velocity per exposure",
@@ -497,6 +506,15 @@ FR = {
     "log_saved_log": "journal écrit : %s",
     "log_no_outputs": "rien n'y est encore écrit : %s",
     "log_failed": "impossible de le lancer : %s",
+    "log_no_command": "rien n'a été installé, il n'y a donc rien à lancer",
+    "log_installing": "installation de la commande dans cet environnement, depuis %s",
+    "no_command_title": "la commande n'est pas installée",
+    "no_command":
+        "pca2d-preclean est introuvable pour\n\n  %s\n\nL'installer"
+        " maintenant depuis %s ?\n\nCela lance `pip install -e . --no-deps`"
+        " là-bas, ce qui place la commande dans le bin de cet interpréteur et"
+        " ne touche à rien d'autre.",
+    "no_command_still": "toujours introuvable après l'installation",
     "opt_n_star": "composantes stellaires",
     "opt_n_earth": "composantes observateur",
     "opt_mean": "partie statique", "opt_star_basis": "base stellaire",
@@ -810,6 +828,30 @@ def corrected_dir(data_root):
     if name.lower() == "corrected":
         return full
     return os.path.join(parent or os.sep, "corrected")
+
+
+def preclean_argv():
+    """How to run `pca2d-preclean` from HERE, or None if it cannot be found.
+
+    Beside the interpreter first: the window is started by the entry point
+    installed in an environment's bin, and its sibling is the command, whatever
+    PATH the window inherited. A window started from another shell had none
+    ("No such file or directory: 'pca2d-preclean'", 2026-09-13) although the
+    command was installed all along. Then PATH, then the module, which works
+    wherever the package imports.
+    """
+    beside = os.path.join(os.path.dirname(os.path.abspath(sys.executable)),
+                          "pca2d-preclean")
+    if os.path.exists(beside) and os.access(beside, os.X_OK):
+        return [beside]
+    found = shutil.which("pca2d-preclean")
+    if found:
+        return [found]
+    try:
+        import pca2d.cli                                        # noqa: F401
+    except Exception:                                           # noqa: BLE001
+        return None
+    return [sys.executable, "-m", "pca2d.cli"]
 
 
 def instruments_of(rows, names):
@@ -1137,6 +1179,12 @@ class App:
                                 command=lambda k=key: self._browse(k))
             browse.grid(row=i + 1, column=2)
             self._register(browse, "browse")
+        # the instruments this data root holds, as badges in the colours the
+        # rows carry: the header says at a glance what is in there, and the
+        # tints stop being arbitrary
+        self.badges = self.tk.Canvas(frame, height=26, width=250,
+                                     background=BG, highlightthickness=0)
+        self.badges.grid(row=0, column=2, sticky="e", padx=(0, 6))
         rescan = ttk.Button(frame, text=self.t("rescan"),
                             command=self.refresh_objects)
         rescan.grid(row=1, column=3, padx=4)
@@ -1475,7 +1523,7 @@ class App:
         box = ttk.Labelframe(parent, text=self.t("output"))
         box.pack(fill="both", expand=True, padx=14, pady=(4, 12))
         self._register(box, "output")
-        self.log = tk.Text(box, wrap="none", font=self.fonts["mono"],
+        self.log = tk.Text(box, wrap="word", font=self.fonts["mono"],
                            background=LOG_BG, foreground=LOG_INK,
                            insertbackground=LOG_INK, relief="flat",
                            padx=8, pady=6, highlightthickness=0)
@@ -1483,9 +1531,17 @@ class App:
         self.log.configure(yscrollcommand=bar.set)
         bar.pack(side="right", fill="y")
         self.log.pack(fill="both", expand=True, padx=6, pady=6)
+        # A long line wraps instead of being cut off, and its continuation is
+        # indented to where the message starts, under `| `, so the stamps stay a
+        # column of their own and a wrapped sentence still reads as one event.
+        # lmargin2 is exactly that: the indent of every line of a paragraph but
+        # the first.
+        import tkinter.font as tkfont
+        indent = tkfont.Font(font=self.fonts["mono"]).measure(
+            "%s | " % stamp())
         for _code, (name, colour) in LEVELS.items():
-            self.log.tag_configure(name, foreground=colour)
-        self.log.tag_configure("plain", foreground=LOG_INK)
+            self.log.tag_configure(name, foreground=colour, lmargin2=indent)
+        self.log.tag_configure("plain", foreground=LOG_INK, lmargin2=indent)
         self._tip(self.log, "help_log")
 
     # ---- state --------------------------------------------------------
@@ -1582,6 +1638,7 @@ class App:
         self.checked &= set(self.names.values())
         self.count.configure(text="%d / %d" % (len(self.picked()),
                                                len(self.names)))
+        self._draw_badges()
         self._sync()
 
     def _draw_berv(self):
@@ -1683,6 +1740,31 @@ class App:
             self._star_colours[name] = STAR_COLOURS[len(self._star_colours)
                                                     % len(STAR_COLOURS)]
         return self._star_colours[name]
+
+    def _draw_badges(self):
+        """One badge per instrument in the data root, count included."""
+        canvas = getattr(self, "badges", None)
+        if canvas is None:
+            return
+        canvas.delete("all")
+        counts = {}
+        for row in self.rows.values():
+            name = row.get("instrument")
+            if name and name != "?":
+                counts[name] = counts.get(name, 0) + 1
+        x = 0
+        for name in sorted(counts):
+            label = "%s %d" % (name, counts[name])
+            width = 13 + 7.2 * len(label)
+            fill = INSTRUMENT_TINT.get(name.upper(), "#e8ecf2")
+            edge = {"NIRPS": "#0072b2", "SPIROU": "#d55e00"}.get(name.upper(),
+                                                                MUTED)
+            canvas.create_rectangle(x, 4, x + width, 23, fill=fill,
+                                    outline=edge, width=1)
+            canvas.create_text(x + width / 2, 13.5, text=label, fill=edge,
+                               font=(self.fonts["body"][0], 10, "bold"))
+            x += width + 7
+        canvas.configure(width=max(int(x), 10))
 
     def _tint(self, instrument):
         """The row colour of an instrument, made once and kept.
@@ -1847,7 +1929,17 @@ class App:
                                                     ", ".join(sorted(instruments))))
             return
         argv = build_command(state)
+        # shown as `pca2d-preclean ...`, since that is what to paste into a
+        # terminal, but RUN through whatever path actually holds it here
+        found = preclean_argv()
+        if found is None and not self._offer_install():
+            return
+        found = found or preclean_argv()
+        if found is None:
+            self._say("log_failed", self.t("no_command_still"), level="error")
+            return
         self._say("log_command", " ".join(argv), level="value")
+        argv = found + argv[1:]
         env = dict(os.environ, PCA2D_COLOUR="1", PYTHONUNBUFFERED="1")
         try:
             self.proc = subprocess.Popen(
@@ -1863,6 +1955,35 @@ class App:
         self.stop_button.configure(state="normal")
         self.status.configure(text=self.t("running"))
         threading.Thread(target=self._reader, daemon=True).start()
+
+    def _offer_install(self):
+        """Offer to install the command when it cannot be found at all.
+
+        `pip install -e .` in the folder holding the configuration, which is the
+        repository: it puts the entry point in this interpreter's own bin, where
+        preclean_argv looks first. Asked, never done behind anyone's back.
+        """
+        from tkinter import messagebox
+        here = os.path.dirname(os.path.abspath(self.vars["config"].get()))
+        if not messagebox.askyesno(self.t("no_command_title"),
+                                   self.t("no_command") % (sys.executable, here)):
+            self._say("log_no_command", level="error")
+            return False
+        self._say("log_installing", here, level="value")
+        try:
+            done = subprocess.run([sys.executable, "-m", "pip", "install", "-e",
+                                   ".", "--no-deps"], cwd=here,
+                                  capture_output=True, text=True, timeout=600)
+        except Exception as exc:                                # noqa: BLE001
+            self._say("log_failed", exc, level="error")
+            return False
+        for line in (done.stdout or "").splitlines()[-3:]:
+            self._write("   %s\n" % line, "plain")
+        if done.returncode:
+            self._say("log_failed", (done.stderr or "").strip()[-200:],
+                      level="error")
+            return False
+        return True
 
     def _reader(self):
         for line in self.proc.stdout:

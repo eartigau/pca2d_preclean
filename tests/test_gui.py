@@ -262,3 +262,30 @@ def test_what_is_not_known_sorts_last_either_way():
         for reverse in (False, True):
             assert order(window_with(column, reverse), rows)[-1] == \
                 "GL699_SPIROU", (column, reverse)
+
+
+def test_the_command_is_found_beside_the_interpreter_that_runs_the_window():
+    """The window is started by an entry point in an environment's bin, and its
+    sibling is the command, whatever PATH the window inherited. Started from
+    another shell it reported "No such file or directory: 'pca2d-preclean'"
+    although the command was installed all along."""
+    import os
+    import sys
+
+    from pca2d.gui import preclean_argv
+
+    argv = preclean_argv()
+    assert argv, "this environment has the package, so something must work"
+    if len(argv) == 1:
+        assert os.path.isabs(argv[0]) and os.access(argv[0], os.X_OK)
+    else:
+        assert argv[:2] == [sys.executable, "-m"], argv
+        assert argv[2] == "pca2d.cli"
+
+
+def test_the_shown_command_stays_the_one_to_paste_in_a_terminal():
+    """What is run may be an absolute path or `python -m`; what is SHOWN is
+    the plain command, since that is what somebody copies elsewhere."""
+    from pca2d.gui import build_command
+    argv = build_command({"objects": ["GL699_SPIROU"], "n_star": 0})
+    assert argv[0] == "pca2d-preclean"

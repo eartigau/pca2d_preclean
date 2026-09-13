@@ -291,6 +291,9 @@ def update(root, index=None, pattern="*t.fits", objects=None, on_file=None,
     for name in list(table):
         if name not in found and (objects is None or name in objects):
             del table[name]
+    # What each object needs read, before any of it is read: the rows can then
+    # show what is already known, all of them at once.
+    plans = {}
     for name, files in found.items():
         if objects is not None and name not in objects:
             continue
@@ -318,37 +321,52 @@ def update(root, index=None, pattern="*t.fits", objects=None, on_file=None,
                 if isinstance(old, dict) and old.get("stamp") == stamp:
                     fresh[filename] = old
                 todo.append((filename, path, stamp))
-        # what the row can already show, before this object's first read
+        tally["gone"] += len([f for f in cached if f not in fresh])
+        # what the row can already show, before a single file of it is read
         entry["files"] = fresh
         if on_object is not None and fresh:
             on_object(name, len(fresh), len(files))
-        # read in a comb, so the numbers shown after ten files describe the
-        # campaign and not its first night
-        for i, (filename, path, stamp) in enumerate(spread(todo, every or 10)):
-            try:
-                record = scan_file(path)
-            except Exception:                                     # noqa: BLE001
-                # a file that cannot be read is recorded as unreadable rather
-                # than re-read at every visit, and its fields stay empty
-                record = {"instrument": "?", "snr": None, "exptime": None,
-                          "mjd": None, "mag": None, "mag_band": None,
-                          "berv": None, "unreadable": True}
-            record["stamp"] = stamp
-            fresh[filename] = record
-            tally["read"] += 1
-            if on_file is not None:
-                on_file(name, i + 1, len(todo))
-            # the numbers so far, every `every` files: ten spectra of a campaign
-            # already give its signal-to-noise and its exposure time to the
-            # precision anybody chooses a target with
-            if on_object is not None and every and (i + 1) % every == 0:
-                entry["files"] = fresh
-                on_object(name, len(fresh), len(files))
-        tally["gone"] += len([f for f in cached if f not in fresh])
-        entry["files"] = fresh
-        entry["scanned"] = datetime.datetime.now().isoformat(timespec="seconds")
-        if on_object is not None:
-            on_object(name, len(fresh), len(files))
+        plans[name] = {"entry": entry, "fresh": fresh, "total": len(files),
+                       # read in a comb, so the numbers shown after ten files
+                       # describe the campaign and not its first night
+                       "todo": spread(todo, every or 10), "done": 0,
+                       # fixed here: counting what REMAINS would shrink the
+                       # total as the batch is consumed
+                       "to_read": len(todo)}
+
+    # A ROUND at a time, `every` files of each object, rather than one object
+    # from end to end. With a dozen campaigns the last of them used to wait for
+    # the eleven before it; now every row carries an estimate within the first
+    # round, and they all sharpen together (the user, 2026-09-13: "ça permet de
+    # voir où on va avant de finir la première").
+    step = max(1, int(every or 10))
+    while any(plan["todo"] for plan in plans.values()):
+        for name, plan in plans.items():
+            batch, plan["todo"] = plan["todo"][:step], plan["todo"][step:]
+            if not batch:
+                continue
+            for filename, path, stamp in batch:
+                try:
+                    record = scan_file(path)
+                except Exception:                                 # noqa: BLE001
+                    # a file that cannot be read is recorded as unreadable
+                    # rather than re-read at every visit, fields left empty
+                    record = {"instrument": "?", "snr": None, "exptime": None,
+                              "mjd": None, "mag": None, "mag_band": None,
+                              "berv": None, "ecl_lat": None, "unreadable": True}
+                record["stamp"] = stamp
+                plan["fresh"][filename] = record
+                plan["done"] += 1
+                tally["read"] += 1
+                if on_file is not None:
+                    on_file(name, plan["done"], plan["to_read"])
+            plan["entry"]["files"] = plan["fresh"]
+            if on_object is not None:
+                on_object(name, len(plan["fresh"]), plan["total"])
+
+    for name, plan in plans.items():
+        plan["entry"]["scanned"] = datetime.datetime.now().isoformat(
+            timespec="seconds")
     return index, tally
 
 
