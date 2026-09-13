@@ -166,3 +166,44 @@ def test_the_output_is_proposed_beside_the_data():
     assert corrected_dir("/Volumes/irrisor/corrected") == \
         "/Volumes/irrisor/corrected", "not nested inside itself"
     assert corrected_dir("") == ""
+
+
+def test_an_instrument_not_read_yet_is_not_painted_as_a_third_one():
+    """A tint says "this instrument". A row whose instrument the scan has not
+    reached must not look like a third one, and it did: the fallback palette
+    painted it the pale yellow this project keeps for a missing sample."""
+    from pca2d.gui import App, INSTRUMENT_TINT, UNREAD
+
+    window = App.__new__(App)
+    window._tints = {}
+
+    class Tree:
+        def __init__(self):
+            self.tags = {}
+
+        def tag_configure(self, tag, background):
+            self.tags[tag] = background
+
+    window.tree = Tree()
+    assert window._tint("NIRPS") == "inst_NIRPS"
+    assert window.tree.tags["inst_NIRPS"] == INSTRUMENT_TINT["NIRPS"]
+    assert window._tint("?") == "", "unknown gets no tag at all"
+    assert window._tint(UNREAD) == "" and window._tint("") == ""
+    assert len(window.tree.tags) == 1, "and no colour was invented for it"
+
+
+def test_the_column_says_not_read_yet_rather_than_unknown():
+    from pca2d.gui import App, UNREAD
+
+    values = App._values(App.__new__(App),
+                         {"files": 500, "snr": None, "exptime": None,
+                          "mag": None, "instrument": None}, approximate=True)
+    assert values[-1] == UNREAD, "the scan has not got there"
+    read = App._values(App.__new__(App),
+                       {"files": 3, "snr": 100.0, "exptime": 60.0,
+                        "mag": None, "instrument": "?"})
+    assert read[-1] == "?", "read, and it declared nothing"
+    known = App._values(App.__new__(App),
+                        {"files": 3, "snr": 100.0, "exptime": 60.0,
+                         "mag": None, "instrument": "SPIROU"})
+    assert known[-1] == "SPIROU"

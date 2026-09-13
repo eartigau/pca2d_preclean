@@ -70,6 +70,8 @@ OPTIONS_LBL = [
 ALL_OPTIONS = OPTIONS + OPTIONS_LBL
 #: a target is run or not run, and the list says which with a box
 CHECKED, UNCHECKED = "☑", "☐"
+#: shown where an instrument is not known YET, as against not known at all
+UNREAD = "…"
 #: one tint per instrument, on the row's background. A joint fit is one
 #: instrument, so which instrument a target belongs to is the first thing the
 #: list has to make obvious; the colours are pale enough that the ticked box and
@@ -1397,8 +1399,9 @@ class App:
         a glance. Instruments whose box is unticked are not drawn at all.
         """
         self.rows = {row["object"]: row for row in rows}
-        self._instrument_boxes(sorted({r.get("instrument") or "?"
-                                       for r in rows}))
+        self._instrument_boxes(sorted({r.get("instrument") for r in rows
+                                       if r.get("instrument")
+                                       and r.get("instrument") != "?"}))
         shown = [r for r in rows if self._instrument_on(r.get("instrument"))]
         shown.sort(key=lambda r: ((r.get("instrument") or "?").lower(),
                                   r["object"].lower()))
@@ -1498,10 +1501,19 @@ class App:
         return {"#eaf3ff": "#0072b2", "#fff1e6": "#d55e00"}.get(base, "#009e73")
 
     def _tint(self, instrument):
-        """The row colour of an instrument, made once and kept."""
+        """The row colour of an instrument, made once and kept.
+
+        An instrument not read yet gets NO colour: a tint says "this
+        instrument", and a row whose instrument is still unknown must not be
+        painted as though it were a third one. It was, in the pale yellow of the
+        fallback palette, which in this project is the colour of a missing
+        sample (2026-09-13).
+        """
+        self._tints = getattr(self, "_tints", {})
+        if not instrument or instrument in ("?", UNREAD):
+            return ""
         tag = "inst_%s" % instrument
-        if tag not in getattr(self, "_tints", {}):
-            self._tints = getattr(self, "_tints", {})
+        if tag not in self._tints:
             colour = INSTRUMENT_TINT.get(instrument.upper())
             if colour is None:
                 colour = OTHER_TINTS[len(self._tints) % len(OTHER_TINTS)]
@@ -1553,7 +1565,10 @@ class App:
                 "" if row.get("exptime") is None
                 else "%s%.0f" % (tilde, row["exptime"]),
                 mag,
-                row.get("instrument") or "?")
+                # "?" claims the file was read and said nothing; UNREAD says
+                # the scan has not got there yet, which is the usual case
+                (row.get("instrument") if row.get("instrument") not in (None, "?")
+                 else (UNREAD if approximate or not row.get("snr") else "?")))
 
     def _listed(self, counts):
         """The names and the counts, before a single header has been read."""
