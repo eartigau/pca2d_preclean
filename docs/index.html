@@ -106,6 +106,18 @@ conda env create -f environment.yml
 conda activate pca2d-preclean
 ./check.sh</code></pre>
       <p>
+        One alias, written once, so that a new terminal is one word from being
+        ready:
+      </p>
+      <pre><code>echo "alias pca2d='source $PWD/pca2d.sh'" &gt;&gt; ~/.zshrc</code></pre>
+      <p>
+        <code>pca2d</code> then leaves whatever conda environments are active,
+        however many deep, enters this one, and prints what there is to run.
+        Leaving rather than activating on top is the point: the environments
+        that matter here hold versions of LBL, and the wrong one on the path is
+        how a t.fits gets measured by the wrong version of something.
+      </p>
+      <p>
         <code>./check.sh</code> is the check that it worked: 489 tests, about
         thirteen seconds, and not one spectrum or network call among them. Then put the spectra of
         a target in <code>data/&lt;object&gt;/</code> under the input root,

@@ -215,6 +215,18 @@ conda env create -f environment.yml
 conda activate pca2d-preclean
 ```
 
+One alias, written once, so that a new terminal is one word from being ready:
+
+```
+echo "alias pca2d='source $PWD/pca2d.sh'" >> ~/.zshrc
+```
+
+`pca2d` then leaves whatever conda environments are active, however many deep,
+enters this one, and prints what there is to run: the window, a solo run, a
+joint run, a dry run, and the tests. Leaving rather than activating on top is
+the point, since the two environments that matter here both hold a version of
+LBL. Run the file instead of sourcing it and it says so, with the alias to keep.
+
 That environment holds **both codes**, this one and LBL. Having to deactivate
 one to run the other is how a t.fits gets measured by the wrong version of
 something.
