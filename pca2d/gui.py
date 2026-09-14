@@ -2147,7 +2147,15 @@ class App:
         for item, shown in self.names.items():
             if shown == name:
                 self.tree.item(item, values=self._values(row, known < total))
-                return
+                break
+        # The coverage panel and the timeline are drawn from what has been
+        # READ, so a campaign that has just been finished changes both of them,
+        # and the banner saying they are partial has to go when it stops being
+        # true. Only when the campaign is done and it is ticked: every ten
+        # spectra would be a redraw of both panels a few hundred times.
+        if known >= total and name in self.picked():
+            self._draw_berv()
+            self._draw_time()
 
     def _scan(self, root):
         """Read what changed, off the main thread, touching no widget.
@@ -2191,6 +2199,11 @@ class App:
         self.index = index
         rows = scan.summaries(index)
         self._fill(rows)
+        # the scan is over, so both panels are final. Nothing else redraws them
+        # until a tick changes or the window is resized, and "UNDER
+        # CONSTRUCTION: still reading" sat on a finished histogram until then
+        self._draw_berv()
+        self._draw_time()
         self._state()
         if not rows:
             self._say("log_scan_none", root, level="warn")

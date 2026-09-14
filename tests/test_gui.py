@@ -337,3 +337,53 @@ def test_the_command_line_names_a_run_the_same_way_the_window_does():
     config = {"output": {"directory": "outputs"}, "lbl": {"suffix": "_P"}}
     args = types.SimpleNamespace(name="../../etc", min_rjd=None, max_rjd=None)
     assert "/" not in name_run(config, args)
+
+
+def test_a_finished_scan_redraws_the_panels_it_filled():
+    """The coverage histogram and the timeline are drawn from what has been
+    READ. Nothing redrew them when a scan ended, so the panel a twenty-minute
+    run is decided on kept the bars of part of the campaign, and the banner
+    that says it is still reading, until a tick changed or the window was
+    resized. Seen on a complete index: 8885 spectra read, "UNDER CONSTRUCTION"
+    still on the panel."""
+    from pca2d.gui import App
+
+    window = App.__new__(App)
+    drawn = []
+    window.scanning = True
+    window._fill = lambda rows: None
+    window._state = lambda: None
+    window._say = lambda *a, **k: None
+    window._draw_berv = lambda: drawn.append("berv")
+    window._draw_time = lambda: drawn.append("time")
+    index = {"version": 1, "objects": {"GL205": {"files": {}}}}
+    window._scanned("root", index, {"read": 0, "kept": 3, "gone": 0}, "i.json")
+    assert window.scanning is False
+    assert drawn == ["berv", "time"], "both panels, once the scan is over"
+
+
+def test_a_campaign_finished_mid_scan_redraws_them_only_if_it_is_shown():
+    """The bars grow campaign by campaign, and a campaign nobody ticked is in
+    neither panel: redrawing for it, every ten spectra, would be hundreds of
+    redraws of two canvases for nothing."""
+    from pca2d.gui import App
+
+    window = App.__new__(App)
+    drawn = []
+    window.index = {"version": 1, "objects": {"GL205": {"files": {}}}}
+    window.rows = {}
+    window.names = {}
+    window._values = lambda row, approximate=False: ()
+    window._draw_berv = lambda: drawn.append("berv")
+    window._draw_time = lambda: drawn.append("time")
+
+    window.picked = lambda: ["GL205"]
+    window._one("GL205", 300, 635)               # still reading it
+    assert drawn == [], "a partial campaign is redrawn by the next one, not now"
+    window._one("GL205", 635, 635)               # done
+    assert drawn == ["berv", "time"]
+
+    drawn.clear()
+    window.picked = lambda: []                   # ticked by nobody
+    window._one("GL205", 635, 635)
+    assert drawn == [], "not in either panel, so not redrawn for it"
