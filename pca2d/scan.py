@@ -8,11 +8,16 @@ median SNR and the median exposure time of a target beside its name, which is
 how anybody decides whether a target is worth a run, without waiting for a
 campaign to be opened again.
 
-Nothing is ever written inside the data root. A root can be a read-only archive
-or a shared disk (/Volumes/irrisor here), and a pipeline that starts leaving
-files in the place its inputs live is one mistake away from corrupting them. The
-index goes under the user's home instead, one file per root, named after the
-root so that it can be found and deleted by hand.
+Two copies of that memory, and they are for two different things. The one under
+the user's home, one file per root, is the local cache: always writable, always
+there. The one in the data root itself, `pca2d_index.csv`, is the shared log:
+one line per spectrum, the keywords that were read from it, appended every ten
+files and rewritten when a scan ends. It travels with the data, so a second
+window, or another person on the same disk, starts from what has already been
+read rather than reading a campaign again (the user asked for it on
+2026-09-14). Nothing else is ever written in a data root, the spectra are never
+touched, and a root that refuses the file stays exactly as it was: the log is
+attempted once per batch and given up on for the rest of the scan.
 
 Only headers are read: the flux arrays are never touched, so a scan costs one
 header read per file rather than the 40 MB the file holds. The keywords are the
@@ -22,6 +27,7 @@ never from a configuration.
 """
 from __future__ import annotations
 
+import csv
 import datetime
 import glob
 import hashlib
@@ -53,6 +59,133 @@ MAG_KEYS = (("ESO OCS TARG JMAG", "J"), ("OBJMAG", "H"), ("HMAG", "H"),
             ("JMAG", "J"))
 
 
+#: The shared log, at the top of the data root: one line per spectrum read, so
+#: that a second window, or another person on the same disk, starts from what
+#: has already been read instead of reading it all again. The index under the
+#: home stays the local copy; this one travels with the data.
+CSV_NAME = "pca2d_index.csv"
+#: its columns: what identifies the file, then every keyword a row shows
+CSV_FIELDS = ("object", "file", "size", "mtime", "instrument", "snr",
+              "exptime", "mjd", "berv", "mag", "mag_band", "ecl_lat",
+              "unreadable")
+
+
+def csv_path(root):
+    """Where the shared log of one data root is."""
+    return os.path.join(os.path.abspath(os.path.expanduser(root or ".")),
+                        CSV_NAME)
+
+
+def csv_row(name, filename, record):
+    """One spectrum's line: its object, its file, its stamp, its keywords."""
+    stamp = record.get("stamp") or [None, None]
+    row = {"object": name, "file": filename,
+           "size": stamp[0] if len(stamp) > 0 else None,
+           "mtime": stamp[1] if len(stamp) > 1 else None}
+    for key in CSV_FIELDS[4:]:
+        value = record.get(key)
+        row[key] = "" if value is None else value
+    return row
+
+
+def csv_record(row):
+    """The record one line describes, or None if the line says nothing.
+
+    Everything is text in a CSV, so the numbers are read back as numbers and an
+    empty cell is None, which is what an unknown value is everywhere else here.
+    """
+    try:
+        stamp = [int(row["size"]), round(float(row["mtime"]), 3)]
+    except (KeyError, TypeError, ValueError):
+        return None
+    record = {"stamp": stamp}
+    for key in CSV_FIELDS[4:]:
+        value = (row.get(key) or "").strip()
+        if key in ("instrument", "mag_band"):
+            record[key] = value or None
+        elif key == "unreadable":
+            if value and value.lower() not in ("0", "false", ""):
+                record[key] = True
+        else:
+            try:
+                record[key] = float(value) if value else None
+            except ValueError:
+                record[key] = None
+    return record
+
+
+def read_csv(root):
+    """{object: {file: record}} from the shared log, or {} if there is none.
+
+    The last line for a file wins: the log is appended to while a scan runs and
+    rewritten when it finishes, so a file read twice appears twice until then.
+    """
+    out = {}
+    try:
+        with open(csv_path(root), newline="") as handle:
+            reader = csv.DictReader(handle)
+            # the header IS the schema: a log written by a version with other
+            # columns is treated as absent rather than half believed
+            if list(reader.fieldnames or ()) != list(CSV_FIELDS):
+                return {}
+            for row in reader:
+                record = csv_record(row)
+                name, filename = row.get("object"), row.get("file")
+                if record and name and filename:
+                    out.setdefault(name, {})[filename] = record
+    except (OSError, ValueError, csv.Error):
+        return {}
+    return out
+
+
+def append_csv(root, rows):
+    """Add these lines to the shared log. False when the root cannot be written.
+
+    One open and one write per batch, since a full rewrite every ten files
+    would be the whole campaign written a thousand times over a scan.
+    """
+    if not rows:
+        return True
+    path = csv_path(root)
+    try:
+        fresh = not os.path.exists(path)
+        with open(path, "a", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=CSV_FIELDS)
+            if fresh:
+                writer.writeheader()
+            for row in rows:
+                writer.writerow(row)
+    except OSError:
+        return False                    # a read-only archive stays read-only
+    return True
+
+
+def write_csv(index, root):
+    """Rewrite the shared log from the index: one line per file, none stale.
+
+    Through a temporary file in the same folder and a rename, so a window
+    reading it while this one writes sees the old file or the new one and never
+    half of either.
+    """
+    path = csv_path(root)
+    temp = "%s.%d.tmp" % (path, os.getpid())
+    try:
+        with open(temp, "w", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=CSV_FIELDS)
+            writer.writeheader()
+            for name, entry in sorted((index.get("objects") or {}).items()):
+                for filename, record in sorted((entry.get("files") or {}).items()):
+                    writer.writerow(csv_row(name, filename, record))
+        os.replace(temp, path)
+    except OSError:
+        try:
+            os.remove(temp)
+        except OSError:
+            pass
+        return None
+    return path
+
+
 def index_path(root, home=None):
     """The index file for one data root, under the user's home.
 
@@ -82,6 +215,14 @@ def load(root, home=None):
                                                          dict):
         index = {"version": VERSION, "objects": {}}
     index["root"] = os.path.abspath(os.path.expanduser(root or "."))
+    # and whatever the shared log holds that this copy does not: a window
+    # opening a root somebody else has already read starts from their work
+    table = index.setdefault("objects", {})
+    for name, files in read_csv(root).items():
+        known = table.setdefault(name, {}).setdefault("files", {})
+        for filename, record in files.items():
+            if filename not in known:
+                known[filename] = record
     return index
 
 
@@ -340,11 +481,13 @@ def update(root, index=None, pattern="*t.fits", objects=None, on_file=None,
     # round, and they all sharpen together (the user, 2026-09-13: "ça permet de
     # voir où on va avant de finir la première").
     step = max(1, int(every or 10))
+    shared = True                       # until the root turns out to be read-only
     while any(plan["todo"] for plan in plans.values()):
         for name, plan in plans.items():
             batch, plan["todo"] = plan["todo"][:step], plan["todo"][step:]
             if not batch:
                 continue
+            lines = []
             for filename, path, stamp in batch:
                 try:
                     record = scan_file(path)
@@ -358,15 +501,25 @@ def update(root, index=None, pattern="*t.fits", objects=None, on_file=None,
                 plan["fresh"][filename] = record
                 plan["done"] += 1
                 tally["read"] += 1
+                lines.append(csv_row(name, filename, record))
                 if on_file is not None:
                     on_file(name, plan["done"], plan["to_read"])
             plan["entry"]["files"] = plan["fresh"]
+            # the batch, appended to the shared log before the next one is read:
+            # a scan that is interrupted, or a second window opened halfway
+            # through it, keeps every file already read
+            if shared and not append_csv(root, lines):
+                shared = False          # a read-only root, said once by trying
             if on_object is not None:
                 on_object(name, len(plan["fresh"]), plan["total"])
 
     for name, plan in plans.items():
         plan["entry"]["scanned"] = datetime.datetime.now().isoformat(
             timespec="seconds")
+    # and once it is all read, the log is rewritten from the index: the lines
+    # appended along the way are deduplicated and the files that are gone go
+    if shared and (tally["read"] or tally["gone"]):
+        write_csv(index, root)
     return index, tally
 
 

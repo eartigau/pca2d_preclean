@@ -102,6 +102,16 @@ spread across the campaign rather than taken in order, since file names sort by
 date and the first ten of a campaign are one night's weather: on GJ 1 they gave
 a signal-to-noise of 134 against the campaign's 163.
 
+**The log beside the data.** The same answers are written to
+`pca2d_index.csv` at the top of the data root, one line per spectrum with the
+keywords read from it, appended every ten files and rewritten when a scan ends.
+That is what a second window reads: open the same root anywhere else, on this
+machine or another one mounting the same disk, and it starts from what has
+already been read instead of reading the campaign again. The header row is the
+schema, so a log written by a version with other columns is ignored rather than
+half believed, and every line is still checked against its file's size and
+modification time before it is used.
+
 A field added to the index re-reads the files that lack it, and only those,
 while the rows keep showing everything else they already knew. **Rescan** is that same
 check, for after copying new spectra in, and the window does it for itself:

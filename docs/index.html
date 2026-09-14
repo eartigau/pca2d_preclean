@@ -122,8 +122,10 @@
       <p>
         A data root, shown in full, since <code>data</code> means different
         folders from different working directories and a campaign usually lives
-        behind a link onto a shared disk. Nothing is ever written there, so it
-        can be a read-only archive. An output root, proposed as
+        behind a link onto a shared disk. The only thing ever written there is
+        <code>pca2d_index.csv</code>, the shared log of what has been read of
+        it; the spectra are never touched, and a root that refuses the file
+        stays exactly as it was. An output root, proposed as
         <code>corrected</code> beside the data root when the field is left
         empty: the corrected spectra are a copy of the campaign, tens of
         gigabytes, and belong on the disk the campaign is already on. A
@@ -173,6 +175,17 @@
         root under <code>~/.pca2d/scans/</code>, named after the root with a
         digest of its full path, so two roots whose last folder is called
         <code>science</code> cannot share one index.
+      </p>
+      <p>
+        The same answers are written <strong>beside the data</strong>, as
+        <code>pca2d_index.csv</code> at the top of the data root: one line per
+        spectrum with the keywords read from it, appended every ten files and
+        rewritten when a scan ends. That is what a second window reads, on this
+        machine or another one mounting the same disk, so a campaign is read
+        once by whoever gets there first. The header row is the schema, so a log
+        written by a version with other columns is ignored rather than half
+        believed, and every line is still checked against its file's size and
+        modification time before it is used.
       </p>
       <p>
         Every later visit draws the list at once from that index, then checks

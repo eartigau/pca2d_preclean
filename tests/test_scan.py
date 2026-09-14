@@ -4,6 +4,8 @@ The point of the index is that a second visit costs nothing, so the test that
 matters is the one showing that an unchanged file is not read again, and that a
 file which was added IS.
 """
+import os
+
 import numpy as np
 from astropy.io import fits
 
@@ -60,14 +62,17 @@ def test_one_file_gives_the_instrument_the_snr_and_the_exposure(tmp_path):
     assert record["mjd"] == 60000.5
 
 
-def test_the_index_lives_outside_the_data_root(tmp_path):
-    """A data root can be read-only or shared, and is never written to."""
+def test_the_only_thing_written_in_a_data_root_is_the_shared_log(tmp_path):
+    """The local index lives under the home, and the data root gets ONE file:
+    the shared log, so a second window starts from what this one read. The
+    spectra are never touched, and nothing else is added beside them."""
     root = root_with(tmp_path / "data", PROXIMA=2)
     home = str(tmp_path / "home")
     index, _tally = scan.update(root, index=scan.load(root, home), home=home)
     assert scan.save(index, root, home).startswith(home)
     assert sorted(p.name for p in (tmp_path / "data").rglob("*")) == \
-        ["0000t.fits", "0001t.fits", "PROXIMA"], "nothing added under the root"
+        ["0000t.fits", "0001t.fits", "PROXIMA", "pca2d_index.csv"]
+    assert scan.csv_path(root) == os.path.join(root, "pca2d_index.csv")
     # two roots whose last folder has the same name do not share one index
     other = scan.index_path(str(tmp_path / "elsewhere" / "data"), home)
     assert other != scan.index_path(root, home)
@@ -275,6 +280,7 @@ def test_an_index_from_another_version_is_rebuilt_rather_than_believed(tmp_path)
     index, _tally = scan.update(root, home=home)
     index["version"] = scan.VERSION + 1
     scan.save(index, root, home)
+    os.remove(scan.csv_path(root))       # the shared log has its own schema
     assert scan.load(root, home)["objects"] == {}
 
 
@@ -476,3 +482,73 @@ def test_the_coverage_axis_is_the_whole_solar_system(tmp_path):
     assert filled * scan.BERV_BIN <= 9.0, "five points inside 4 km/s"
     assert filled < 0.2 * (len(edges) - 1), \
         "and they fill a small fraction of the axis, which is the whole point"
+
+
+def test_a_second_window_starts_from_what_the_first_read(tmp_path):
+    """The point of the shared log: the spectra are read ONCE, by whoever gets
+    there first, and everybody else reads the log."""
+    root = root_with(tmp_path / "data", PROXIMA=12, GJ1=8)
+    first = str(tmp_path / "home1")
+    index, tally = scan.update(root, index=scan.load(root, first), home=first)
+    assert tally["read"] == 20
+    scan.save(index, root, first)
+
+    # another home, so nothing local is shared: only the log in the data root
+    second = str(tmp_path / "home2")
+    fresh = scan.load(root, second)
+    assert sorted(fresh["objects"]) == ["GJ1", "PROXIMA"], "the log was read"
+    _index, tally = scan.update(root, index=fresh, home=second)
+    assert tally["read"] == 0, "not one header opened again"
+    assert tally["kept"] == 20
+    assert scan.summary(fresh, "PROXIMA")["instrument"] == "NIRPS", \
+        "and the keywords came back with it"
+
+
+def test_the_log_is_written_as_the_scan_goes_not_only_at_its_end(tmp_path):
+    """A scan of a campaign on a slow disk is minutes. One that is interrupted,
+    or a window opened halfway through it, keeps every file already read."""
+    root = root_with(tmp_path / "data", PROXIMA=25)
+    home = str(tmp_path / "home")
+    seen = []
+
+    def on_object(_name, _known, _total):
+        # what the log holds at each of the scan's own checkpoints
+        seen.append(sum(len(f) for f in scan.read_csv(root).values()))
+
+    scan.update(root, index=scan.load(root, home), home=home,
+                on_object=on_object, every=10)
+    assert seen and max(seen) >= 10, "written before the end, in batches"
+    assert seen != [0] * len(seen)
+    assert sum(len(f) for f in scan.read_csv(root).values()) == 25
+
+
+def test_a_read_only_root_is_left_exactly_as_it_was(tmp_path):
+    """A root can be an archive. The log is attempted, refused, and given up on
+    for the rest of the scan; nothing else changes."""
+    data = tmp_path / "data"
+    root = root_with(data, PROXIMA=4)
+    home = str(tmp_path / "home")
+    os.chmod(data, 0o555)
+    try:
+        index, tally = scan.update(root, index=scan.load(root, home), home=home)
+        assert tally["read"] == 4, "the scan itself is untouched by it"
+        assert not os.path.exists(scan.csv_path(root))
+        assert scan.save(index, root, home).startswith(home)
+    finally:
+        os.chmod(data, 0o755)
+
+
+def test_a_log_whose_columns_are_not_these_columns_is_ignored(tmp_path):
+    """The header is the schema. Half believing a file written by another
+    version is how a row comes back with a field that means something else."""
+    root = root_with(tmp_path / "data", PROXIMA=2)
+    home = str(tmp_path / "home")
+    scan.update(root, index=scan.load(root, home), home=home)
+    assert scan.read_csv(root), "written and read back"
+
+    with open(scan.csv_path(root)) as handle:
+        lines = handle.readlines()
+    lines[0] = "object,file,size,mtime,what_is_this\n"
+    with open(scan.csv_path(root), "w") as handle:
+        handle.writelines(lines)
+    assert scan.read_csv(root) == {}, "not these columns, not read"

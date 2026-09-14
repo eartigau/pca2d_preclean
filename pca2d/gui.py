@@ -1101,6 +1101,13 @@ def pie_step(known, total, steps=12):
     return min(steps - 1, int(fraction * steps))
 
 
+#: how many times over the marks are drawn before being shrunk to their size.
+#: ImageDraw has no antialiasing: a circle drawn at 18 pixels IS a staircase,
+#: and the only way to round it is to draw it large and shrink it with a filter
+#: that averages.
+SUPERSAMPLE = 8
+
+
 def row_drawing(ticked, step=None, steps=12, size=20, pie=18, gap=6,
                 edge=None, tick=None, ground=None, dial=None):
     """The tick box, and the disc of a campaign still being read, as one PIL
@@ -1110,6 +1117,9 @@ def row_drawing(ticked, step=None, steps=12, size=20, pie=18, gap=6,
     text. Drawn rather than written for the same reason in both cases: a
     character is the size of the text beside it, and neither the thing aimed at
     with a mouse nor the fraction read across the room should be that small.
+
+    Everything is drawn SUPERSAMPLE times over and shrunk with Lanczos at the
+    end, which is where the smooth edges come from.
     """
     try:
         from PIL import Image, ImageDraw
@@ -1118,25 +1128,27 @@ def row_drawing(ticked, step=None, steps=12, size=20, pie=18, gap=6,
     edge, tick = edge or LINE, tick or ACCENT
     ground, dial = ground or SURFACE, dial or MUTED
     width = size if step is None else size + gap + pie
-    image = Image.new("RGBA", (width, size), (0, 0, 0, 0))
+    k = max(1, int(SUPERSAMPLE))
+    image = Image.new("RGBA", (width * k, size * k), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
-    draw.rounded_rectangle([1, 1, size - 2, size - 2], radius=4,
-                           outline=tick if ticked else edge,
-                           width=2, fill=ground)
+    draw.rounded_rectangle([1 * k, 1 * k, (size - 2) * k, (size - 2) * k],
+                           radius=4 * k, outline=tick if ticked else edge,
+                           width=max(1, int(1.6 * k)), fill=ground)
     if ticked:
-        draw.line([(size * 0.26, size * 0.52), (size * 0.44, size * 0.72),
-                   (size * 0.76, size * 0.28)], fill=tick, width=2,
-                  joint="curve")
+        draw.line([(size * 0.27 * k, size * 0.53 * k),
+                   (size * 0.44 * k, size * 0.71 * k),
+                   (size * 0.75 * k, size * 0.30 * k)],
+                  fill=tick, width=max(1, int(1.8 * k)), joint="curve")
     if step is not None:
-        left = size + gap
-        top = (size - pie) // 2
-        box = [left, top, left + pie - 1, top + pie - 1]
-        draw.ellipse(box, outline=dial, width=1, fill=ground)
+        left = (size + gap) * k
+        top = ((size - pie) // 2) * k
+        box = [left, top, left + pie * k - 1, top + pie * k - 1]
+        draw.ellipse(box, outline=dial, width=max(1, int(1.1 * k)), fill=ground)
         if step > 0:
             # from twelve o'clock, clockwise, like any other dial
             draw.pieslice(box, start=-90, end=-90 + 360.0 * step / steps,
                           fill=tick, outline=tick)
-    return image
+    return image.resize((width, size), Image.LANCZOS)
 
 
 def row_image(tk, ticked, step=None, **kwargs):
