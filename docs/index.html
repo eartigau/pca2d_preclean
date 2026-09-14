@@ -230,14 +230,16 @@
       <p>
         How many components in each frame, whether a velocity is fitted per
         exposure, how many sweeps at most, whether only the significant part of
-        the correction is divided out, which samples come back as NaN, the high
-        pass, the grid step and nightly coadding. Resting the pointer on one
+        the correction is divided out, the high pass, the grid step and nightly
+        coadding. Resting the pointer on one
         writes what it means at the bottom of the window, and after a moment in
         a box: the explanations are the ones in the documentation, not a
         restatement of the label. Nothing cosmetic is on this panel, on purpose,
-        and neither is anything settled: the star is one cubic B-spline and the
-        static part is one star spectrum per order parity, both fixed in the
-        code, so the window does not ask. The older modes are still read from a
+        and neither is anything settled: the star is one cubic B-spline, the
+        static part is one star spectrum per order parity, and a sample lost by
+        one exposure comes back as NaN in all of them so that the campaign
+        carries one set of lines. All three are fixed in the code, so the window
+        does not ask. The older modes are still read from a
         config or a variant file, for redoing the runs that were measured on
         them. Whether LBL is <em>run</em>, which is hours of work, is in the LBL
         window: the stages already say whether the lbl step happens at all.

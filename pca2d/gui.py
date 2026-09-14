@@ -64,7 +64,8 @@ OPTIONS = [
     ("velocity_term", "twoframe.velocity_term", "bool"),
     ("iters", "twoframe.iters", "int"),
     ("shrink", "correct.shrink", "bool"),
-    ("mask", "correct.mask", ("common", "exposure", "none")),
+    # no correct.mask here either: one line set for the whole campaign
+    # ("common"), decided in the code
     ("width_kms", "highpass.width_kms", "float"),
     ("dv", "domain.dv", "float"),
     ("nightly_stack", "input.nightly_stack", ("auto", "true", "false")),
@@ -219,7 +220,6 @@ EN = {
     "opt_velocity_term": "fit a velocity per exposure",
     "opt_iters": "sweeps at most",
     "opt_shrink": "divide only what is significant",
-    "opt_mask": "which samples come back as NaN",
     "opt_width_kms": "high pass (km/s)", "opt_dv": "grid step (km/s)",
     "opt_nightly_stack": "coadd each night", "opt_run": "run LBL (hours)",
     "opt_lbl_prepare": "write LBL's tree",
@@ -386,13 +386,6 @@ EN = {
         " sigma in each of N exposures is detected at about 0.5 sqrt(N) and is"
         " kept, while a column where the component is noise is left alone."
         " Without it TOI-4552 lost 3 m/s more: 18.1 against 15.1.",
-    "help_mask":
-        "A sample the fit gave no weight cannot be corrected, so it is blanked."
-        " `common`, the nominal, blanks in every exposure every sample that any"
-        " exposure lost, so the campaign carries ONE set of lines. `exposure`"
-        " blanks each exposure's own, which cost 1.8 m/s on TOI-4552 with"
-        " nothing divided out at all: a line set that moves from epoch to epoch"
-        " is scatter. `none` keeps the delivered flux there, uncorrected.",
     "help_width_kms":
         "The width of the Savitzky-Golay filter that removes the continuum, in"
         " km/s, so that it treats a line the same way whatever the grid step. It"
@@ -586,7 +579,6 @@ FR = {
     "opt_velocity_term": "ajuster une vitesse par pose",
     "opt_iters": "itérations au plus",
     "opt_shrink": "ne diviser que le significatif",
-    "opt_mask": "quels échantillons reviennent en NaN",
     "opt_width_kms": "passe-haut (km/s)", "opt_dv": "pas de grille (km/s)",
     "opt_nightly_stack": "empiler chaque nuit", "opt_run": "lancer LBL (heures)",
     "opt_lbl_prepare": "écrire l'arbre du LBL",
@@ -771,14 +763,6 @@ FR = {
         " environ 0,5 racine(N) et il est gardé, tandis qu'une colonne où la"
         " composante n'est que du bruit est laissée intacte. Sans elle,"
         " TOI-4552 perdait 3 m/s de plus : 18,1 contre 15,1.",
-    "help_mask":
-        "Un échantillon auquel l'ajustement n'a donné aucun poids ne peut pas"
-        " être corrigé, il est donc blanchi. `common`, le nominal, blanchit dans"
-        " toutes les poses tout échantillon qu'une pose a perdu : la campagne"
-        " porte alors UN seul jeu de raies. `exposure` blanchit celui de chaque"
-        " pose, ce qui a coûté 1,8 m/s sur TOI-4552 sans rien diviser du tout :"
-        " un jeu de raies qui bouge d'une époque à l'autre est de la dispersion."
-        " `none` y laisse le flux livré, non corrigé.",
     "help_width_kms":
         "La largeur du filtre de Savitzky-Golay qui retire le continu, en km/s,"
         " pour qu'il traite une raie de la même façon quel que soit le pas de"

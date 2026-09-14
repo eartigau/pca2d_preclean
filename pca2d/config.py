@@ -377,10 +377,14 @@ DEFAULTS = {
         "shrink": True,              # each component only where it is significant
         "shrink_smooth": False,      # its significance averaged over an element
         "smooth_components": [],     # observer components smoothed before division
-        # which samples a file blanks: the ones its own exposure's fit gave no
-        # weight ('exposure'), the ones any exposure's did ('common', so every
-        # epoch carries the same set of lines), or none at all
-        "mask": "exposure",
+        # SETTLED 2026-09-14, and the window no longer offers a choice: a
+        # sample is blanked in every exposure as soon as one of them gave it no
+        # weight, so the whole campaign carries ONE set of lines. 'exposure'
+        # blanks each exposure's own, and a line set that moves from epoch to
+        # epoch is scatter: 1.8 m/s on TOI-4552 with nothing divided out at
+        # all. 'none' leaves the delivered flux there, uncorrected. Both are
+        # still read from a config or a variant, for redoing those runs.
+        "mask": "common",
     },
     "lbl": {
         "prepare": True,             # write LBL's config and its run script

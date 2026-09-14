@@ -45,15 +45,17 @@ def test_the_command_carries_the_counts_the_stages_and_the_variant():
 
 
 def test_the_export_writes_what_was_changed_and_nothing_else():
-    defaults = {"twoframe": {"n_star": 1, "mean": "star"},
-                "correct": {"shrink": True, "mask": "common"},
-                "domain": {"dv": 0.5}}
-    same = variant_yaml({"n_star": "1", "mean": "star", "shrink": True,
-                         "mask": "common", "dv": "0.5"}, defaults)
+    defaults = {"twoframe": {"n_star": 1, "n_earth": 3},
+                "correct": {"shrink": True}, "domain": {"dv": 0.5}}
+    same = variant_yaml({"n_star": "1", "n_earth": "3", "shrink": True,
+                         "dv": "0.5"}, defaults)
     assert same == {}, "a variant that repeats the nominal says nothing"
-    changed = variant_yaml({"n_star": "0", "mask": "exposure", "dv": "0.5"},
+    changed = variant_yaml({"n_star": "0", "shrink": False, "dv": "0.5"},
                            defaults)
-    assert changed == {"twoframe": {"n_star": 0}, "correct": {"mask": "exposure"}}
+    assert changed == {"twoframe": {"n_star": 0}, "correct": {"shrink": False}}
+    settled = variant_yaml({"mean": "offset", "mask": "exposure"}, defaults)
+    assert settled == {}, \
+        "what the window no longer offers cannot be exported from it either"
 
 
 def test_the_lbl_window_exports_its_own_block(tmp_path):
