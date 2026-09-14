@@ -49,7 +49,19 @@ def test_with_a_snippet_no_spectrum_is_opened(tmp_path, monkeypatch):
 SPECTRA = os.path.join(REPO, "data", "TOI2120")
 
 
-@pytest.mark.skipif(not os.path.isdir(SPECTRA), reason="needs a real t.fits")
+def _a_readable_spectrum():
+    """Whether this checkout HAS one, which a folder of links does not settle:
+    data/ here is links onto a shared disk, and a disk that is not mounted
+    leaves the names behind and the files unreachable."""
+    import glob
+
+    for path in sorted(glob.glob(os.path.join(SPECTRA, "*t.fits")))[:1]:
+        return os.path.exists(path)
+    return False
+
+
+@pytest.mark.skipif(not _a_readable_spectrum(),
+                    reason="needs a real t.fits that can be read")
 def test_a_block_resampled_alone_is_the_block_resampled_in_a_wider_grid():
     """What makes a snippet from the build equal to the figure's own read."""
     import glob

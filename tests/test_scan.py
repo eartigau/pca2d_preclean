@@ -552,3 +552,20 @@ def test_a_log_whose_columns_are_not_these_columns_is_ignored(tmp_path):
     with open(scan.csv_path(root), "w") as handle:
         handle.writelines(lines)
     assert scan.read_csv(root) == {}, "not these columns, not read"
+
+
+def test_a_root_this_machine_knows_by_heart_still_leaves_its_log(tmp_path):
+    """The log is for the SECOND reader. A root whose local index is already
+    complete reads no header and, without this, would never write one: exactly
+    the roots that have been in use longest would be the ones nobody else could
+    start from."""
+    root = root_with(tmp_path / "data", PROXIMA=6)
+    home = str(tmp_path / "home")
+    index, _tally = scan.update(root, index=scan.load(root, home), home=home)
+    scan.save(index, root, home)                # what a window does after a scan
+    os.remove(scan.csv_path(root))              # as if the root predated the log
+
+    index, tally = scan.update(root, index=scan.load(root, home), home=home)
+    assert tally["read"] == 0, "nothing was read again"
+    assert os.path.exists(scan.csv_path(root)), "and the log is there anyway"
+    assert sum(len(f) for f in scan.read_csv(root).values()) == 6

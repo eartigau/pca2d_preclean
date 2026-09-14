@@ -11,15 +11,19 @@ import types
 from pca2d.config import cache_key, load_config
 
 
-def test_each_target_carries_its_published_periods():
+def test_each_target_carries_its_published_periods(tmp_path):
+    """Read against a data root that holds nothing: what a target's block says
+    is a property of the configuration, and asking for it must not depend on a
+    disk being mounted."""
+    empty = str(tmp_path)
     for name, want in (("GJ3090", [2.85310198, 15.9407]),
                        ("TOI2120", [5.7998164]),
                        ("TOI4552", [0.30110032]),
                        ("TOI1452", [11.06201]),
                        ("PROXIMA", [11.18465, 5.12338])):
-        config = load_config("config.yaml", object_name=name)
+        config = load_config("config.yaml", object_name=name, data_dir=empty)
         assert config["target"]["planets"] == want, name
-    quiet = load_config("config.yaml", object_name="GJ1")
+    quiet = load_config("config.yaml", object_name="GJ1", data_dir=empty)
     assert quiet["target"]["planets"] == [], "GJ 1 is the reference with none"
 
 

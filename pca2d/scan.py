@@ -517,8 +517,12 @@ def update(root, index=None, pattern="*t.fits", objects=None, on_file=None,
         plan["entry"]["scanned"] = datetime.datetime.now().isoformat(
             timespec="seconds")
     # and once it is all read, the log is rewritten from the index: the lines
-    # appended along the way are deduplicated and the files that are gone go
-    if shared and (tally["read"] or tally["gone"]):
+    # appended along the way are deduplicated and the files that are gone go.
+    # Also when there is no log at all and nothing was read, which is a root
+    # this machine already knows by heart and nobody else can: the whole point
+    # of the log is the second reader.
+    if shared and (tally["read"] or tally["gone"]
+                   or not os.path.exists(csv_path(root))):
         write_csv(index, root)
     return index, tally
 
