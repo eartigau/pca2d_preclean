@@ -366,7 +366,8 @@ What smart_dv does not do is rescale the one window still counted in samples,
 ./check.sh
 ```
 
-487 tests in about fifteen seconds, with no file and no network access. They pin
+489 tests in about thirteen seconds, with no spectrum and no network
+access, so a clone with no `data/` at all runs them. They pin
 the things that have gone wrong here: the adjoint identity the block solve
 depends on, the parity tie producing identical coefficients, the corrected file
 being panel 3, a file's OBJECT matching its object whatever case it was typed
