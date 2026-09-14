@@ -274,7 +274,15 @@ def rank_correlations(comps, values):
     for i, (_, c) in enumerate(comps):
         for j in range(values.shape[0]):
             good = np.isfinite(c) & np.isfinite(values[j])
-            if good.sum() > 10 and np.std(values[j][good]) > 0:
+            # A constant on EITHER side has no rank correlation, and the test
+            # is max minus min rather than a standard deviation: twelve copies
+            # of the same airmass have a std of 2e-16, not 0, since their mean
+            # is not exactly that value in binary. That let scipy be asked for
+            # the correlation of a constant, which it answers with NaN and a
+            # ConstantInputWarning per pair. NaN is the honest entry; this says
+            # it without the noise.
+            if (good.sum() > 10 and np.ptp(values[j][good]) > 0
+                    and np.ptp(c[good]) > 0):
                 rho[i, j] = spearmanr(c[good], values[j][good]).statistic
     return rho
 

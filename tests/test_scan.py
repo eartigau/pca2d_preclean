@@ -24,8 +24,10 @@ def write_tfits(path, instrument="NIRPS", snr=(100.0, 120.0, 140.0),
         if instrument == "SPIROU":
             primary.header["OBJMAG"] = mag
         else:
-            primary.header["ESO OCS TARG JMAG"] = mag
-            primary.header["ESO OCS TARG IMAG"] = 0.0   # a field not filled in
+            # written as HIERARCH, which is what astropy makes of them and
+            # what NIRPS files carry; spelled short, astropy warns for each
+            primary.header["HIERARCH ESO OCS TARG JMAG"] = mag
+            primary.header["HIERARCH ESO OCS TARG IMAG"] = 0.0  # never filled in
             primary.header["GUIMAGN"] = -9999.9         # a guider with no value
     name = "FluxAB" if instrument == "SPIROU" else "FluxA"
     science = fits.ImageHDU(data=np.zeros((2, 4), dtype=np.float32), name=name)

@@ -34,3 +34,11 @@ pca2d = ["assets/*.png"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# The two warnings that were being printed by every run are now faults rather
+# than noise: a constant column handed to spearmanr, and a FITS keyword too long
+# for the standard spelled without HIERARCH. Only these two, so that a
+# deprecation from a future numpy or astropy does not turn the net red.
+filterwarnings = [
+    "error::scipy.stats.ConstantInputWarning",
+    "error::astropy.io.fits.verify.VerifyWarning",
+]

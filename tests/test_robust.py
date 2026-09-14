@@ -6,6 +6,8 @@ moves every number downstream without touching a single equation.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -25,7 +27,9 @@ def test_nanmedian_matches_numpy(rng):
     z[z > 2.0] = np.nan
     z[:, 17] = np.nan                       # a column that is entirely missing
     got = _nanmedian_over_rows(z)
-    with np.errstate(invalid="ignore"):
+    with np.errstate(invalid="ignore"), warnings.catch_warnings():
+        # the empty column is deliberate; numpy says "All-NaN slice" about it
+        warnings.simplefilter("ignore", RuntimeWarning)
         want = np.nanmedian(z, axis=0)
     assert np.array_equal(np.nan_to_num(got, nan=-999),
                           np.nan_to_num(want, nan=-999))
