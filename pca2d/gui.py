@@ -988,6 +988,28 @@ def variant_yaml(state, defaults=None):
     return out
 
 
+#: How much of a campaign has been read, as a slice of a small disc, beside the
+#: name in the list. Nothing at all once every file is in: a finished list must
+#: not be a column of symbols, so the mark means "still reading" by existing.
+PIE = ("\u25cb", "\u25d4", "\u25d1", "\u25d5", "\u25cf")
+
+
+def pie_glyph(known, total):
+    """The slice for `known` of `total` files read, or "" when there is no more.
+
+    Five steps rather than a number: what a row needs to say while a scan runs
+    is whether its numbers are nearly settled, not how many headers are left.
+    """
+    try:
+        known, total = int(known or 0), int(total or 0)
+    except (TypeError, ValueError):
+        return ""
+    if total <= 0 or known >= total:
+        return ""
+    step = int(max(0.0, min(1.0, known / float(total))) * len(PIE))
+    return PIE[min(len(PIE) - 1, step)]
+
+
 def check_images(tk, size=18, edge=None, tick=None, ground=None):
     """The tick box, unticked and ticked, as two images, or None without PIL.
 
@@ -1785,13 +1807,23 @@ class App:
             self._draw_check(item, name)
         self._after_ticks()
 
-    def _draw_check(self, item, name):
+    def _draw_check(self, item, name, known=None, total=None):
+        """The tick box, the name, and how much of that campaign is read.
+
+        The slice is beside the NAME rather than in a column of its own: a
+        Treeview cell holds no image, and a row that is still being read has to
+        say so where the eye already is.
+        """
+        if known is None or total is None:
+            known, total = self._read_counts(name)
+        slice_ = pie_glyph(known, total)
+        text = ("  %s %s" % (name, slice_)).rstrip()
         if getattr(self, "checks", None):
             self.tree.item(item, image=self.checks[name in self.checked],
-                           text="  %s" % name)
+                           text=text)
             return
         glyph = CHECKED if name in self.checked else UNCHECKED
-        self.tree.item(item, text="%s  %s" % (glyph, name))
+        self.tree.item(item, text="%s%s" % (glyph, text))
 
     def _after_ticks(self):
         """What the ticks mean, said as soon as they change rather than at Run."""
@@ -2175,15 +2207,19 @@ class App:
                "%.0f" % possible if possible else "?",
                scan.BERV_BIN, summary["n"]))
 
+    def _read_counts(self, name):
+        """(files read of this object, files its folder holds)."""
+        known = len(((self.index.get("objects") or {}).get(name) or {})
+                    .get("files") or {})
+        return known, int((self.rows.get(name) or {}).get("files") or 0)
+
     def _berv_partial(self, names):
         """Whether some spectrum of a ticked object has not been read yet."""
         if self.scanning:
             return True
         for name in names:
-            row = self.rows.get(name) or {}
-            known = len(((self.index.get("objects") or {}).get(name) or {})
-                        .get("files") or {})
-            if known < int(row.get("files") or 0):
+            known, total = self._read_counts(name)
+            if known < total:
                 return True
         return False
 
@@ -2316,6 +2352,7 @@ class App:
         for item, shown in self.names.items():
             if shown == name:
                 self.tree.item(item, values=self._values(row, known < total))
+                self._draw_check(item, name, known, total)
                 break
         # The coverage panel and the timeline are drawn from what has been
         # READ, so a campaign that has just been finished changes both of them,

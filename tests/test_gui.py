@@ -547,3 +547,21 @@ def test_the_settings_fill_three_columns_however_many_there_are():
     assert len(columns) <= 3, "three columns, never a fourth"
     assert max(len(c) for c in columns.values()) - \
         min(len(c) for c in columns.values()) <= 1, "and evenly filled"
+
+
+def test_a_campaign_being_read_shows_how_much_of_it_is_in():
+    """A row whose numbers are still an estimate says so with a tilde, which
+    says nothing about how close it is. A slice of a disc beside the name does:
+    five steps, and nothing at all once every file is in, so a finished list is
+    not a column of symbols."""
+    from pca2d.gui import PIE, pie_glyph
+
+    assert pie_glyph(0, 100) == PIE[0], "read nothing yet, an empty disc"
+    assert pie_glyph(40, 100) == PIE[2]
+    assert pie_glyph(90, 100) == PIE[-1], "nearly there, a full one"
+    assert pie_glyph(100, 100) == "", "and gone once it is all in"
+    assert pie_glyph(120, 100) == "", "a folder that lost files is not partial"
+    assert pie_glyph(3, 0) == "" and pie_glyph(None, None) == ""
+    assert pie_glyph("x", 100) == "", "a row that knows nothing shows nothing"
+    assert len({pie_glyph(k, 100) for k in (0, 25, 45, 65, 85)}) == 5, \
+        "the five steps are five different marks"
