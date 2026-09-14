@@ -37,7 +37,8 @@ def test_both_barnard_folders_name_the_header_they_match():
 
 def test_an_unset_header_name_does_not_re_key_every_cube():
     """Adding the knob must not orphan cubes that took twenty minutes to build."""
-    config = load_config("config.yaml", object_name="PROXIMA")
+    config = load_config("config.yaml", object_name="PROXIMA",
+                         instrument="NIRPS")
     assert config["input"]["object_header"] is None
     assert cache_key(config) == "13269e89fc73", \
         "the key PROXIMA's cube was built under, before the knob existed"

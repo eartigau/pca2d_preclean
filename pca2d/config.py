@@ -648,6 +648,18 @@ def spectra_dir(config: dict) -> str:
     return os.path.join(root, str(obj))
 
 
+def has_spectra_dir(config: dict) -> bool:
+    """Whether this object's folder exists, which is whether there are data.
+
+    A configuration is read in two situations that look alike and are not: a
+    run, which is about to open spectra, and a reading of the parameters with
+    no data anywhere, which is what the tests and a fresh checkout do. The
+    second must work: `./check.sh` on a clone with no `data/` is the first
+    thing anybody does with this package.
+    """
+    return os.path.isdir(spectra_dir(config))
+
+
 def _apply_run_overrides(cfg: dict, object_name, data_dir, out_dir) -> dict:
     """What the command line said, on top of whichever layer merged last."""
     if object_name:
@@ -727,20 +739,14 @@ def load_config(path: str | None, object_name: str | None = None,
         _tfits.register_instruments(
             {name: dict(block.get("extensions") or {})
              for name, block in table.items() if block.get("extensions")})
-    # Everything below this point reads a spectrum, so say plainly here what a
-    # missing folder means rather than letting a glob come back empty inside
-    # the instrument detection or the dv measurement.
-    if object_name and (table or cfg["domain"].get("smart_dv")):
-        directory = spectra_dir(cfg)
-        if not os.path.isdir(directory):
-            raise SystemExit(
-                "no directory %s. The object names a folder under the input"
-                " root, which is input.directory (%s) unless --data-dir"
-                " overrides it." % (directory, cfg["input"]["directory"]))
-
-    # only look at the data when an object was named: loading the file to read
-    # it, which the tests and the docs do, must not need a telescope
-    if instrument is None and table and object_name:
+    # Only look at the data when an object was named AND its folder is there:
+    # loading the file to read it, which the tests and the docs do, must not
+    # need a telescope. A checkout with no data under the input root resolves
+    # every layer it can and leaves the two steps that read spectra undone,
+    # rather than refusing to load at all; the callers that are about to run a
+    # stage, cli.resolve and cli.joint_members, say plainly what a missing
+    # folder means before anything else happens.
+    if instrument is None and table and object_name and has_spectra_dir(cfg):
         instrument = detect_instrument(spectra_dir(cfg),
                                        cfg["input"].get("pattern", "*t.fits"))
     if instrument:
@@ -769,7 +775,7 @@ def load_config(path: str | None, object_name: str | None = None,
     # instrument is only detected then: loading the file to read it must not
     # need the data to be on this disk. A run saves the resolved number, so
     # every stage after this one reads a plain dv.
-    if object_name and cfg["domain"].get("smart_dv"):
+    if object_name and cfg["domain"].get("smart_dv") and has_spectra_dir(cfg):
         cfg = resolve_smart_dv(cfg)
 
     # A knob that used to exist. Removing it silently would mean a config

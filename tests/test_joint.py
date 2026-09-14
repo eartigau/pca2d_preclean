@@ -120,18 +120,20 @@ def test_the_joint_cube_is_named_after_its_objects(tmp_path):
     assert one.startswith(os.path.join("cache", "cube_tfits_abc123_j"))
 
 
-def test_a_joint_variant_names_its_own_folder_and_its_own_lbl_objects():
+def test_a_joint_variant_names_its_own_folder_and_its_own_lbl_objects(data_root):
     """Two joint variants must not write into one folder, and above all not into
     one LBL science folder: LBL globs it and would measure the mixture."""
     import types
 
     from pca2d.cli import joint_plan
 
+    root = data_root("GJ1", "GJ3090")
+
     def plan_for(variant_name, variant):
         args = types.SimpleNamespace(
             objects=["GJ1", "GJ3090"], object="GJ1", config="config.yaml",
-            data_dir=None, out_dir=None, instrument=None, n_star=0, n_earth=None,
-            windows=None, rebuild_cube=False, run_lbl=False,
+            data_dir=root, out_dir=None, instrument="NIRPS", n_star=0,
+            n_earth=None, windows=None, rebuild_cube=False, run_lbl=False,
             variant=variant_name)
         return joint_plan(args, variant)
 
@@ -228,7 +230,7 @@ def test_the_snr_cut_is_taken_against_each_object_s_own_median(tmp_path):
     assert (left == "BRIGHT").sum() == 194, "the bright one loses its own six"
 
 
-def test_two_joint_runs_of_different_sets_are_different_lbl_objects():
+def test_two_joint_runs_of_different_sets_are_different_lbl_objects(data_root):
     """The tag is the component counts, which two joint runs share. Both
     PROXIMA+GJ1+GJ3090 and that set plus GL699_NIRPS came out as
     PROXIMA_PCA2D_0-3_joint, so the second was handed the first's science
@@ -240,9 +242,9 @@ def test_two_joint_runs_of_different_sets_are_different_lbl_objects():
     def suffix(objects):
         args = types.SimpleNamespace(
             objects=objects, object=objects[0], config="config.yaml",
-            data_dir=None, out_dir=None, instrument=None, n_star=0,
-            n_earth=None, windows=None, rebuild_cube=False, run_lbl=False,
-            variant=None, name=None, min_rjd=None, max_rjd=None)
+            data_dir=data_root(*objects), out_dir=None, instrument="NIRPS",
+            n_star=0, n_earth=None, windows=None, rebuild_cube=False,
+            run_lbl=False, variant=None, name=None, min_rjd=None, max_rjd=None)
         return joint_plan(args, None)["config"]["lbl"]["suffix"]
 
     three = suffix(["PROXIMA", "GJ1", "GJ3090"])

@@ -32,13 +32,14 @@ def test_knowing_a_period_does_not_rebuild_a_cube():
     assert cache_key(config) == before
 
 
-def test_a_joint_run_marks_every_members_planets():
+def test_a_joint_run_marks_every_members_planets(data_root):
     """One shared basis must not vary at ANY of the stars' periods, and the joint
     config is a copy of the first member's, which would have marked only its."""
     from pca2d.cli import joint_plan
     args = types.SimpleNamespace(
         objects=["PROXIMA", "GJ1", "GJ3090"], object="PROXIMA",
-        config="config.yaml", data_dir=None, out_dir=None, instrument=None,
+        config="config.yaml", data_dir=data_root("PROXIMA", "GJ1", "GJ3090"),
+        out_dir=None, instrument="NIRPS",
         n_star=0, n_earth=None, windows=None, rebuild_cube=False, run_lbl=False,
         variant=None)
     plan = joint_plan(args, None)

@@ -67,3 +67,20 @@ def problem():
         start = edge + (i * 7) % (N_PIX - 2 * edge - 20)
         w[i, start:start + 20] = 0.0
     return dict(grid=grid, data=data, w=w, P=P, Q=Q, a=a, b=b, delta=delta)
+
+
+@pytest.fixture
+def data_root(tmp_path):
+    """A data root holding one EMPTY folder per object named, and its path.
+
+    A configuration resolves against the folders of the objects it names, and a
+    test that only wants the resolved parameters has no spectra to put in them.
+    The instrument then has to be named rather than read from a file, which is
+    what `--instrument` is for. Everything the suite needs from a data root is
+    that the folders exist.
+    """
+    def make(*objects):
+        for name in objects:
+            (tmp_path / name).mkdir(exist_ok=True)
+        return str(tmp_path)
+    return make
