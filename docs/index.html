@@ -91,6 +91,195 @@
       </figure>
     </section>
 
+    <section class="card span-3" id="window">
+      <h2>The window</h2>
+      <pre><code>pca2d-gui</code></pre>
+      <p>
+        For anyone who should not have to read a command line before their
+        first run. It does nothing the command line cannot: every setting is
+        one key of <code>config.yaml</code> or one flag of
+        <code>pca2d-preclean</code>, and <strong>the command it is about to run
+        is written out in full</strong>, so it can be read before anything
+        happens and copied into a terminal afterwards. It runs that command as
+        a subprocess, shows its output as it comes, and can stop it. It comes
+        with the package, so <a href="#install">installing it</a> is all there
+        is to do first.
+      </p>
+      <figure class="wide">
+        <img src="figures/gui_window.png" alt="The pca2d-preclean window: data roots, the target list, the settings, the barycentric coverage, the campaign timeline, the command and the log" />
+        <figcaption>
+          Five SPIRou campaigns ticked, the settings at the nominal, and the
+          command that would run them at the bottom. The coverage panel says
+          <em>still reading</em> because the index of that data root was not
+          finished: a panel that is not final says so rather than looking it.
+        </figcaption>
+      </figure>
+
+      <h3>Two roots, and nothing written in the first</h3>
+      <p>
+        A data root, shown in full, since <code>data</code> means different
+        folders from different working directories and a campaign usually lives
+        behind a link onto a shared disk. Nothing is ever written there, so it
+        can be a read-only archive. An output root, proposed as
+        <code>corrected</code> beside the data root when the field is left
+        empty: the corrected spectra are a copy of the campaign, tens of
+        gigabytes, and belong on the disk the campaign is already on. A
+        <strong>run name</strong>, optional, which names the folder the run
+        writes into, and the window says when a run of that name already exists
+        rather than letting it be found out afterwards.
+      </p>
+
+      <h3>The targets, and what is known about them</h3>
+      <p>
+        The list is one row per campaign folder: the number of spectra, the
+        median signal-to-noise, the median exposure time, the magnitude with
+        the band it is in, and the instrument. Rows are grouped and tinted by
+        instrument, a column heading sorts by that column and again to reverse
+        it, the object heading a third time for the default order, and what is
+        not known sorts last, never first. A tick box per row, with
+        <code>all</code>, <code>none</code>, a double-click or the space bar,
+        and a count of what is ticked against what is listed. The boxes under
+        the list show or hide one instrument's targets.
+      </p>
+      <p>
+        Those numbers come from the headers, so the first visit to a data root
+        reads one header per spectrum: the per-order extraction signal-to-noise
+        APERO wrote (<code>EXTSNxxx</code>), the exposure time, the barycentric
+        velocity, the coordinates, the magnitude under whichever keyword that
+        instrument writes, and <code>INSTRUME</code>, which is read from the
+        FILE and never from a configuration. The answers go into one index per
+        root under <code>~/.pca2d/scans/</code>, named after the root with a
+        digest of its full path, so two roots whose last folder is called
+        <code>science</code> cannot share one index.
+      </p>
+      <p>
+        Every later visit draws the list at once from that index, then checks
+        the root: a file is taken as it was if its size and modification time
+        are unchanged, and only what was added or replaced is read, which is
+        what <strong>Rescan</strong> does after copying new spectra in. The
+        names and the file counts appear before a single header is read, since
+        they cost one folder listing. A campaign's first numbers arrive from ten
+        spectra <em>spread across it</em> rather than the first ten, and carry a
+        tilde until the rest are in: file names sort by date, and the first ten
+        of a campaign are one night's weather. On GJ 1 they give 134 against the
+        campaign's 163. A field added to the index re-reads the files that lack
+        it and only those, a file that cannot be read is recorded as unreadable
+        rather than retried at every visit, and deleting an index costs the few
+        seconds of one scan and nothing else.
+      </p>
+
+      <h3>One target, or several against one observer basis</h3>
+      <p>
+        Tick one box for a solo run. <strong>Tick several and they are fitted
+        together against a single observer basis</strong>, each star keeping its
+        own spectrum per order parity. The atmosphere and the instrument belong
+        to the night rather than to the target, and no basis can follow one star
+        when several, with different barycentric coverage and systemic
+        velocities, constrain it. They must come from one instrument: two ticked
+        instruments refuse to run, because a run is one domain, one grid and one
+        set of extensions, all read from the instrument. The window reports how
+        many nights the ticked campaigns share, as information and not as a
+        requirement: the observer components are a parasite that is always
+        present, what a fit measures is their pattern, and nights no other star
+        of the group saw widen the range of conditions that pattern is measured
+        over.
+      </p>
+
+      <h3>What the sky allows, before anything is run</h3>
+      <p>
+        Under the list, the barycentric coverage of whatever is ticked, as a
+        histogram in bins of 3&nbsp;km/s stacked by star, with three numbers:
+        what the campaign covers, its span, and <strong>what the target's
+        ecliptic latitude ALLOWS</strong>. That last one is fixed by the solar
+        system, |BERV|&nbsp;&le;&nbsp;29.78&nbsp;cos(&beta;), and it decides
+        whether the method can work on that target at all: TOI-1452, at +80.5
+        degrees, can never span more than 9.8&nbsp;km/s. A coverage short of the
+        span means gaps, which more nights fill; a span short of what is
+        possible means a young campaign; a small possible means the wrong
+        target. It is the most useful thing on the window to look at before
+        starting a twenty-minute run, because the correction is worth about a
+        factor of two where the span is wide and costs about as much where it is
+        not.
+      </p>
+      <p>
+        Beside it, when the ticked campaigns were observed: one mark per exposure
+        in its star's colour against a calendar axis, and two sliders that keep a
+        date window, with a line underneath saying what is kept and how many
+        exposures of how many that is. What falls outside is neither fitted nor
+        corrected, which is how a campaign is cut into seasons and how the two
+        ends of a baseline are compared. <strong>all of it</strong> puts the
+        window back to the whole campaign, which is the nominal path.
+      </p>
+
+      <h3>The settings that change a result, and only those</h3>
+      <p>
+        How many components in each frame, the <strong>static part</strong>
+        (the term with no amplitude of its own, one mean spectrum per order
+        parity: in the star's frame with <code>star</code>, the nominal, and in
+        the observer's with <code>offset</code> and <code>full</code>, which put
+        it back into the correction and cost Proxima 46&nbsp;m/s), whether a
+        velocity is fitted per exposure, how many sweeps at most,
+        whether only the significant part of the correction is divided out,
+        which samples a corrected file blanks, the high pass, the grid step,
+        nightly coadding, and whether LBL is run. Resting the pointer on one
+        writes what it means at the bottom of the window, and after a moment in
+        a box: the explanations are the ones in the documentation, not a
+        restatement of the label. Nothing cosmetic is on this panel, on purpose,
+        and neither is anything settled: the star is one cubic B-spline, fixed
+        in the code, so the window does not ask.
+      </p>
+      <p>
+        The <strong>stages</strong>, <code>cube</code>, <code>fit</code>,
+        <code>figures</code>, <code>correct</code> and <code>lbl</code>, are
+        ticked in any subset and run in that order, so a fit can be reused and
+        only the correction redone. A <strong>variant</strong> from
+        <code>variants/</code> is the nominal plus the lines that variant
+        changes, and it writes under its own name so that two variants cannot
+        land in one folder.
+      </p>
+      <p>
+        <strong>LBL settings...</strong> opens the <code>lbl:</code> block on
+        its own: what is measured (the delivered spectra, the corrected ones, or
+        both), what the corrected object is called next to the delivered one,
+        which template it is measured against, where LBL's tree is, which of its
+        steps run, and whether the spectra get there as symlinks or as copies.
+        That is the equivalent of the wrapper script, and it is the step that
+        produces velocities.
+      </p>
+
+      <h3>What it writes, and what it remembers</h3>
+      <ul class="terms">
+        <li><strong>Dry run</strong> resolves everything, says what it would do,
+          and touches nothing.</li>
+        <li><strong>Export YAML</strong> saves the settings that differ from the
+          configuration as a variant file, which is how one run is made
+          reproducible. A variant that repeats the nominal says nothing, and the
+          window refuses to write one.</li>
+        <li><strong>Save as defaults</strong> writes those same settings into
+          <code>config.yaml</code>. It edits the lines it has to and nothing
+          else, so the comments that say which measurement chose each value
+          survive, where a <code>yaml.safe_dump</code> of the parsed document
+          would have deleted all of them. It asks first, and shows exactly which
+          keys it is about to change.</li>
+        <li><strong>Save log</strong> writes what the window has shown. The run
+          prints there as it goes, in the colours it uses in a terminal, green
+          for progress, blue for a number, orange for something skipped, red for
+          what stops a run, and the window's own lines take the same form,
+          <code>YYMMDD HH:MM:SS.SS | message</code>.</li>
+        <li><strong>Open outputs</strong> opens the folder the run is writing
+          into.</li>
+      </ul>
+      <p>
+        <strong>English or French</strong>, one button, everything included: the
+        labels, the explanations and the log lines. The window holds no state of
+        its own beyond the last settings and what was ticked, in
+        <code>~/.pca2d_gui.json</code>, and the per-root index under
+        <code>~/.pca2d/</code>. It does not resolve the configuration itself,
+        never touches the data, and every choice it offers exists on the command
+        line, which is what the box at the bottom is there to prove.
+      </p>
+    </section>
+
     <section class="card span-3" id="install">
       <h2>Install it</h2>
       <p>
@@ -323,193 +512,6 @@ pca2d-gui                            # the same, in a window</code></pre>
           time, at +0.33.
         </figcaption>
       </figure>
-    </section>
-
-    <section class="card span-3" id="window">
-      <h2>The window</h2>
-      <pre><code>pca2d-gui</code></pre>
-      <p>
-        For anyone who should not have to read a command line before their
-        first run. It does nothing the command line cannot: every setting is
-        one key of <code>config.yaml</code> or one flag of
-        <code>pca2d-preclean</code>, and <strong>the command it is about to run
-        is written out in full</strong>, so it can be read before anything
-        happens and copied into a terminal afterwards. It runs that command as
-        a subprocess, shows its output as it comes, and can stop it.
-      </p>
-      <figure class="wide">
-        <img src="figures/gui_window.png" alt="The pca2d-preclean window: data roots, the target list, the settings, the barycentric coverage, the campaign timeline, the command and the log" />
-        <figcaption>
-          Five SPIRou campaigns ticked, the settings at the nominal, and the
-          command that would run them at the bottom. The coverage panel says
-          <em>still reading</em> because the index of that data root was not
-          finished: a panel that is not final says so rather than looking it.
-        </figcaption>
-      </figure>
-
-      <h3>Two roots, and nothing written in the first</h3>
-      <p>
-        A data root, shown in full, since <code>data</code> means different
-        folders from different working directories and a campaign usually lives
-        behind a link onto a shared disk. Nothing is ever written there, so it
-        can be a read-only archive. An output root, proposed as
-        <code>corrected</code> beside the data root when the field is left
-        empty: the corrected spectra are a copy of the campaign, tens of
-        gigabytes, and belong on the disk the campaign is already on. A
-        <strong>run name</strong>, optional, which names the folder the run
-        writes into, and the window says when a run of that name already exists
-        rather than letting it be found out afterwards.
-      </p>
-
-      <h3>The targets, and what is known about them</h3>
-      <p>
-        The list is one row per campaign folder: the number of spectra, the
-        median signal-to-noise, the median exposure time, the magnitude with
-        the band it is in, and the instrument. Rows are grouped and tinted by
-        instrument, a column heading sorts by that column and again to reverse
-        it, the object heading a third time for the default order, and what is
-        not known sorts last, never first. A tick box per row, with
-        <code>all</code>, <code>none</code>, a double-click or the space bar,
-        and a count of what is ticked against what is listed. The boxes under
-        the list show or hide one instrument's targets.
-      </p>
-      <p>
-        Those numbers come from the headers, so the first visit to a data root
-        reads one header per spectrum: the per-order extraction signal-to-noise
-        APERO wrote (<code>EXTSNxxx</code>), the exposure time, the barycentric
-        velocity, the coordinates, the magnitude under whichever keyword that
-        instrument writes, and <code>INSTRUME</code>, which is read from the
-        FILE and never from a configuration. The answers go into one index per
-        root under <code>~/.pca2d/scans/</code>, named after the root with a
-        digest of its full path, so two roots whose last folder is called
-        <code>science</code> cannot share one index.
-      </p>
-      <p>
-        Every later visit draws the list at once from that index, then checks
-        the root: a file is taken as it was if its size and modification time
-        are unchanged, and only what was added or replaced is read, which is
-        what <strong>Rescan</strong> does after copying new spectra in. The
-        names and the file counts appear before a single header is read, since
-        they cost one folder listing. A campaign's first numbers arrive from ten
-        spectra <em>spread across it</em> rather than the first ten, and carry a
-        tilde until the rest are in: file names sort by date, and the first ten
-        of a campaign are one night's weather. On GJ 1 they give 134 against the
-        campaign's 163. A field added to the index re-reads the files that lack
-        it and only those, a file that cannot be read is recorded as unreadable
-        rather than retried at every visit, and deleting an index costs the few
-        seconds of one scan and nothing else.
-      </p>
-
-      <h3>One target, or several against one observer basis</h3>
-      <p>
-        Tick one box for a solo run. <strong>Tick several and they are fitted
-        together against a single observer basis</strong>, each star keeping its
-        own spectrum per order parity. The atmosphere and the instrument belong
-        to the night rather than to the target, and no basis can follow one star
-        when several, with different barycentric coverage and systemic
-        velocities, constrain it. They must come from one instrument: two ticked
-        instruments refuse to run, because a run is one domain, one grid and one
-        set of extensions, all read from the instrument. The window reports how
-        many nights the ticked campaigns share, as information and not as a
-        requirement: the observer components are a parasite that is always
-        present, what a fit measures is their pattern, and nights no other star
-        of the group saw widen the range of conditions that pattern is measured
-        over.
-      </p>
-
-      <h3>What the sky allows, before anything is run</h3>
-      <p>
-        Under the list, the barycentric coverage of whatever is ticked, as a
-        histogram in bins of 3&nbsp;km/s stacked by star, with three numbers:
-        what the campaign covers, its span, and <strong>what the target's
-        ecliptic latitude ALLOWS</strong>. That last one is fixed by the solar
-        system, |BERV|&nbsp;&le;&nbsp;29.78&nbsp;cos(&beta;), and it decides
-        whether the method can work on that target at all: TOI-1452, at +80.5
-        degrees, can never span more than 9.8&nbsp;km/s. A coverage short of the
-        span means gaps, which more nights fill; a span short of what is
-        possible means a young campaign; a small possible means the wrong
-        target. It is the most useful thing on the window to look at before
-        starting a twenty-minute run, because the correction is worth about a
-        factor of two where the span is wide and costs about as much where it is
-        not.
-      </p>
-      <p>
-        Beside it, when the ticked campaigns were observed: one mark per exposure
-        in its star's colour against a calendar axis, and two sliders that keep a
-        date window, with a line underneath saying what is kept and how many
-        exposures of how many that is. What falls outside is neither fitted nor
-        corrected, which is how a campaign is cut into seasons and how the two
-        ends of a baseline are compared. <strong>all of it</strong> puts the
-        window back to the whole campaign, which is the nominal path.
-      </p>
-
-      <h3>The settings that change a result, and only those</h3>
-      <p>
-        How many components in each frame, the <strong>static part</strong>
-        (the term with no amplitude of its own, one mean spectrum per order
-        parity: in the star's frame with <code>star</code>, the nominal, and in
-        the observer's with <code>offset</code> and <code>full</code>, which put
-        it back into the correction and cost Proxima 46&nbsp;m/s), whether a
-        velocity is fitted per exposure, how many sweeps at most,
-        whether only the significant part of the correction is divided out,
-        which samples a corrected file blanks, the high pass, the grid step,
-        nightly coadding, and whether LBL is run. Resting the pointer on one
-        writes what it means at the bottom of the window, and after a moment in
-        a box: the explanations are the ones in the documentation, not a
-        restatement of the label. Nothing cosmetic is on this panel, on purpose,
-        and neither is anything settled: the star is one cubic B-spline, fixed
-        in the code, so the window does not ask.
-      </p>
-      <p>
-        The <strong>stages</strong>, <code>cube</code>, <code>fit</code>,
-        <code>figures</code>, <code>correct</code> and <code>lbl</code>, are
-        ticked in any subset and run in that order, so a fit can be reused and
-        only the correction redone. A <strong>variant</strong> from
-        <code>variants/</code> is the nominal plus the lines that variant
-        changes, and it writes under its own name so that two variants cannot
-        land in one folder.
-      </p>
-      <p>
-        <strong>LBL settings...</strong> opens the <code>lbl:</code> block on
-        its own: what is measured (the delivered spectra, the corrected ones, or
-        both), what the corrected object is called next to the delivered one,
-        which template it is measured against, where LBL's tree is, which of its
-        steps run, and whether the spectra get there as symlinks or as copies.
-        That is the equivalent of the wrapper script, and it is the step that
-        produces velocities.
-      </p>
-
-      <h3>What it writes, and what it remembers</h3>
-      <ul class="terms">
-        <li><strong>Dry run</strong> resolves everything, says what it would do,
-          and touches nothing.</li>
-        <li><strong>Export YAML</strong> saves the settings that differ from the
-          configuration as a variant file, which is how one run is made
-          reproducible. A variant that repeats the nominal says nothing, and the
-          window refuses to write one.</li>
-        <li><strong>Save as defaults</strong> writes those same settings into
-          <code>config.yaml</code>. It edits the lines it has to and nothing
-          else, so the comments that say which measurement chose each value
-          survive, where a <code>yaml.safe_dump</code> of the parsed document
-          would have deleted all of them. It asks first, and shows exactly which
-          keys it is about to change.</li>
-        <li><strong>Save log</strong> writes what the window has shown. The run
-          prints there as it goes, in the colours it uses in a terminal, green
-          for progress, blue for a number, orange for something skipped, red for
-          what stops a run, and the window's own lines take the same form,
-          <code>YYMMDD HH:MM:SS.SS | message</code>.</li>
-        <li><strong>Open outputs</strong> opens the folder the run is writing
-          into.</li>
-      </ul>
-      <p>
-        <strong>English or French</strong>, one button, everything included: the
-        labels, the explanations and the log lines. The window holds no state of
-        its own beyond the last settings and what was ticked, in
-        <code>~/.pca2d_gui.json</code>, and the per-root index under
-        <code>~/.pca2d/</code>. It does not resolve the configuration itself,
-        never touches the data, and every choice it offers exists on the command
-        line, which is what the box at the bottom is there to prove.
-      </p>
     </section>
 
     <section class="card span-2">
