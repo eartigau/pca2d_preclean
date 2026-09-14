@@ -470,6 +470,34 @@ def berv_coverage(index, names, width=BERV_BIN):
     return edges, counts, summary
 
 
+def rjd_to_date(rjd):
+    """A reduced Julian date as a calendar date. RJD = BJD - 2400000, and the
+    Modified Julian Date is JD - 2400000.5, so the two differ by half a day."""
+    import datetime as _dt
+
+    return (_dt.datetime(1858, 11, 17)
+            + _dt.timedelta(days=float(rjd) - 0.5))
+
+
+def date_to_rjd(when):
+    """The other way, for a date somebody picked."""
+    import datetime as _dt
+
+    return (when - _dt.datetime(1858, 11, 17)).total_seconds() / 86400.0 + 0.5
+
+
+def exposure_times(index, names):
+    """{object: [rjd]} for the chosen objects, for drawing a timeline."""
+    out = {}
+    for name in names:
+        files = ((index.get("objects") or {}).get(name) or {}).get("files") or {}
+        mjd = sorted(f["mjd"] for f in files.values()
+                     if isinstance(f, dict) and f.get("mjd") is not None)
+        if mjd:
+            out[name] = mjd
+    return out
+
+
 def time_coverage(index, names, bins=110):
     """When the chosen campaigns were observed, binned for drawing.
 

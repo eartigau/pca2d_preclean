@@ -112,6 +112,10 @@ EN = {
     "col_object": "object", "col_files": "files", "col_instrument": "instrument",
     "col_snr": "SNR", "col_exptime": "exp (s)", "col_mag": "mag",
     'run_name': 'run name',
+    'timeline': 'when the ticked campaigns were observed',
+    'timeline_none': 'tick a target to see when it was observed',
+    'timeline_note': 'keeping %s to %s: %d exposures of %d',
+    'whole': 'all of it',
     'min_rjd': 'from',
     'max_rjd': 'to',
     'exists': '⚠ this run already exists',
@@ -450,6 +454,10 @@ FR = {
     "col_object": "objet", "col_files": "fichiers", "col_instrument": "instrument",
     "col_snr": "SNR", "col_exptime": "pose (s)", "col_mag": "mag",
     'run_name': 'nom du passage',
+    'timeline': 'quand les campagnes cochées ont été observées',
+    'timeline_none': 'cocher une cible pour voir quand elle a été observée',
+    'timeline_note': 'on garde du %s au %s : %d poses sur %d',
+    'whole': 'tout',
     'min_rjd': 'du',
     'max_rjd': 'au',
     'exists': '⚠ ce passage existe déjà',
@@ -1236,15 +1244,8 @@ class App:
         entry.pack(side="left", padx=(6, 14))
         self._tip(entry, "help_run_name")
         self.vars["run_name"].trace_add("write", lambda *_: self._sync())
-        for key, width in (("min_rjd", 9), ("max_rjd", 9)):
-            lab = ttk.Label(row, text=self.t(key))
-            lab.pack(side="left")
-            self._register(lab, key)
-            self._tip(lab, "help_dates")
+        for key in ("min_rjd", "max_rjd"):
             self.vars[key] = tk.StringVar(value=self.saved.get(key, ""))
-            box = ttk.Entry(row, textvariable=self.vars[key], width=width)
-            box.pack(side="left", padx=(4, 10))
-            self._tip(box, "help_dates")
             self.vars[key].trace_add("write", lambda *_: self._sync())
         self.exists = ttk.Label(row, style="Hint.TLabel", text="")
         self.exists.pack(side="left", padx=(6, 0))
@@ -1323,6 +1324,136 @@ class App:
         self._tip(self.berv_canvas, "help_berv")
         self._tip(self.berv_note, "help_berv")
         self.berv_canvas.bind("<Configure>", lambda _e: self._draw_berv())
+        self._build_time(parent)
+
+    def _build_time(self, parent):
+        """When the ticked campaigns were observed, and what to keep of them.
+
+        A reduced Julian date says nothing to anybody, so the dates are drawn
+        and read in the calendar, and chosen with two sliders rather than typed.
+        """
+        ttk = self.ttk
+        box = ttk.Labelframe(parent, text=self.t("timeline"))
+        box.pack(fill="x", padx=6, pady=(0, 6))
+        self._register(box, "timeline")
+        self.time_canvas = self.tk.Canvas(box, height=96, highlightthickness=0,
+                                          background=SURFACE)
+        self.time_canvas.pack(fill="x", padx=6, pady=(4, 2))
+        self.time_canvas.bind("<Configure>", lambda _e: self._draw_time())
+        self._tip(self.time_canvas, "help_dates")
+        sliders = ttk.Frame(box)
+        sliders.pack(fill="x", padx=6, pady=(0, 2))
+        self.scales = {}
+        for key in ("min_rjd", "max_rjd"):
+            label = ttk.Label(sliders, text=self.t(key), width=4)
+            label.pack(side="left")
+            self._register(label, key)
+            scale = ttk.Scale(sliders, from_=0.0, to=1.0, value=0.0,
+                              command=lambda v, k=key: self._slide(k, v))
+            scale.pack(side="left", fill="x", expand=True, padx=(4, 12))
+            self._tip(scale, "help_dates")
+            self.scales[key] = scale
+        self.time_note = ttk.Label(box, style="Hint.TLabel", text="")
+        self.time_note.pack(anchor="w", padx=8, pady=(0, 4))
+        self._tip(self.time_note, "help_dates")
+        reset = ttk.Button(sliders, text=self.t("whole"), width=8,
+                           command=self._reset_dates)
+        reset.pack(side="left")
+        self._register(reset, "whole")
+        self._tip(reset, "help_dates")
+
+    def _reset_dates(self):
+        """Back to the whole campaign: no window, the nominal path."""
+        self._sliding = True
+        for key, scale in getattr(self, "scales", {}).items():
+            scale.set(0.0 if key == "min_rjd" else 1.0)
+            self.vars[key].set("")
+        self._sliding = False
+        self._draw_time()
+        self._sync()
+
+    def _slide(self, key, value):
+        """A slider moved: 0..1 of the span the ticked campaigns cover."""
+        if getattr(self, "_sliding", False):
+            return
+        span = getattr(self, "_time_span", None)
+        if not span:
+            return
+        lo, hi = span
+        rjd = lo + float(value) * (hi - lo)
+        # the ends mean "no bound", so the nominal path stays reachable
+        at_end = (key == "min_rjd" and float(value) <= 0.001) or \
+                 (key == "max_rjd" and float(value) >= 0.999)
+        self.vars[key].set("" if at_end else "%.2f" % rjd)
+        self._draw_time()
+
+    def _draw_time(self):
+        """One dot per exposure, in its star's colour, and the window kept."""
+        canvas = getattr(self, "time_canvas", None)
+        if canvas is None:
+            return
+        canvas.delete("all")
+        names = self.picked()
+        width = max(int(canvas.winfo_width()), 60)
+        height = max(int(canvas.winfo_height()), 40)
+        times = scan.exposure_times(self.index, names) if names else {}
+        if not times:
+            canvas.create_text(width // 2, height // 2,
+                               text=self.t("timeline_none"), fill="#888",
+                               font=("Helvetica", 10))
+            self.time_note.configure(text="")
+            self._time_span = None
+            return
+        every = [t for values in times.values() for t in values]
+        lo, hi = min(every), max(every)
+        if hi - lo < 1.0:
+            hi = lo + 1.0
+        self._time_span = (lo, hi)
+        pad, top, foot = 10, 8, 22
+        rows = max(1, len(times))
+        band = (height - top - foot) / rows
+
+        def x_of(rjd):
+            return pad + (rjd - lo) / (hi - lo) * (width - 2 * pad)
+
+        # what is kept, as a lit band behind the dots
+        keep_lo = self._bound("min_rjd", lo)
+        keep_hi = self._bound("max_rjd", hi)
+        canvas.create_rectangle(x_of(keep_lo), top - 4, x_of(keep_hi),
+                                height - foot + 4, fill=ACCENT_SOFT, outline="")
+        for i, (name, values) in enumerate(sorted(times.items())):
+            y = top + band * (i + 0.5)
+            colour = self._star_colour(name)
+            step = max(1, len(values) // 700)     # a canvas is not a plot library
+            for t in values[::step]:
+                x = x_of(t)
+                inside = keep_lo <= t <= keep_hi
+                canvas.create_line(x, y - 4, x, y + 4,
+                                   fill=colour if inside else "#d6dbe4")
+            canvas.create_text(pad, y - 9, text=name, anchor="w", fill=colour,
+                               font=("Helvetica", 8))
+        # the calendar, which is what anybody reads
+        canvas.create_line(pad, height - foot + 6, width - pad, height - foot + 6,
+                           fill="#bbb")
+        for frac in (0.0, 0.25, 0.5, 0.75, 1.0):
+            when = scan.rjd_to_date(lo + frac * (hi - lo))
+            x = pad + frac * (width - 2 * pad)
+            canvas.create_line(x, height - foot + 6, x, height - foot + 10,
+                               fill="#888")
+            canvas.create_text(min(max(x, 22), width - 22), height - foot + 17,
+                               text=when.strftime("%Y-%m"), fill="#555",
+                               font=("Helvetica", 8))
+        kept = sum(1 for t in every if keep_lo <= t <= keep_hi)
+        self.time_note.configure(
+            text=self.t("timeline_note")
+            % (scan.rjd_to_date(keep_lo).strftime("%d %b %Y"),
+               scan.rjd_to_date(keep_hi).strftime("%d %b %Y"), kept, len(every)))
+
+    def _bound(self, key, default):
+        try:
+            return float(self.vars[key].get())
+        except (TypeError, ValueError):
+            return default
 
     #: what each column of the list is, for the explanation that follows the
     #: pointer: the box, the counts, then the two numbers read from the headers
@@ -1455,6 +1586,7 @@ class App:
         self._warned = instruments if len(instruments) > 1 else None
         self._nights(names)
         self._draw_berv()
+        self._draw_time()
         self._sync()
 
     def _nights(self, names):
