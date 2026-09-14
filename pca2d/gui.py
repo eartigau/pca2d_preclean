@@ -1189,21 +1189,22 @@ class App:
         ttk, tk = self.ttk, self.tk
         frame = ttk.Frame(parent)
         frame.pack(fill="x", padx=14, pady=(12, 8))
-        ttk.Label(frame, text="pca2d", style="Head.TLabel").grid(
-            row=0, column=0, sticky="w")
+        # APERO's own logo, then the name: every spectrum this window reads was
+        # reduced by APERO, so the pipeline signs the top left corner. The file
+        # is in the package, never fetched at run time.
+        head = ttk.Frame(frame)
+        head.grid(row=0, column=0, sticky="w")
+        logo = self._logo("apero_logo.png", height=22)
+        if logo is not None:
+            self.logo_label = ttk.Label(head, image=logo, background=BG)
+            self.logo_label.image = logo      # or the garbage collector eats it
+            self.logo_label.pack(side="left", padx=(0, 8))
+            self._tip(self.logo_label, "help_apero")
+        ttk.Label(head, text="pca2d", style="Head.TLabel").pack(side="left")
         self._register(ttk.Label(frame, style="Hint.TLabel", wraplength=640,
                                  justify="left",
                                  text=self.t("subtitle")), "subtitle").grid(
             row=0, column=1, columnspan=2, sticky="w", padx=10)
-        # APERO's own logo, from its repository: every spectrum here was
-        # reduced by it, so it belongs in the header of a window that reads
-        # nothing else. Its file is in the package, not fetched at run time.
-        logo = self._logo("apero_logo.png", height=26)
-        if logo is not None:
-            self.logo_label = ttk.Label(frame, image=logo, background=BG)
-            self.logo_label.image = logo      # or the garbage collector eats it
-            self.logo_label.grid(row=1, column=3, sticky="e", padx=(6, 0))
-            self._tip(self.logo_label, "help_apero")
         button = ttk.Button(frame, text=self.t("lang"),
                             command=self.switch_language, width=10)
         button.grid(row=0, column=3, sticky="e")
@@ -1233,12 +1234,6 @@ class App:
                                 command=lambda k=key: self._browse(k))
             browse.grid(row=i + 1, column=2)
             self._register(browse, "browse")
-        # the instruments this data root holds, as badges in the colours the
-        # rows carry: the header says at a glance what is in there, and the
-        # tints stop being arbitrary
-        self.badges = self.tk.Canvas(frame, height=26, width=250,
-                                     background=BG, highlightthickness=0)
-        self.badges.grid(row=0, column=2, sticky="e", padx=(0, 6))
         # the run's name, proposed and editable, with what it would overwrite
         row = ttk.Frame(frame)
         row.grid(row=4, column=0, columnspan=4, sticky="we", pady=(6, 0))
@@ -1353,7 +1348,11 @@ class App:
             label = ttk.Label(sliders, text=self.t(key), width=4)
             label.pack(side="left")
             self._register(label, key)
-            scale = ttk.Scale(sliders, from_=0.0, to=1.0, value=0.0,
+            # each slider starts at ITS end of the campaign, so the pair opens
+            # on the whole of it. Both starting at 0 put the upper bound on the
+            # first night, which reads as a window holding nothing.
+            scale = ttk.Scale(sliders, from_=0.0, to=1.0,
+                              value=0.0 if key == "min_rjd" else 1.0,
                               command=lambda v, k=key: self._slide(k, v))
             scale.pack(side="left", fill="x", expand=True, padx=(4, 12))
             self._tip(scale, "help_dates")
@@ -1392,6 +1391,39 @@ class App:
         self.vars[key].set("" if at_end else "%.2f" % rjd)
         self._draw_time()
 
+    @staticmethod
+    def handle_fraction(text, lo, hi, key):
+        """Where a slider handle belongs for the bound `text`, as 0..1.
+
+        An empty bound means "no bound", which is that slider's OWN end: 0 for
+        the lower one and 1 for the upper. Both at 0 is an upper bound on the
+        first night, a window holding nothing.
+        """
+        default = 0.0 if key == "min_rjd" else 1.0
+        try:
+            rjd = float(str(text).strip())
+        except (TypeError, ValueError):
+            return default
+        if hi <= lo:
+            return default
+        return min(1.0, max(0.0, (rjd - lo) / (hi - lo)))
+
+    def _place_handles(self, lo, hi):
+        """Put the handles where the kept bounds are.
+
+        The bounds are remembered between sessions and the handles were not, so
+        a saved window came back as a date in the field and a handle at the end
+        of the campaign, each contradicting the other.
+        """
+        if getattr(self, "_sliding", False):
+            return
+        self._sliding = True
+        try:
+            for key, scale in getattr(self, "scales", {}).items():
+                scale.set(self.handle_fraction(self.vars[key].get(), lo, hi, key))
+        finally:
+            self._sliding = False
+
     def _draw_time(self):
         """One dot per exposure, in its star's colour, and the window kept."""
         canvas = getattr(self, "time_canvas", None)
@@ -1414,6 +1446,7 @@ class App:
         if hi - lo < 1.0:
             hi = lo + 1.0
         self._time_span = (lo, hi)
+        self._place_handles(lo, hi)
         pad, top, foot = 10, 8, 22
         rows = max(1, len(times))
         band = (height - top - foot) / rows
@@ -1868,7 +1901,6 @@ class App:
         self.checked &= set(self.names.values())
         self.count.configure(text="%d / %d" % (len(self.picked()),
                                                len(self.names)))
-        self._draw_badges()
         self._sync()
 
     def _draw_berv(self):
@@ -2013,31 +2045,6 @@ class App:
                 return photo.subsample(step, step)
             except Exception:                                   # noqa: BLE001
                 return None
-
-    def _draw_badges(self):
-        """One badge per instrument in the data root, count included."""
-        canvas = getattr(self, "badges", None)
-        if canvas is None:
-            return
-        canvas.delete("all")
-        counts = {}
-        for row in self.rows.values():
-            name = row.get("instrument")
-            if name and name != "?":
-                counts[name] = counts.get(name, 0) + 1
-        x = 0
-        for name in sorted(counts):
-            label = "%s %d" % (name, counts[name])
-            width = 13 + 7.2 * len(label)
-            fill = INSTRUMENT_TINT.get(name.upper(), "#e8ecf2")
-            edge = {"NIRPS": "#0072b2", "SPIROU": "#d55e00"}.get(name.upper(),
-                                                                MUTED)
-            canvas.create_rectangle(x, 4, x + width, 23, fill=fill,
-                                    outline=edge, width=1)
-            canvas.create_text(x + width / 2, 13.5, text=label, fill=edge,
-                               font=(self.fonts["body"][0], 10, "bold"))
-            x += width + 7
-        canvas.configure(width=max(int(x), 10))
 
     def _tint(self, instrument):
         """The row colour of an instrument, made once and kept.

@@ -26,6 +26,11 @@ pca2d-gui = "pca2d.gui:main"
 [tool.setuptools]
 packages = ["pca2d", "pca2d.figures"]
 
+# the window's header image: it ships with the package, since the window never
+# fetches anything at run time
+[tool.setuptools.package-data]
+pca2d = ["assets/*.png"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
