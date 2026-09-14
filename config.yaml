@@ -170,8 +170,11 @@ general:
                             # block alone. Under test since 2026-09-11)
     star_basis: spline      # the star as one cubic B-spline, evaluated at every
                             # exposure's shifted positions and updated exactly;
-                            # nominal since 2026-09-11 (grid: the Lanczos kernel
-                            # and the normal diagonal, as before)
+                            # SETTLED 2026-09-14: the code's own default, and
+                            # the window no longer offers a choice. `grid` (the
+                            # Lanczos kernel and the normal diagonal, as before)
+                            # is still read here and in a variant file, for
+                            # redoing the runs that were made on it
     template: false         # the one-shot star-frame median of the older
                             # modes; ignored by mean: iterate
     iters: 16

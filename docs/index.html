@@ -433,14 +433,20 @@ pca2d-gui                            # the same, in a window</code></pre>
 
       <h3>The settings that change a result, and only those</h3>
       <p>
-        How many components in each frame, the static part, the star basis,
-        whether a velocity is fitted per exposure, how many sweeps at most,
+        How many components in each frame, the <strong>static part</strong>
+        (the term with no amplitude of its own, one mean spectrum per order
+        parity: in the star's frame with <code>star</code>, the nominal, and in
+        the observer's with <code>offset</code> and <code>full</code>, which put
+        it back into the correction and cost Proxima 46&nbsp;m/s), whether a
+        velocity is fitted per exposure, how many sweeps at most,
         whether only the significant part of the correction is divided out,
         which samples a corrected file blanks, the high pass, the grid step,
         nightly coadding, and whether LBL is run. Resting the pointer on one
         writes what it means at the bottom of the window, and after a moment in
         a box: the explanations are the ones in the documentation, not a
-        restatement of the label. Nothing cosmetic is on this panel, on purpose.
+        restatement of the label. Nothing cosmetic is on this panel, on purpose,
+        and neither is anything settled: the star is one cubic B-spline, fixed
+        in the code, so the window does not ask.
       </p>
       <p>
         The <strong>stages</strong>, <code>cube</code>, <code>fit</code>,

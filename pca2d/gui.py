@@ -58,7 +58,9 @@ OPTIONS = [
     ("n_star", "twoframe.n_star", "int"),
     ("n_earth", "twoframe.n_earth", "int"),
     ("mean", "twoframe.mean", ("star", "offset", "full", "iterate")),
-    ("star_basis", "twoframe.star_basis", ("spline", "grid")),
+    # no star_basis here: the star is one cubic B-spline, decided in the code
+    # (config.DEFAULTS). The grid path is still read from a variant file, for
+    # redoing the runs that were made on it.
     ("velocity_term", "twoframe.velocity_term", "bool"),
     ("iters", "twoframe.iters", "int"),
     ("shrink", "correct.shrink", "bool"),
@@ -195,7 +197,7 @@ EN = {
         " command in this interpreter's own bin and touches nothing else.",
     "no_command_still": "still not found after installing",
     "opt_n_star": "star components", "opt_n_earth": "observer components",
-    "opt_mean": "static part", "opt_star_basis": "star basis",
+    "opt_mean": "static part",
     "opt_velocity_term": "fit a velocity per exposure",
     "opt_iters": "sweeps at most",
     "opt_shrink": "divide only what is significant",
@@ -334,18 +336,22 @@ EN = {
         " better and takes more of the star with it wherever the two frames are"
         " degenerate, which is what a narrow BERV coverage does.",
     "help_mean":
-        "The static part of the model. `star`, the nominal, takes one star"
-        " spectrum per order parity out before the fit and divides out the"
-        " observer block alone. `offset` and `full` put an observer-frame mean"
-        " back into the correction, which injected about 47 m/s on Proxima."
-        " `iterate` re-estimates means in both frames every sweep and did not"
-        " converge on a whole campaign.",
-    "help_star_basis":
-        "How the star side is carried and updated. `spline`: one cubic B-spline"
-        " with a knot per sample, evaluated at each exposure's shifted position"
-        " and updated exactly; the fit is about a third faster. `grid`: samples"
-        " carried by the Lanczos kernel, the older path. Their velocities agree"
-        " within the run-to-run scatter.",
+        "The part of the model that has no amplitude of its own: the mean"
+        " spectrum. There is one per ORDER PARITY, since even and odd orders"
+        " see a wavelength at different resolutions, and the question is which"
+        " frame it lives in. `star`, the nominal: one spectrum per parity in the"
+        " STAR's frame, a BERV-binned median taken out once before any"
+        " component with a coefficient of exactly 1, and no observer-frame mean,"
+        " so the correction divides out the observer block alone."
+        " `offset`: no star spectrum, and only the part of the observer-frame"
+        " mean that DIFFERS between parities, the shared part left in for the"
+        " observer block to describe; it goes back into the correction."
+        " `full`: the whole observer-frame mean per parity, shared part"
+        " included. `iterate`: one mean per parity in EACH frame, re-estimated"
+        " at every sweep. Measured: TOI-2120 20.4 m/s with `star` against 31.7"
+        " with `offset`; on Proxima the observer-frame mean alone injected"
+        " 46 m/s and the observer block alone 48, their sum 19. `iterate`"
+        " converges on synthetic data and did not on a whole campaign.",
     "help_velocity_term":
         "Fits one velocity per exposure beside the components, to keep the"
         " star's own motion out of the observer block. It is fitted and written"
@@ -543,7 +549,7 @@ FR = {
     "no_command_still": "toujours introuvable après l'installation",
     "opt_n_star": "composantes stellaires",
     "opt_n_earth": "composantes observateur",
-    "opt_mean": "partie statique", "opt_star_basis": "base stellaire",
+    "opt_mean": "partie statique",
     "opt_velocity_term": "ajuster une vitesse par pose",
     "opt_iters": "itérations au plus",
     "opt_shrink": "ne diviser que le significatif",
@@ -697,20 +703,24 @@ FR = {
         " référentiels sont dégénérés, ce que produit une couverture en BERV"
         " étroite.",
     "help_mean":
-        "La partie statique du modèle. `star`, le nominal, retire un spectre"
-        " stellaire par parité d'ordre avant l'ajustement et ne divise que le"
-        " bloc observateur. `offset` et `full` remettent une moyenne en"
-        " référentiel observateur dans la correction, ce qui injectait environ"
-        " 47 m/s sur Proxima. `iterate` réestime des moyennes dans les deux"
-        " référentiels à chaque itération, et n'a pas convergé sur une campagne"
-        " entière.",
-    "help_star_basis":
-        "Comment le côté stellaire est décalé et mis à jour. `spline` : une"
-        " spline cubique, un nœud par échantillon, évaluée à la position"
-        " décalée de chaque pose et mise à jour exactement ; l'ajustement est"
-        " environ un tiers plus rapide. `grid` : des échantillons décalés par le"
-        " noyau de Lanczos, l'ancienne voie. Leurs vitesses s'accordent à la"
-        " dispersion entre passages près.",
+        "La partie du modèle qui n'a pas d'amplitude propre : le spectre moyen."
+        " Il y en a un par PARITÉ D'ORDRE, puisque les ordres pairs et impairs"
+        " voient une longueur d'onde à des résolutions différentes, et la"
+        " question est dans quel référentiel il vit. `star`, le nominal : un"
+        " spectre par parité dans le référentiel de l'ÉTOILE, une médiane"
+        " groupée en BERV retirée une fois avant toute composante avec un"
+        " coefficient exactement égal à 1, et aucune moyenne en référentiel"
+        " observateur ; la correction ne divise donc que le bloc observateur."
+        " `offset` : pas de spectre stellaire, et seulement la part de la"
+        " moyenne observateur qui DIFFÈRE entre parités, la part commune restant"
+        " dans les données pour le bloc observateur ; elle revient dans la"
+        " correction. `full` : toute la moyenne observateur par parité, part"
+        " commune comprise. `iterate` : une moyenne par parité dans CHAQUE"
+        " référentiel, réestimée à chaque itération. Mesuré : TOI-2120 20,4 m/s"
+        " avec `star` contre 31,7 avec `offset` ; sur Proxima la moyenne"
+        " observateur seule injectait 46 m/s et le bloc observateur seul 48,"
+        " leur somme 19. `iterate` converge sur des données synthétiques et n'a"
+        " pas convergé sur une campagne entière.",
     "help_velocity_term":
         "Ajuste une vitesse par pose à côté des composantes, pour garder le"
         " mouvement propre de l'étoile hors du bloc observateur. Elle est"

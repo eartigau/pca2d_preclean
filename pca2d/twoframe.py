@@ -76,10 +76,12 @@ def parse_args(argv=None):
                         " stays above this; 0 keeps the band cut alone")
     p.add_argument("--star-basis", choices=("grid", "spline"), default=None,
                    help="how the star-side vectors are carried and updated:"
-                        " 'grid', samples carried by the Lanczos kernel and updated"
-                        " from the normal diagonal (default); 'spline', one cubic"
-                        " B-spline evaluated at each exposure's shifted positions"
-                        " and updated exactly (pca2d.splinestar)")
+                        " 'spline', one cubic B-spline evaluated at each"
+                        " exposure's shifted positions and updated exactly"
+                        " (pca2d.splinestar), which is the default and the only"
+                        " one the window offers; 'grid', samples carried by the"
+                        " Lanczos kernel and updated from the normal diagonal,"
+                        " kept for redoing the runs made on it")
     p.add_argument("--resolution", type=float, default=None,
                    help="the instrument's resolving power, lambda/dlambda: the"
                         " unit --star-smooth is measured in")
@@ -2244,7 +2246,9 @@ def main(argv=None):
         n_pixels, a=args.kernel_halfwidth,
         max_shift=int(np.ceil(np.abs(delta).max())) + 2,
     )
-    if getattr(args, "star_basis", "grid") == "spline":
+    # spline unless something asks for the older grid: the default lives in
+    # config.DEFAULTS, and this fallback is for a caller that built its own args
+    if getattr(args, "star_basis", None) in (None, "spline"):
         # the star side as one cubic B-spline, carried by evaluating it at each
         # row's shifted positions and updated exactly; data and weights still
         # go through the Lanczos kernel (pca2d.splinestar)
@@ -2841,7 +2845,8 @@ def main(argv=None):
                         # the FWHM, in samples, the star side was smoothed to
                         star_fwhm=int(star_fwhm or 0),
                         # how the star side was carried and updated
-                        star_basis=str(getattr(args, "star_basis", None) or "grid"),
+                        star_basis=str(getattr(args, "star_basis", None)
+                                       or "spline"),
                         # the pca2d commit that made the fit, + if modified
                         pca2d_code=code_stamp(),
                         # the star-frame spectra per parity, from --mean iterate
