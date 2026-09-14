@@ -39,12 +39,14 @@ run is written out so that it can be copied into a terminal.
   is one domain, one grid and one set of extensions, all read from the
   instrument.
 - **The settings that change a result**, and only those: how many components in
-  each frame, the static part, the velocity term, the number of
-  sweeps, the shrinkage, which samples a corrected file blanks, the high pass,
-  the grid step, nightly coadding, and whether LBL is run. The star basis is
-  not among them: the star is one cubic B-spline, fixed in the code
-  (`config.DEFAULTS`), and the older grid path is reachable only from a
-  variant file, for redoing the runs that were made on it. Hovering one writes
+  each frame, the velocity term, the number of sweeps, the shrinkage, which
+  samples come back as NaN, the high pass, the grid step and nightly coadding.
+  What is settled is not among them, and is fixed in the code
+  (`config.DEFAULTS`): the star is one cubic B-spline (`star_basis`), and the
+  static part is one star spectrum per order parity (`mean: star`). The older
+  paths are still read from a config or a variant file, for redoing the runs
+  that were made on them. Whether LBL is run is in the LBL window, since the
+  stages already say whether the lbl step happens at all. Hovering one writes
   what it means at the bottom of the window, and after a moment in a box.
 - **The stages.** cube, fit, figures, correct, lbl: any subset, in that order.
 - **A variant**, from `variants/`: the nominal plus the lines that variant

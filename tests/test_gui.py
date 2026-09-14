@@ -495,3 +495,39 @@ def test_the_command_box_says_what_is_missing_rather_than_half_a_command():
     assert command_line({"config": "c.yaml"}, hint) == hint
     ready = command_line({"objects": ["PROXIMA"], "config": "c.yaml"}, hint)
     assert ready.startswith("pca2d-preclean --object PROXIMA")
+
+
+def test_a_run_gets_a_name_proposed_from_what_the_window_knows():
+    """An empty field says a run needs no name, and then two runs of the same
+    targets land in one folder and under one LBL object, where LBL measures the
+    mixture. The two things the window knows before a run are the dates it
+    keeps, spelled as the command line spells them, and the day."""
+    import datetime
+
+    from pca2d.gui import suggested_run_name
+
+    day = datetime.date(2026, 9, 14)
+    assert suggested_run_name({}, today=day) == "260914"
+    assert suggested_run_name({"run_name": "x"}, today=day) == "260914", \
+        "what is proposed does not depend on what is in the field"
+    assert suggested_run_name({"min_rjd": "58661.87",
+                               "max_rjd": "59772.04"}) == "rjd58662-59772"
+    assert suggested_run_name({"max_rjd": "59772.04"}) == "rjd-59772"
+    assert suggested_run_name({"min_rjd": "  ", "max_rjd": ""},
+                              today=day) == "260914"
+    assert suggested_run_name({"min_rjd": "not a date"}, today=day) == "260914"
+
+
+def test_the_settings_fill_three_columns_however_many_there_are():
+    """Four rows per column was written for eleven settings; two of them have
+    since been settled and taken out of the window, which left the ninth alone
+    in a column of its own."""
+    from pca2d.gui import OPTIONS
+
+    per_column = -(-len(OPTIONS) // 3)
+    columns = {}
+    for i in range(len(OPTIONS)):
+        columns.setdefault(i // per_column, []).append(i)
+    assert len(columns) <= 3, "three columns, never a fourth"
+    assert max(len(c) for c in columns.values()) - \
+        min(len(c) for c in columns.values()) <= 1, "and evenly filled"

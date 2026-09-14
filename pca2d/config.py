@@ -308,7 +308,14 @@ DEFAULTS = {
         # synthetic cube but does not converge yet on TOI2120 (2026-09-10: its
         # star-frame mean moved more at every sweep and chi2 turned over after
         # one), so it is not the default.
-        "mean": "offset",
+        # SETTLED 2026-09-14, and the window no longer offers a choice: one
+        # star spectrum per order parity, in the STAR's frame, taken out once
+        # before any component with a coefficient of exactly 1. The observer-
+        # frame means, "offset" and "full", go back into the correction, which
+        # cost Proxima 46 m/s; "iterate" does not converge on a whole campaign.
+        # Both are still read from a config or a variant, for redoing the runs
+        # that were measured on them.
+        "mean": "star",
         # The one-shot star-frame median of the older modes; "iterate" makes
         # its own star-frame mean, one per parity, and ignores this.
         "template": False,

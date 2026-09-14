@@ -57,10 +57,10 @@ STAGES = ("cube", "fit", "figures", "correct", "lbl")
 OPTIONS = [
     ("n_star", "twoframe.n_star", "int"),
     ("n_earth", "twoframe.n_earth", "int"),
-    ("mean", "twoframe.mean", ("star", "offset", "full", "iterate")),
-    # no star_basis here: the star is one cubic B-spline, decided in the code
-    # (config.DEFAULTS). The grid path is still read from a variant file, for
-    # redoing the runs that were made on it.
+    # Neither mean nor star_basis is here: the static part is one star spectrum
+    # per order parity and the star is one cubic B-spline, both decided in the
+    # code (config.DEFAULTS). The other modes are still read from a config or a
+    # variant file, for redoing the runs that were made on them.
     ("velocity_term", "twoframe.velocity_term", "bool"),
     ("iters", "twoframe.iters", "int"),
     ("shrink", "correct.shrink", "bool"),
@@ -68,10 +68,12 @@ OPTIONS = [
     ("width_kms", "highpass.width_kms", "float"),
     ("dv", "domain.dv", "float"),
     ("nightly_stack", "input.nightly_stack", ("auto", "true", "false")),
-    ("run", "lbl.run", "bool"),
+    # lbl.run is in the LBL window, not here: the stages already say whether
+    # the lbl step happens at all, and two boxes for one step is one too many
 ]
 #: the `lbl:` block, in its own window: what the wrapper would have been asked
 OPTIONS_LBL = [
+    ("run", "lbl.run", "bool"),
     ("lbl_prepare", "lbl.prepare", "bool"),
     ("lbl_before", "lbl.before", "bool"),
     ("lbl_after", "lbl.after", "bool"),
@@ -113,7 +115,11 @@ EN = {
     "variant": "variant", "command": "the command this runs", "output": "output",
     "col_object": "object", "col_files": "files", "col_instrument": "instrument",
     "col_snr": "SNR", "col_exptime": "exp (s)", "col_mag": "mag",
-    'run_name': 'run name',
+    'run_name': 'run name', 'auto': 'auto',
+    'help_auto_button':
+        'Proposes a name again from the dates as they stand: the window kept,'
+        ' spelled as the command line spells it, or today if the whole campaign'
+        ' is in.',
     'timeline': 'when the ticked campaigns were observed',
     'timeline_none': 'tick a target to see when it was observed',
     'timeline_note': 'keeping %s to %s: %d exposures of %d',
@@ -213,7 +219,7 @@ EN = {
     "opt_velocity_term": "fit a velocity per exposure",
     "opt_iters": "sweeps at most",
     "opt_shrink": "divide only what is significant",
-    "opt_mask": "samples a corrected file blanks",
+    "opt_mask": "which samples come back as NaN",
     "opt_width_kms": "high pass (km/s)", "opt_dv": "grid step (km/s)",
     "opt_nightly_stack": "coadd each night", "opt_run": "run LBL (hours)",
     "opt_lbl_prepare": "write LBL's tree",
@@ -471,7 +477,11 @@ FR = {
     "output": "sortie",
     "col_object": "objet", "col_files": "fichiers", "col_instrument": "instrument",
     "col_snr": "SNR", "col_exptime": "pose (s)", "col_mag": "mag",
-    'run_name': 'nom du passage',
+    'run_name': 'nom du passage', 'auto': 'auto',
+    'help_auto_button':
+        "Repropose un nom à partir des dates telles qu'elles sont : la fenêtre"
+        ' gardée, écrite comme la ligne de commande l\'écrit, ou le jour même si'
+        ' toute la campagne est prise.',
     'timeline': 'quand les campagnes cochées ont été observées',
     'timeline_none': 'cocher une cible pour voir quand elle a été observée',
     'timeline_note': 'on garde du %s au %s : %d poses sur %d',
@@ -576,7 +586,7 @@ FR = {
     "opt_velocity_term": "ajuster une vitesse par pose",
     "opt_iters": "itérations au plus",
     "opt_shrink": "ne diviser que le significatif",
-    "opt_mask": "échantillons blanchis",
+    "opt_mask": "quels échantillons reviennent en NaN",
     "opt_width_kms": "passe-haut (km/s)", "opt_dv": "pas de grille (km/s)",
     "opt_nightly_stack": "empiler chaque nuit", "opt_run": "lancer LBL (heures)",
     "opt_lbl_prepare": "écrire l'arbre du LBL",
@@ -1002,6 +1012,59 @@ def variant_yaml(state, defaults=None):
     return out
 
 
+def check_images(tk, size=18, edge=None, tick=None, ground=None):
+    """The tick box, unticked and ticked, as two images, or None without PIL.
+
+    A box written as a character is the size of the text beside it, and the
+    thing being aimed at with a mouse should not be 8 points wide. Drawn, it is
+    as large as the row can hold and the tick is in the accent colour, so a
+    ticked campaign is visible from across the table rather than read.
+    """
+    try:
+        from PIL import Image, ImageDraw, ImageTk
+    except Exception:                                           # noqa: BLE001
+        return None
+    edge, tick, ground = edge or LINE, tick or ACCENT, ground or SURFACE
+    made = []
+    for ticked in (False, True):
+        image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(image)
+        draw.rounded_rectangle([1, 1, size - 2, size - 2], radius=4,
+                               outline=tick if ticked else edge,
+                               width=2, fill=ground)
+        if ticked:
+            draw.line([(size * 0.26, size * 0.52), (size * 0.44, size * 0.72),
+                       (size * 0.76, size * 0.28)], fill=tick, width=2,
+                      joint="curve")
+        made.append(ImageTk.PhotoImage(image))
+    return tuple(made)
+
+
+def suggested_run_name(state, today=None):
+    """A name to propose for this run: the dates it keeps, else the day.
+
+    A run name is what tells two runs of the same targets apart in the output
+    root and under LBL. The two things a window can know before the run happens
+    are the date window that is kept, spelled as the command line spells it
+    when no name is given (cli.window_label), and the day the run is being
+    made, in the same YYMMDD as every line of the log. Anything the run MEANS,
+    a person types.
+    """
+    import datetime
+
+    def bound(key):
+        value = str(state.get(key) or "").strip()
+        try:
+            return "%.0f" % float(value)
+        except ValueError:
+            return ""
+
+    lo, hi = bound("min_rjd"), bound("max_rjd")
+    if lo or hi:
+        return "rjd%s-%s" % (lo, hi)
+    return (today or datetime.date.today()).strftime("%y%m%d")
+
+
 def command_line(state, pending):
     """What the command box shows: the command, or what is still missing.
 
@@ -1167,7 +1230,10 @@ class App:
         self.status = ttk.Label(root, text=self.t("idle"), style="Hint.TLabel")
         self._build_top(root)
         panes = ttk.Panedwindow(root, orient="horizontal")
-        panes.pack(fill="x", expand=False, padx=14)
+        # BOTH directions, and expanding: the panes kept their height whatever
+        # the window did, so a taller window only ever made the log taller and
+        # the list of targets stayed seven rows on a 27-inch screen
+        panes.pack(fill="both", expand=True, padx=14)
         left, right = ttk.Frame(panes), ttk.Frame(panes)
         panes.add(left, weight=3)
         panes.add(right, weight=4)
@@ -1344,10 +1410,22 @@ class App:
         label.pack(side="left")
         self._register(label, "run_name")
         self._tip(label, "help_run_name")
-        self.vars["run_name"] = tk.StringVar(value=self.saved.get("run_name", ""))
+        # A name is PROPOSED rather than left empty: a window that opens with
+        # an empty field says a run needs no name, and then two runs of the same
+        # targets land in one folder. Only when none was kept: an empty field
+        # that somebody emptied stays empty.
+        kept = self.saved.get("run_name")
+        if not str(kept or "").strip():
+            kept = suggested_run_name(self.saved)
+        self.vars["run_name"] = tk.StringVar(value=kept)
         entry = ttk.Entry(row, textvariable=self.vars["run_name"], width=26)
-        entry.pack(side="left", padx=(6, 14))
+        entry.pack(side="left", padx=(6, 4))
         self._tip(entry, "help_run_name")
+        auto = ttk.Button(row, text=self.t("auto"), width=6,
+                          command=self._auto_name)
+        auto.pack(side="left", padx=(0, 14))
+        self._register(auto, "auto")
+        self._tip(auto, "help_auto_button")
         self.vars["run_name"].trace_add("write", lambda *_: self._sync())
         for key in ("min_rjd", "max_rjd"):
             self.vars[key] = tk.StringVar(value=self.saved.get(key, ""))
@@ -1376,7 +1454,10 @@ class App:
         for column, _key in self.headings:
             self.tree.heading(column, command=lambda c=column: self._sort_by(c))
         self._draw_headings()
-        self.tree.column("#0", width=180)
+        # kept on the instance or the garbage collector takes them and the
+        # column goes blank
+        self.checks = check_images(self.tk, size=18)
+        self.tree.column("#0", width=190)
         self.tree.column("files", width=52, anchor="e")
         self.tree.column("snr", width=56, anchor="e")
         self.tree.column("exptime", width=62, anchor="e")
@@ -1679,7 +1760,7 @@ class App:
     def _clicked(self, event):
         """A click on the box toggles; anywhere else selects, as usual."""
         item = self.tree.identify_row(event.y)
-        if item and self.tree.identify_column(event.x) == "#0" and event.x <= 28:
+        if item and self.tree.identify_column(event.x) == "#0" and event.x <= 34:
             self._toggle([item])
             return "break"
         return None
@@ -1713,6 +1794,10 @@ class App:
         self._after_ticks()
 
     def _draw_check(self, item, name):
+        if getattr(self, "checks", None):
+            self.tree.item(item, image=self.checks[name in self.checked],
+                           text="  %s" % name)
+            return
         glyph = CHECKED if name in self.checked else UNCHECKED
         self.tree.item(item, text="%s  %s" % (glyph, name))
 
@@ -1773,8 +1858,12 @@ class App:
         self._register(box, "settings")
         grid = ttk.Frame(box)
         grid.pack(fill="both", expand=True, padx=8, pady=6)
+        # three columns, as evenly as the list divides: four rows each was
+        # written when there were eleven settings, and left the ninth alone in
+        # a column of its own when two of them were settled
+        per_column = -(-len(OPTIONS) // 3)
         for i, (key, path, kind) in enumerate(OPTIONS):
-            row, col = i % 4, (i // 4) * 3
+            row, col = i % per_column, (i // per_column) * 3
             label = ttk.Label(grid, text=self.t("opt_" + key))
             label.grid(row=row, column=col, sticky="w", pady=2)
             self._register(label, "opt_" + key)
@@ -1852,10 +1941,13 @@ class App:
             if attr:
                 setattr(self, attr, button)
         self.stop_button.configure(state="disabled")
-        self.status.pack(side="right")
 
     def _build_log(self, parent):
         ttk, tk = self.ttk, self.tk
+        # What the window is doing, over the box that shows what it says rather
+        # than beside the buttons: a target and a count that change every ten
+        # spectra, in small grey text at the right edge, is where nobody looks.
+        self.status.pack(anchor="w", padx=18, pady=(2, 0))
         box = ttk.Labelframe(parent, text=self.t("output"))
         box.pack(fill="both", expand=True, padx=14, pady=(4, 12))
         self._register(box, "output")
@@ -2602,6 +2694,12 @@ class App:
         close.pack(anchor="e", padx=12, pady=10)
         self._register(close, "close")
         window.protocol("WM_DELETE_WINDOW", window.withdraw)
+
+    def _auto_name(self):
+        """Propose a name again, from the dates as they stand now."""
+        self.vars["run_name"].set(suggested_run_name(
+            {key: self.vars[key].get() for key in ("min_rjd", "max_rjd")
+             if key in self.vars}))
 
     def _propose_out(self):
         """Offer a place for the run's products, beside the data it reads.
