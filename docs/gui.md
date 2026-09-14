@@ -11,8 +11,10 @@ run is written out so that it can be copied into a terminal.
 
 - **A data root**, shown in full: `data` and `config.yaml` mean different
   folders from different working directories, and here `data` is a folder of
-  links onto a shared disk. Nothing is ever written in the data root, which can
-  be a read-only archive.
+  links onto a shared disk. The only thing ever written in a data root is
+  `pca2d_index.csv`, the shared log below; the spectra are never touched, and a
+  root that refuses the file, an archive mounted read-only, stays exactly as it
+  was.
 - **An output root**, proposed as `corrected` beside the data root when the
   field is empty: the corrected spectra are a copy of the campaign, tens of
   gigabytes, and belong on the disk the campaign is already on.
