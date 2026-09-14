@@ -53,7 +53,15 @@ run is written out so that it can be copied into a terminal.
   that were made on them. Whether LBL is run is in the LBL window, since the
   stages already say whether the lbl step happens at all. Hovering one writes
   what it means at the bottom of the window, and after a moment in a box.
-- **The stages.** cube, fit, figures, correct, lbl: any subset, in that order.
+- **The stages, as the chain they are:** `cube → fit → correct → lbl`, with the
+  arrows drawn, because that is the order they happen in and the order they
+  depend on each other in. Unticking one unticks everything after it, since
+  nothing downstream has its input any more, and ticking `lbl` ticks `correct`,
+  which is what it measures. Ticking does not pull the chain the other way: the
+  fit is always redone when it is asked for, so correcting again with the fit
+  that is already there has to stay sayable. **figures** sits apart on the same
+  line, with no arrow to it: it draws what the fit left, and nothing waits for a
+  drawing.
 - **No variant picker.** The parameters converged, and a second set of settings
   offered beside the settings is a window that contradicts itself.
   `pca2d-preclean --object X --variant NAME` still runs one, and Export YAML

@@ -256,10 +256,15 @@
         window: the stages already say whether the lbl step happens at all.
       </p>
       <p>
-        The <strong>stages</strong>, <code>cube</code>, <code>fit</code>,
-        <code>figures</code>, <code>correct</code> and <code>lbl</code>, are
-        ticked in any subset and run in that order, so a fit can be reused and
-        only the correction redone. There is no variant picker: the parameters
+        The <strong>stages</strong> are drawn as the chain they are,
+        <code>cube&nbsp;&rarr;&nbsp;fit&nbsp;&rarr;&nbsp;correct&nbsp;&rarr;&nbsp;lbl</code>,
+        because that is the order they happen in and the order they depend on
+        each other in: unticking one unticks everything after it, and ticking
+        <code>lbl</code> ticks the <code>correct</code> it measures. Ticking does
+        not pull the chain the other way, so a fit can still be reused and only
+        the correction redone. <code>figures</code> sits apart on the same line
+        with no arrow to it: it draws what the fit left, and nothing waits for a
+        drawing. There is no variant picker: the parameters
         converged, and a second set of settings offered beside the settings is a
         window that contradicting itself. A variant is still a file and still
         runs, from the command line.

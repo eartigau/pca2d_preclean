@@ -865,6 +865,34 @@ def text(lang, key, default=None):
     return TEXTS.get(lang, EN).get(key, default if default is not None else key)
 
 
+#: The stages in the order they happen, which is the order they depend on each
+#: other in: the cube feeds the fit, the fit feeds the correction, and LBL
+#: measures what the correction wrote. `figures` is deliberately not in it: it
+#: draws what the fit left, and nothing waits for a drawing.
+CHAIN = ("cube", "fit", "correct", "lbl")
+
+
+def follow_stages(ticked, changed):
+    """The stage boxes after `changed` was just ticked or unticked.
+
+    Unticking one unticks everything AFTER it in the chain: nothing downstream
+    has its input any more, and a run that says it will correct spectra it is
+    not fitting is a run that will fail twenty minutes in. Ticking `lbl` ticks
+    `correct`, since LBL measures what the correction writes.
+
+    Ticking does NOT pull the rest of the chain: the fit is always redone when
+    it is asked for, so correcting again with the fit that is already there is
+    a real thing to want, and the window has to let it be said.
+    """
+    out = dict(ticked)
+    if changed in CHAIN and not out.get(changed):
+        for name in CHAIN[CHAIN.index(changed) + 1:]:
+            out[name] = False
+    if changed == "lbl" and out.get("lbl"):
+        out["correct"] = True
+    return out
+
+
 #: how often the window looks at the data root for folders that appeared
 WATCH_MS = 10000
 
@@ -2009,13 +2037,30 @@ class App:
         stages = ttk.Label(run, text=self.t("stages"))
         stages.grid(row=0, column=0, sticky="w")
         self._register(stages, "stages")
-        for i, stage in enumerate(STAGES):
-            var = tk.BooleanVar(value=self.saved.get("stage_" + stage, True))
-            self.vars["stage_" + stage] = var
-            box_ = ttk.Checkbutton(run, text=stage, variable=var,
-                                   command=self._sync)
-            box_.grid(row=0, column=i + 1, padx=3)
+        for stage in STAGES:
+            self.vars["stage_" + stage] = tk.BooleanVar(
+                value=self.saved.get("stage_" + stage, True))
+        # the chain, with an arrow between each pair, because they happen in
+        # that order and depend on each other in that order
+        column = 1
+        for i, stage in enumerate(CHAIN):
+            box_ = ttk.Checkbutton(run, text=stage,
+                                   variable=self.vars["stage_" + stage],
+                                   command=lambda s=stage: self._stage(s))
+            box_.grid(row=0, column=column, padx=(0, 1))
             self._tip(box_, "help_stage_" + stage)
+            column += 1
+            if i < len(CHAIN) - 1:
+                arrow = ttk.Label(run, text="\u2192", style="Hint.TLabel")
+                arrow.grid(row=0, column=column, padx=1)
+                column += 1
+        # figures apart, further along the line and with no arrow to it: it
+        # draws what the fit left, and nothing waits for a drawing
+        drawn = ttk.Checkbutton(run, text="figures",
+                                variable=self.vars["stage_figures"],
+                                command=lambda: self._stage("figures"))
+        drawn.grid(row=0, column=column, padx=(26, 0))
+        self._tip(drawn, "help_stage_figures")
         # No variant picker: the parameters converged, and a second set of
         # settings offered beside the settings is a window that contradicts
         # itself. `pca2d-preclean --object X --variant NAME` still runs one, and
@@ -2856,6 +2901,15 @@ class App:
         close.pack(anchor="e", padx=12, pady=10)
         self._register(close, "close")
         window.protocol("WM_DELETE_WINDOW", window.withdraw)
+
+    def _stage(self, changed):
+        """A stage box moved: the ones that depend on it follow."""
+        ticked = {name: bool(self.vars["stage_" + name].get())
+                  for name in STAGES}
+        for name, value in follow_stages(ticked, changed).items():
+            if bool(self.vars["stage_" + name].get()) != value:
+                self.vars["stage_" + name].set(value)
+        self._sync()
 
     def _auto_name(self):
         """Propose a name again, from the targets and settings as they stand."""

@@ -640,3 +640,38 @@ def test_the_count_is_read_against_the_last_look_never_against_the_list():
         "the same disk as a moment ago is nothing to do"
     assert folder_news(on_disk, in_list, seen={"GL205": 600}) == \
         ([], [], ["GL205"]), "but a disk that changed is"
+
+
+def test_unticking_a_stage_unticks_what_comes_after_it():
+    """The stages happen in an order and depend on each other in that order. A
+    run that says it will correct spectra it is not fitting is a run that fails
+    twenty minutes in."""
+    from pca2d.gui import follow_stages
+
+    all_on = {"cube": True, "fit": True, "figures": True, "correct": True,
+              "lbl": True}
+    off = dict(all_on, fit=False)
+    after = follow_stages(off, "fit")
+    assert after["correct"] is False and after["lbl"] is False
+    assert after["cube"] is True, "what came before is untouched"
+    assert after["figures"] is True, "figures is not in the chain"
+
+    off = dict(all_on, cube=False)
+    assert follow_stages(off, "cube") == {"cube": False, "fit": False,
+                                          "figures": True, "correct": False,
+                                          "lbl": False}
+
+
+def test_there_is_no_lbl_without_the_correction_it_measures():
+    from pca2d.gui import follow_stages
+
+    state = {"cube": False, "fit": False, "figures": False, "correct": False,
+             "lbl": True}
+    assert follow_stages(state, "lbl")["correct"] is True
+    assert follow_stages(state, "lbl")["fit"] is False, \
+        "the fit is another matter: it is always redone when it is asked for"
+
+    state = {"cube": False, "fit": False, "figures": False, "correct": True,
+             "lbl": False}
+    assert follow_stages(state, "correct") == state, \
+        "correcting again with the fit that is there is a thing to want"
