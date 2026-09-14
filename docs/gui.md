@@ -16,6 +16,15 @@ run is written out so that it can be copied into a terminal.
 - **An output root**, proposed as `corrected` beside the data root when the
   field is empty: the corrected spectra are a copy of the campaign, tens of
   gigabytes, and belong on the disk the campaign is already on.
+- **On a first run** the two roots are EMPTY and the configuration is the
+  `config.yaml` that came with the installation, found beside the package
+  rather than resolved against whatever folder the window was started from.
+  Where the spectra are and where their copies go are choices about somebody's
+  disks, and a window that opens with a plausible path in those fields invites
+  a run against a folder nobody picked. So the status line says `pick a data
+  root` for as long as there is none, the log says what such a folder holds,
+  and the command box says `tick a target` instead of showing a command with no
+  `--object` in it.
 - **The targets**, each with how many spectra it has, **its median SNR**, **its
   median exposure time**, **its magnitude with the band it is in** and its
   instrument. The rows are grouped and tinted by instrument, one box per

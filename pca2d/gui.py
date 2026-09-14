@@ -151,6 +151,18 @@ EN = {
     "savedefaults": "Save as defaults...", "lblwin": "LBL settings...",
     "all": "all", "none": "none",
     "idle": "idle", "running": "running", "lang": "Français",
+    # said instead of "idle" for as long as there is nowhere to read from
+    "pick_root": "pick a data root: Browse, beside the field at the top",
+    "command_pending":
+        "tick a target and the command appears here, in full, before it runs",
+    "log_pick_root":
+        "no data root yet. Browse to the folder that holds ONE FOLDER PER"
+        " TARGET of t.fits spectra; nothing is ever written in it. The output"
+        " root is proposed beside it once it is chosen, and the config is the"
+        " one that came with this installation.",
+    "log_no_config":
+        "no config.yaml came with this installation: Browse to one, or run the"
+        " window from a checkout.",
     "lbl_title": "LBL settings", "close": "Close",
     "nothing_export": "every setting is the configuration's own, so a variant"
                       " file would say nothing.",
@@ -499,6 +511,17 @@ FR = {
     "savedefaults": "Enregistrer comme défauts...", "lblwin": "Réglages LBL...",
     "all": "tout", "none": "rien",
     "idle": "au repos", "running": "en cours", "lang": "English",
+    "pick_root": "choisissez un dossier de données : Parcourir, en haut",
+    "command_pending":
+        "cochez une cible : la commande s'écrit ici, en entier, avant de partir",
+    "log_pick_root":
+        "aucun dossier de données pour l'instant. Choisissez le dossier qui"
+        " contient UN DOSSIER PAR CIBLE de spectres t.fits ; rien n'y est jamais"
+        " écrit. Le dossier de sortie est proposé à côté une fois celui-ci"
+        " choisi, et la configuration est celle livrée avec cette installation.",
+    "log_no_config":
+        "aucun config.yaml n'est livré avec cette installation : choisissez-en"
+        " un, ou lancez la fenêtre depuis un dépôt cloné.",
     "lbl_title": "réglages LBL", "close": "Fermer",
     "nothing_export": "tous les réglages sont ceux de la configuration : un"
                       " fichier de variante ne dirait rien.",
@@ -979,6 +1002,47 @@ def variant_yaml(state, defaults=None):
     return out
 
 
+def command_line(state, pending):
+    """What the command box shows: the command, or what is still missing.
+
+    `pca2d-preclean --config ... --n-star 1` with no object in it is not a
+    command anybody can paste, and showing it while nothing is ticked made a
+    window with no data root look like a run that was ready to go.
+    """
+    return " ".join(build_command(state)) if state.get("objects") else pending
+
+
+def installed_config():
+    """The config.yaml that came with THIS installation, or "" if there is none.
+
+    Not `config.yaml` resolved against the working directory: a window started
+    from a home folder would then open on a file that does not exist, or worse
+    on somebody else's. The nominal to open on is the one belonging to the code
+    that is running, which sits beside the package in a checkout and inside it
+    in a copy that ships one.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    for path in (os.path.join(os.path.dirname(here), "config.yaml"),
+                 os.path.join(here, "config.yaml")):
+        if os.path.isfile(path):
+            return path
+    return ""
+
+
+def opening_paths(saved):
+    """The three paths a window opens on: what was kept, else a fresh start.
+
+    A fresh start is the installation's own config.yaml and NO roots. The data
+    root and the output root are a choice about somebody's disks, and a window
+    that opens with a plausible-looking path in them invites a run against a
+    folder nobody picked. Empty, and said in the status line, is the honest
+    opening state.
+    """
+    return {"data_dir": absolute(saved.get("data_dir") or ""),
+            "config": absolute(saved.get("config") or installed_config()),
+            "out_dir": saved.get("out_dir") or ""}
+
+
 def _read_state():
     try:
         with open(HOME_STATE) as handle:
@@ -1116,6 +1180,10 @@ class App:
         self._build_command(root)
         self._build_log(root)
         self._propose_out()      # on opening, not only when the data root moves
+        if not self.vars["config"].get().strip():
+            # a copy installed without one: say it here rather than let a run
+            # fail on a config.yaml resolved against the working directory
+            self._say("log_no_config", level="warn")
         self.refresh_objects()
         self._drain_id = self.root.after(80, self._drain)
         self.root.protocol("WM_DELETE_WINDOW", self._close)
@@ -1184,8 +1252,15 @@ class App:
         useful thing the line can hold, and a language switch or a finished
         subprocess must not wipe it.
         """
-        if not self.scanning:
-            self.status.configure(text=self.t("running" if self.proc else "idle"))
+        if self.scanning:
+            return
+        if self.proc:
+            self.status.configure(text=self.t("running"))
+        elif not self.vars["data_dir"].get().strip():
+            # nothing can be run from here, and an empty table does not say why
+            self.status.configure(text=self.t("pick_root"))
+        else:
+            self.status.configure(text=self.t("idle"))
 
     def _register(self, widget, key, how="text"):
         self.labels.append((widget, key, how))
@@ -1239,10 +1314,11 @@ class App:
         self._tip(button, "help_lang")
         # shown in full, since a relative path means a different folder from a
         # different working directory and these data are reached through a link
+        opening = opening_paths(self.saved)
         for i, (key, default) in enumerate((
-                ("data_dir", absolute(self.saved.get("data_dir", "data"))),
-                ("config", absolute(self.saved.get("config", "config.yaml"))),
-                ("out_dir", self.saved.get("out_dir", "")))):
+                ("data_dir", opening["data_dir"]),
+                ("config", opening["config"]),
+                ("out_dir", opening["out_dir"]))):
             label = ttk.Label(frame, text=self.t(key))
             label.grid(row=i + 1, column=0, sticky="w", pady=2)
             self._register(label, key)
@@ -1839,7 +1915,7 @@ class App:
     def _sync(self, *_args):
         state = self.state()
         self.command.delete("1.0", "end")
-        self.command.insert("1.0", " ".join(build_command(state)))
+        self.command.insert("1.0", command_line(state, self.t("command_pending")))
         self._warn_exists(state)
         keep = {k: v for k, v in state.items() if k != "objects"}
         keep["checked"] = sorted(self.checked)
@@ -1890,6 +1966,13 @@ class App:
             # one scan at a time: two threads walking the same index would
             # overwrite each other's answers
             self._say("log_busy", level="warn")
+            return
+        if not str(root).strip():
+            # the opening state of a fresh window: nothing to read yet, and an
+            # empty table on its own does not say what is missing
+            self._fill([])
+            self._say("log_pick_root", level="warn")
+            self._state()
             return
         self.index = scan.load(root)
         self._fill(scan.summaries(self.index))

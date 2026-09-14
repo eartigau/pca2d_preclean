@@ -426,3 +426,72 @@ def test_a_warning_over_the_bars_gets_its_own_ground():
     assert canvas.calls[1][2]["fill"] == "#fdf1dd"
     assert canvas.calls[2][1:] == ("r1", "t1"), "the box below the text"
     assert (item, box) == ("t1", "r1")
+
+
+def test_a_fresh_window_opens_on_its_own_config_and_no_roots():
+    """The window remembered the last paths, and a first run had none to
+    remember: it opened on `data` and `config.yaml` resolved against whatever
+    folder it was started from, which on another machine is somebody else's
+    layout or nothing at all. A fresh window opens on the config.yaml that came
+    with the code that is running, and on NO roots: where the spectra are and
+    where the copies go are choices about somebody's disks."""
+    from pca2d.gui import installed_config, opening_paths
+
+    fresh = opening_paths({})
+    assert fresh["data_dir"] == "", "no data root is invented"
+    assert fresh["out_dir"] == "", "and no output root either"
+    assert fresh["config"] == installed_config()
+    assert os.path.isfile(fresh["config"]), "the one beside the package"
+    assert os.path.basename(fresh["config"]) == "config.yaml"
+
+    kept = opening_paths({"data_dir": "~/spectra", "config": "/tmp/mine.yaml",
+                          "out_dir": "/tmp/out"})
+    assert kept["data_dir"] == os.path.expanduser("~/spectra"), "shown in full"
+    assert kept["config"] == "/tmp/mine.yaml" and kept["out_dir"] == "/tmp/out"
+
+
+def test_the_status_line_says_what_is_missing_rather_than_idle():
+    """An empty table with "idle" under it says nothing about what to do."""
+    from pca2d.gui import App
+
+    window = App.__new__(App)
+    window.lang = "en"
+    window.scanning = False
+    window.proc = None
+    said = []
+
+    class Label:
+        def configure(self, text):
+            said.append(text)
+
+    window.status = Label()
+
+    class Var:
+        def __init__(self, value):
+            self.value = value
+
+        def get(self):
+            return self.value
+
+    window.vars = {"data_dir": Var("   ")}
+    window._state()
+    assert said[-1] == window.t("pick_root")
+    window.vars["data_dir"] = Var("/data")
+    window._state()
+    assert said[-1] == window.t("idle")
+    window.scanning = True
+    window._state()
+    assert len(said) == 2, "a scan's progress is left alone"
+
+
+def test_the_command_box_says_what_is_missing_rather_than_half_a_command():
+    """With nothing ticked the box read `pca2d-preclean --config ... --n-star 1`,
+    which is not a command anybody can paste, and it made a window with no data
+    root look ready to run."""
+    from pca2d.gui import command_line
+
+    hint = "tick a target"
+    assert command_line({"objects": [], "config": "c.yaml"}, hint) == hint
+    assert command_line({"config": "c.yaml"}, hint) == hint
+    ready = command_line({"objects": ["PROXIMA"], "config": "c.yaml"}, hint)
+    assert ready.startswith("pca2d-preclean --object PROXIMA")
