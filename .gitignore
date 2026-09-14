@@ -2,6 +2,8 @@
 data/
 cache/
 outputs/
+# the output root the window proposes beside the data root
+corrected/
 lbl/
 *.npz
 *.npy
@@ -18,3 +20,6 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+
+# scratch kept beside the code rather than in it
+_sandboxcode.py
