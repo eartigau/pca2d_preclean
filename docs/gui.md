@@ -31,10 +31,10 @@ run is written out so that it can be copied into a terminal.
   instrument shows or hides its targets, and clicking a column heading sorts by
   it, again to reverse, the object heading a third time for the default order.
   What is not known sorts last, never first. A campaign still being read
-  carries a small disc beside its name, filled to the fraction of its files that
-  are in: an empty one, a quarter, a half, three quarters, a full one, and
-  nothing at all once every file is read, so a finished list is not a column of
-  symbols.
+  carries a disc beside its tick box, filling clockwise from twelve o'clock in
+  twelve steps as its files come in, and gone once they all are, so a finished
+  list is not a column of symbols. Drawn rather than written, because a
+  character is the size of the name beside it.
 - **A box per target.** Tick one for a solo run. **Tick several and they are
   fitted together against one observer basis**, each keeping its own star
   spectrum per order parity (`docs/joint_fit.md`). Click the box, double-click

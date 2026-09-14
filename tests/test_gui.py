@@ -587,3 +587,20 @@ def test_quitting_asks_only_while_a_run_would_go_with_it():
     assert closed == [True], "asked, answered no, still here"
     window.quit_window(confirm=lambda: True)
     assert closed == [True, True]
+
+
+def test_the_disc_of_a_campaign_being_read_has_twelve_steps():
+    """Written as a character the disc is the size of the name beside it, so it
+    is drawn, and a drawing can have any number of steps. None of them once
+    every file is in: a disc that never goes away is decoration."""
+    from pca2d.gui import pie_step
+
+    assert pie_step(0, 100) == 0, "nothing read yet is an empty dial"
+    assert pie_step(50, 100) == 6
+    assert pie_step(99, 100) == 11, "the last step is still not the whole disc"
+    assert pie_step(100, 100) is None, "and it goes when they are all in"
+    assert pie_step(120, 100) is None
+    assert pie_step(3, 0) is None and pie_step(None, None) is None
+    assert pie_step("x", 100) is None
+    assert len({pie_step(k, 100) for k in range(0, 100, 4)}) == 12, \
+        "every step of the twelve is reachable"

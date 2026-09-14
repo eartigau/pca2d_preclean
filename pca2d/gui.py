@@ -1028,32 +1028,68 @@ def pie_glyph(known, total):
     return PIE[min(len(PIE) - 1, step)]
 
 
-def check_images(tk, size=18, edge=None, tick=None, ground=None):
-    """The tick box, unticked and ticked, as two images, or None without PIL.
+def pie_step(known, total, steps=12):
+    """Which step of a `steps`-step disc `known` of `total` files is, or None.
 
-    A box written as a character is the size of the text beside it, and the
-    thing being aimed at with a mouse should not be 8 points wide. Drawn, it is
-    as large as the row can hold and the tick is in the accent colour, so a
-    ticked campaign is visible from across the table rather than read.
+    None where there is nothing to say: a folder with no files, or one whose
+    files are all read. A disc that never goes away would be decoration.
     """
     try:
-        from PIL import Image, ImageDraw, ImageTk
+        known, total = int(known or 0), int(total or 0)
+    except (TypeError, ValueError):
+        return None
+    if total <= 0 or known >= total:
+        return None
+    fraction = max(0.0, min(1.0, known / float(total)))
+    return min(steps - 1, int(fraction * steps))
+
+
+def row_drawing(ticked, step=None, steps=12, size=20, pie=18, gap=6,
+                edge=None, tick=None, ground=None, dial=None):
+    """The tick box, and the disc of a campaign still being read, as one PIL
+    image, or None without PIL.
+
+    One image, because a Treeview row has exactly one slot for one, before its
+    text. Drawn rather than written for the same reason in both cases: a
+    character is the size of the text beside it, and neither the thing aimed at
+    with a mouse nor the fraction read across the room should be that small.
+    """
+    try:
+        from PIL import Image, ImageDraw
     except Exception:                                           # noqa: BLE001
         return None
-    edge, tick, ground = edge or LINE, tick or ACCENT, ground or SURFACE
-    made = []
-    for ticked in (False, True):
-        image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(image)
-        draw.rounded_rectangle([1, 1, size - 2, size - 2], radius=4,
-                               outline=tick if ticked else edge,
-                               width=2, fill=ground)
-        if ticked:
-            draw.line([(size * 0.26, size * 0.52), (size * 0.44, size * 0.72),
-                       (size * 0.76, size * 0.28)], fill=tick, width=2,
-                      joint="curve")
-        made.append(ImageTk.PhotoImage(image))
-    return tuple(made)
+    edge, tick = edge or LINE, tick or ACCENT
+    ground, dial = ground or SURFACE, dial or MUTED
+    width = size if step is None else size + gap + pie
+    image = Image.new("RGBA", (width, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    draw.rounded_rectangle([1, 1, size - 2, size - 2], radius=4,
+                           outline=tick if ticked else edge,
+                           width=2, fill=ground)
+    if ticked:
+        draw.line([(size * 0.26, size * 0.52), (size * 0.44, size * 0.72),
+                   (size * 0.76, size * 0.28)], fill=tick, width=2,
+                  joint="curve")
+    if step is not None:
+        left = size + gap
+        top = (size - pie) // 2
+        box = [left, top, left + pie - 1, top + pie - 1]
+        draw.ellipse(box, outline=dial, width=1, fill=ground)
+        if step > 0:
+            # from twelve o'clock, clockwise, like any other dial
+            draw.pieslice(box, start=-90, end=-90 + 360.0 * step / steps,
+                          fill=tick, outline=tick)
+    return image
+
+
+def row_image(tk, ticked, step=None, **kwargs):
+    """`row_drawing`, as something a Treeview row can hold."""
+    drawing = row_drawing(ticked, step, **kwargs)
+    if drawing is None:
+        return None
+    from PIL import ImageTk
+
+    return ImageTk.PhotoImage(drawing)
 
 
 def suggested_run_name(state, digits=6):
@@ -1325,7 +1361,7 @@ class App:
                               ("disabled", "#9dbdd4")],
                   foreground=[("disabled", "#eef4f8")])
         style.configure("Treeview", background=SURFACE, fieldbackground=SURFACE,
-                        foreground=INK, rowheight=23, bordercolor=LINE,
+                        foreground=INK, rowheight=26, bordercolor=LINE,
                         font=self.fonts["body"])
         style.configure("Treeview.Heading", background=BG, foreground=MUTED,
                         font=(body, 11, "bold"), relief="flat", padding=(4, 5))
@@ -1487,9 +1523,10 @@ class App:
             self.tree.heading(column, command=lambda c=column: self._sort_by(c))
         self._draw_headings()
         # kept on the instance or the garbage collector takes them and the
-        # column goes blank
-        self.checks = check_images(self.tk, size=18)
-        self.tree.column("#0", width=190)
+        # column goes blank. One per (ticked, step), made when first needed:
+        # two states and thirteen steps, none of them drawn twice
+        self._row_images = {}
+        self.tree.column("#0", width=210)
         self.tree.column("files", width=52, anchor="e")
         self.tree.column("snr", width=56, anchor="e")
         self.tree.column("exptime", width=62, anchor="e")
@@ -1792,7 +1829,7 @@ class App:
     def _clicked(self, event):
         """A click on the box toggles; anywhere else selects, as usual."""
         item = self.tree.identify_row(event.y)
-        if item and self.tree.identify_column(event.x) == "#0" and event.x <= 34:
+        if item and self.tree.identify_column(event.x) == "#0" and event.x <= 36:
             self._toggle([item])
             return "break"
         return None
@@ -1826,22 +1863,33 @@ class App:
         self._after_ticks()
 
     def _draw_check(self, item, name, known=None, total=None):
-        """The tick box, the name, and how much of that campaign is read.
+        """The tick box, how much of that campaign is read, and the name.
 
-        The slice is beside the NAME rather than in a column of its own: a
-        Treeview cell holds no image, and a row that is still being read has to
-        say so where the eye already is.
+        Both marks are in the row's one image slot, which is before the text:
+        a Treeview cell holds no image, so a disc drawn at any size can only go
+        there. Written as a character it could sit after the name, but then it
+        is the size of the name.
         """
         if known is None or total is None:
             known, total = self._read_counts(name)
-        slice_ = pie_glyph(known, total)
-        text = ("  %s %s" % (name, slice_)).rstrip()
-        if getattr(self, "checks", None):
-            self.tree.item(item, image=self.checks[name in self.checked],
-                           text=text)
+        image = self._row_image(name in self.checked, known, total)
+        if image is not None:
+            self.tree.item(item, image=image, text="  %s" % name)
             return
         glyph = CHECKED if name in self.checked else UNCHECKED
-        self.tree.item(item, text="%s%s" % (glyph, text))
+        slice_ = pie_glyph(known, total)
+        self.tree.item(item, text=("%s  %s %s"
+                                   % (glyph, name, slice_)).rstrip())
+
+    def _row_image(self, ticked, known, total):
+        """The image for this row, drawn once per (ticked, step)."""
+        key = (bool(ticked), pie_step(known, total))
+        if key not in self._row_images:
+            made = row_image(self.tk, key[0], key[1])
+            if made is None:
+                return None
+            self._row_images[key] = made
+        return self._row_images[key]
 
     def _after_ticks(self):
         """What the ticks mean, said as soon as they change rather than at Run."""
