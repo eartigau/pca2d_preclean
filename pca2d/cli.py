@@ -310,9 +310,17 @@ def joint_plan(args, variant):
         log("variant %s asks to reuse a fit, which a joint run does not do: it"
             " will fit these objects together from the cube" % variant_name,
             "warn")
-    # its own LBL objects, so a joint measurement is never taken for a solo one
-    config["lbl"]["suffix"] = "%s_joint" % (config["lbl"].get("suffix")
-                                            or "_PCA2D_{tag}")
+    # Its own LBL objects, so a joint measurement is never taken for a solo one
+    # AND never for another joint one: the tag is the component counts, which
+    # two joint runs of different object sets share. PROXIMA+GJ1+GJ3090 and
+    # PROXIMA+GJ1+GJ3090+GL699_NIRPS both came out as PROXIMA_PCA2D_0-3_joint,
+    # so the second was handed the first's science folder, and would have been
+    # measured on the first's spectra had they still been there (2026-09-14).
+    import hashlib as _hash
+    stamp = _hash.sha1("+".join(sorted(args.objects)).encode()).hexdigest()[:4]
+    config["lbl"]["suffix"] = "%s_joint%d%s" % (config["lbl"].get("suffix")
+                                                or "_PCA2D_{tag}",
+                                                len(args.objects), stamp)
     tag = run_tag(config)
     outdir = os.path.join(config["output"]["directory"], "joint", name, tag)
     plan = {

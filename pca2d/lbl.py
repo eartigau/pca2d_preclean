@@ -230,8 +230,16 @@ def link_spectra(files, target: str, mode: str = "symlink") -> tuple:
     for path in files:
         destination = os.path.join(target, os.path.basename(path))
         if os.path.lexists(destination):
-            kept += 1
-            continue
+            # ... unless it is a link to something that is no longer there. The
+            # rule below is for a file that is already right; a DANGLING link is
+            # not right, and keeping it makes LBL die on it much later. One
+            # such folder, left by a run whose corrected spectra had since been
+            # deleted, cost 8 h 40 of LBL before it was reached (2026-09-14).
+            if os.path.islink(destination) and not os.path.exists(destination):
+                os.unlink(destination)
+            else:
+                kept += 1
+                continue
         if mode == "copy":
             shutil.copy2(path, destination)
         else:

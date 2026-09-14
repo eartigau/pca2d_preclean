@@ -139,8 +139,11 @@ def test_a_joint_variant_names_its_own_folder_and_its_own_lbl_objects():
     mine = plan_for("nightsshared", {"quality": {"nights": [60227, 60230]}})
     assert nominal["outdir"] != mine["outdir"]
     assert "_nightsshared" in mine["outdir"]
-    assert mine["config"]["lbl"]["suffix"].endswith("_nightsshared_joint")
-    assert nominal["config"]["lbl"]["suffix"].endswith("_joint")
+    # the joint part now carries the object set, so the variant's name sits
+    # before it rather than at the end
+    assert "_nightsshared_joint" in mine["config"]["lbl"]["suffix"]
+    assert "_joint" in nominal["config"]["lbl"]["suffix"]
+    assert mine["config"]["lbl"]["suffix"] != nominal["config"]["lbl"]["suffix"]
     assert mine["cube"] != nominal["cube"], \
         "fewer nights is a different cube, so it has its own key"
 
@@ -223,3 +226,57 @@ def test_the_snr_cut_is_taken_against_each_object_s_own_median(tmp_path):
     assert (left == "FAINT").sum() == 100, \
         "the faint star keeps every night: none is bad FOR IT"
     assert (left == "BRIGHT").sum() == 194, "the bright one loses its own six"
+
+
+def test_two_joint_runs_of_different_sets_are_different_lbl_objects():
+    """The tag is the component counts, which two joint runs share. Both
+    PROXIMA+GJ1+GJ3090 and that set plus GL699_NIRPS came out as
+    PROXIMA_PCA2D_0-3_joint, so the second was handed the first's science
+    folder and would have been measured on the first's spectra."""
+    import types
+
+    from pca2d.cli import joint_plan
+
+    def suffix(objects):
+        args = types.SimpleNamespace(
+            objects=objects, object=objects[0], config="config.yaml",
+            data_dir=None, out_dir=None, instrument=None, n_star=0,
+            n_earth=None, windows=None, rebuild_cube=False, run_lbl=False,
+            variant=None, name=None, min_rjd=None, max_rjd=None)
+        return joint_plan(args, None)["config"]["lbl"]["suffix"]
+
+    three = suffix(["PROXIMA", "GJ1", "GJ3090"])
+    four = suffix(["PROXIMA", "GJ1", "GJ3090", "GL699_NIRPS"])
+    assert three != four, (three, four)
+    assert "joint3" in three and "joint4" in four, "the count is readable"
+    assert suffix(["GJ1", "PROXIMA", "GJ3090"]) == three, \
+        "the same set in another order is the same run"
+    assert suffix(["PROXIMA", "GJ1", "GJ328"]) != three, \
+        "three objects, another set, another name"
+
+
+def test_a_dangling_link_is_replaced_rather_than_kept(tmp_path):
+    """link_spectra leaves a name that is already right alone. A link to
+    something no longer there is not right, and keeping it makes LBL die on it
+    hours later."""
+    import os
+
+    from pca2d.lbl import link_spectra
+
+    source = tmp_path / "corrected"
+    source.mkdir()
+    real = source / "a_0-3.fits"
+    real.write_text("new")
+    target = tmp_path / "science"
+    target.mkdir()
+    os.symlink(str(tmp_path / "gone" / "a_0-3.fits"), str(target / "a_0-3.fits"))
+    assert os.path.lexists(target / "a_0-3.fits")
+    assert not os.path.exists(target / "a_0-3.fits"), "dangling to begin with"
+
+    linked, kept, _strangers = link_spectra([str(real)], str(target))
+    assert (linked, kept) == (1, 0), "replaced, not kept"
+    assert os.path.realpath(target / "a_0-3.fits") == os.path.realpath(real)
+
+    # and a link that is already right is still left alone
+    linked, kept, _strangers = link_spectra([str(real)], str(target))
+    assert (linked, kept) == (0, 1)
