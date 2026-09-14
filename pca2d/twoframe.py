@@ -1266,6 +1266,19 @@ def restore_means(data, T, O, T_to, O_to, group, shifter, delta, chunk, w=None):
     O[:] = O_to
 
 
+def _per_row(meta):
+    """meta's n_exposures, or None when the rows are single exposures.
+
+    A cube written before nightly stacking existed has no such column, and one
+    that was not stacked has it all ones; both mean "the rows ARE exposures".
+    """
+    names = getattr(meta, "colnames", None) or getattr(meta, "files", None) or []
+    if "n_exposures" not in names:
+        return None
+    per_row = np.asarray(meta["n_exposures"], dtype=float)
+    return per_row if np.nanmax(per_row) > 1 else None
+
+
 def count_exposures(meta, rows=None):
     """How many distinct exposures a set of rows belongs to.
 
@@ -1281,7 +1294,7 @@ def count_exposures(meta, rows=None):
     return len({str(n).strip() for n in names})
 
 
-def exposures_label(names, keep):
+def exposures_label(names, keep, per_row=None):
     """'316 exposures' for the rows `keep` selects, counted as exposures.
 
     What a figure says about how many points went into it. The correlation
@@ -1289,11 +1302,32 @@ def exposures_label(names, keep):
     exposures, two rows each, and a reader rightly asks where the other half
     of the data came from. Without file names only rows can be counted, and
     the label says rows.
+
+    On a nightly-stacked cube a "file name" is a NIGHT, not an exposure, and
+    calling 458 of them exposures invited exactly the reading it was meant to
+    prevent: GL699 has 1976 spectra and this label said 458, so the figure
+    looked like it had thrown three quarters of the campaign away. `per_row`
+    is meta's n_exposures; when it says the rows hold more spectra than there
+    are rows, the label says so, in the words the sequence figures already use.
     """
     keep = np.asarray(keep, dtype=bool)
     if names is None:
         return "%d rows" % int(keep.sum())
-    return "%d exposures" % count_exposures({"filename": np.asarray(names)}, keep)
+    count = count_exposures({"filename": np.asarray(names)}, keep)
+    if per_row is None:
+        return "%d exposures" % count
+    per_row = np.asarray(per_row, dtype=float)
+    # one row per (night, parity): summing n_exposures over the kept rows would
+    # count every night twice, so collapse to one entry per distinct name first
+    seen, spectra = set(), 0.0
+    for name, n, take in zip(np.asarray(names), per_row, keep):
+        key = str(name).strip()
+        if take and key not in seen:
+            seen.add(key)
+            spectra += n
+    if not np.isfinite(spectra) or spectra <= count:
+        return "%d exposures" % count
+    return "%d nights of %d spectra" % (count, int(round(spectra)))
 
 
 def load_cube(path, ln_clip_low=-0.5, ramp_zero=0.5, min_snr_frac=0.5,
@@ -2127,7 +2161,8 @@ def replot(outdir, cube=None):
                            [str(x) for x in fit["anc_labels"]],
                            fit["anc_values"][:, keep],
                            title=exposures_label(fit["filename"] if "filename"
-                                                 in fit.files else None, keep))
+                                                 in fit.files else None, keep,
+                                                 _per_row(fit)))
     elif cube and "filename" in fit.files:
         # an archive written before the ancillary table was stored: rebuild it
         # from the cube, matching on filename so a rejected row cannot shift the
@@ -2139,11 +2174,20 @@ def replot(outdir, cube=None):
             log("  no %s, skipping correlations.pdf" % meta_path)
             return
         names = [os.path.basename(str(v)) for v in fit["filename"]]
-        labels, values = ancillary_table(Table.read(meta_path), names,
+        meta = Table.read(meta_path)
+        labels, values = ancillary_table(meta, names,
                                          source_dir=source_directory(cube))
+        # the cube's rows are not the fit's rows once a quality cut has dropped
+        # one, so n_exposures is matched on the file name, the way the
+        # ancillary columns just were, and never by position
+        per_row = _per_row(fit)
+        if per_row is None and _per_row(meta) is not None:
+            by_name = {os.path.basename(str(f)).strip(): n for f, n
+                       in zip(meta["filename"], _per_row(meta))}
+            per_row = np.array([by_name.get(str(n).strip(), 1.0) for n in names])
         correlate_and_plot(outdir, fit["a"][keep], fit["b"][keep], labels,
                            values[:, keep] if len(labels) else values,
-                           title=exposures_label(names, keep))
+                           title=exposures_label(names, keep, per_row))
     else:
         log("  no ancillary quantities in the archive and no --cube given,"
               " skipping correlations.pdf")
@@ -2784,6 +2828,13 @@ def main(argv=None):
                         tied=bool(args.tie_parities), dv=dv,
                         filename=np.asarray(meta["filename"], dtype="U64"),
                         berv=np.asarray(meta["berv"], dtype=float),
+                        # how many spectra each row holds: 1 unless the night
+                        # was coadded. Without it a --replot cannot tell a
+                        # nightly-stacked fit from a fit of single exposures,
+                        # and labelled 458 nights as 458 exposures
+                        n_exposures=np.asarray(
+                            meta["n_exposures"] if "n_exposures" in meta.colnames
+                            else np.ones(len(meta)), dtype=float),
                         mean_mode=str(args.mean),
                         # R the star side was smoothed to; 0 when it was not
                         star_resolution=float(getattr(args, "star_resolution", None) or 0),
@@ -2813,7 +2864,8 @@ def main(argv=None):
                     os.path.join(args.outdir, "components.pdf"))
     correlate_and_plot(args.outdir, a[keep], b[keep], anc_labels,
                        anc_values[:, keep] if len(anc_labels) else anc_values,
-                       title=exposures_label(table["filename"], keep))
+                       title=exposures_label(table["filename"], keep,
+                                             _per_row(table)))
     write_components_fits(os.path.join(args.outdir, "twoframe_components.fits"),
                           grid, P, Q, template, means, power_star, power_earth,
                           chi2_null, chi2, table, dv, tied=bool(args.tie_parities),
