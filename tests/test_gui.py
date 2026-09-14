@@ -104,7 +104,7 @@ def test_every_item_explains_itself_in_both_languages():
     choice implies, in whichever of the two languages is on."""
     from pca2d.gui import EN, FR, STAGES, text
     keys = ["help_data_dir", "help_config", "help_out_dir", "help_objects",
-            "help_command", "help_log", "help_rescan",
+            "help_command", "help_log", "help_rescan", "help_quit_button",
             "help_lang", "help_run_button", "help_stop_button",
             "help_dry_button", "help_export_button", "help_savelog_button",
             "help_openout_button", "help_savedefaults_button",
@@ -565,3 +565,25 @@ def test_a_campaign_being_read_shows_how_much_of_it_is_in():
     assert pie_glyph("x", 100) == "", "a row that knows nothing shows nothing"
     assert len({pie_glyph(k, 100) for k in (0, 25, 45, 65, 85)}) == 5, \
         "the five steps are five different marks"
+
+
+def test_quitting_asks_only_while_a_run_would_go_with_it():
+    """The settings are written at every change, so leaving loses nothing of the
+    window. A run is a subprocess of it and goes when it does, which is worth a
+    question; with nothing running, a question would be noise."""
+    from pca2d.gui import App
+
+    window = App.__new__(App)
+    closed = []
+    window._close = lambda: closed.append(True)
+
+    window.proc = None
+    window.quit_window(confirm=lambda: (_ for _ in ()).throw(
+        AssertionError("nothing is running, so nothing is asked")))
+    assert closed == [True]
+
+    window.proc = object()
+    window.quit_window(confirm=lambda: False)
+    assert closed == [True], "asked, answered no, still here"
+    window.quit_window(confirm=lambda: True)
+    assert closed == [True, True]

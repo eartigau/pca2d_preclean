@@ -159,6 +159,15 @@ EN = {
     "savedefaults": "Save as defaults...", "lblwin": "LBL settings...",
     "all": "all", "none": "none",
     "idle": "idle", "running": "running", "lang": "Français",
+    "quit": "Quit", "quit_title": "quit pca2d-preclean",
+    "quit_running":
+        "A run is going, and it is a subprocess of this window: quitting stops"
+        " it. What the stages before it wrote stays where it is, the stage it is"
+        " in is lost. Quit anyway?",
+    "help_quit_button":
+        "Closes the window. The settings are written at every change, so nothing"
+        " here is lost by leaving; a run that is going is stopped, and it asks"
+        " before doing that.",
     # said instead of "idle" for as long as there is nowhere to read from
     "pick_root": "pick a data root: Browse, beside the field at the top",
     "command_pending":
@@ -513,6 +522,15 @@ FR = {
     "savedefaults": "Enregistrer comme défauts...", "lblwin": "Réglages LBL...",
     "all": "tout", "none": "rien",
     "idle": "au repos", "running": "en cours", "lang": "English",
+    "quit": "Quitter", "quit_title": "quitter pca2d-preclean",
+    "quit_running":
+        "Un passage est en cours, et c'est un processus fils de cette fenêtre :"
+        " quitter l'arrête. Ce que les étapes précédentes ont écrit reste en"
+        " place, l'étape en cours est perdue. Quitter quand même ?",
+    "help_quit_button":
+        "Ferme la fenêtre. Les réglages sont écrits à chaque changement, rien"
+        " n'est donc perdu en partant ; un passage en cours est arrêté, et la"
+        " fenêtre le demande avant.",
     "pick_root": "choisissez un dossier de données : Parcourir, en haut",
     "command_pending":
         "cochez une cible : la commande s'écrit ici, en entier, avant de partir",
@@ -1264,7 +1282,7 @@ class App:
             self._say("log_no_config", level="warn")
         self.refresh_objects()
         self._drain_id = self.root.after(80, self._drain)
-        self.root.protocol("WM_DELETE_WINDOW", self._close)
+        self.root.protocol("WM_DELETE_WINDOW", self.quit_window)
 
     # ---- the look -----------------------------------------------------
     def _style(self, style):
@@ -1957,6 +1975,13 @@ class App:
             self._tip(button, tip)
             if attr:
                 setattr(self, attr, button)
+        # at the other end of the bar, away from Run: the two buttons that end
+        # what is happening should not be neighbours of the one that starts it
+        quit_button = ttk.Button(bar, text=self.t("quit"),
+                                 command=self.quit_window)
+        quit_button.pack(side="right")
+        self._register(quit_button, "quit")
+        self._tip(quit_button, "help_quit_button")
         self.stop_button.configure(state="disabled")
 
     def _build_log(self, parent):
@@ -2737,6 +2762,24 @@ class App:
             if key == "data_dir":
                 self._propose_out()
                 self.refresh_objects()
+
+    def quit_window(self, confirm=None):
+        """Leave, and ask first when a run would be stopped by leaving.
+
+        The settings are written at every change, so nothing of the window is
+        lost by closing it. A run is another matter: it is a subprocess of this
+        one, and it goes when this does.
+        """
+        if self.proc is not None:
+            if confirm is None:
+                from tkinter import messagebox
+
+                def confirm():
+                    return messagebox.askyesno(self.t("quit_title"),
+                                               self.t("quit_running"))
+            if not confirm():
+                return
+        self._close()
 
     def _close(self):
         if self.proc is not None:
