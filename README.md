@@ -255,12 +255,17 @@ keeps its own spectrum per order parity. No basis can follow one star when
 three of them, with different barycentric coverage and systemic velocities,
 constrain it.
 
-Measured, and narrower than it sounds: the stars have to have been observed on the
-SAME NIGHTS. PROXIMA, GJ~1 and GJ~3090 share two nights out of campaigns of 258,
-147 and 99, and the result split accordingly, Proxima improving on its best solo
-fit (2.91 against 3.04) while GJ 1 lost what its solo fit had gained (3.04
-against 2.61). The window reports the nights a selection shares before anything
-is run. `docs/joint_fit.md`.
+Nights in common are NOT the criterion, and few of them are an advantage: the
+observer components are a parasite that is always present, what the fit measures
+is their PATTERN, and nights no other star of the group saw widen the range of
+conditions that pattern is determined over. Nor is comparable brightness a
+requirement, since the weights are 1/sigma^2 and absolute. The first run,
+PROXIMA + GJ 1 + GJ 3090, came back worse for GJ 1 than its solo fit (3.04
+against 2.61 robust), and the cause found on 2026-09-13 was the common mask,
+intersected over every object so that a sample lost by one night of the faintest
+star was blanked in every exposure of the others. That is fixed, and the joint
+result has to be measured again before anything is concluded from it. The window
+reports the nights a selection shares as information. `docs/joint_fit.md`.
 
 ## Which choices are nominal, and what each one was worth
 
@@ -361,7 +366,7 @@ What smart_dv does not do is rescale the one window still counted in samples,
 ./check.sh
 ```
 
-273 tests in about six seconds, with no file and no network access. They pin
+487 tests in about fifteen seconds, with no file and no network access. They pin
 the things that have gone wrong here: the adjoint identity the block solve
 depends on, the parity tie producing identical coefficients, the corrected file
 being panel 3, a file's OBJECT matching its object whatever case it was typed

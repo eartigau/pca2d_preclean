@@ -91,6 +91,39 @@
       </figure>
     </section>
 
+    <section class="card span-3" id="install">
+      <h2>Install it</h2>
+      <p>
+        One conda environment, described by the repository itself, and five
+        lines. It holds <strong>both codes</strong>, this one and
+        <a href="https://github.com/njcuk9999/lbl" target="_blank">LBL</a>,
+        because having to deactivate one to run the other is how a t.fits gets
+        measured by the wrong version of something.
+      </p>
+      <pre><code>git clone https://github.com/eartigau/pca2d_preclean.git
+cd pca2d_preclean
+conda env create -f environment.yml
+conda activate pca2d-preclean
+./check.sh</code></pre>
+      <p>
+        <code>./check.sh</code> is the check that it worked: 487 tests, about
+        fifteen seconds, no file and no network access. Then put the spectra of
+        a target in <code>data/&lt;object&gt;/</code> under the input root,
+        which is never written to, and either
+      </p>
+      <pre><code>pca2d-preclean --object TOI-2120     # the whole thing, t.fits to velocities
+pca2d-gui                            # the same, in a window</code></pre>
+      <p>
+        The environment pins rather than floors its versions, because LBL pins
+        its own exactly: <code>numpy==2.3.3</code>, <code>astropy==7.2.0</code>,
+        <code>scipy==1.17.0</code> and the rest, python 3.12.
+        <code>environment.yml</code> repeats those pins so that conda installs
+        them and pip finds them already satisfied. The repository itself is
+        <strong>private for the moment</strong>: the clone needs access, which
+        is <a href="#access">a message away</a>.
+      </p>
+    </section>
+
     <section class="card span-3">
       <h2>The idea</h2>
       <p>
@@ -98,8 +131,9 @@
         kilometres per second. That is enough to separate the star from the
         atmosphere, but only if the model is told which of the two travels.
         Each exposure is the log of its flux less a Savitzky-Golay of it (a
-        75&nbsp;km/s high pass), on one log-uniform grid in the observer's frame,
-        as two rows, its even orders and its odd ones:
+        100&nbsp;km/s high pass, 201 samples of 0.5&nbsp;km/s; runs made before
+        2026-09-11 used 151 of them, 75&nbsp;km/s), on one log-uniform grid in
+        the observer's frame, as two rows, its even orders and its odd ones:
       </p>
       <pre><code>y_n  =  S_n P a_n  +  v_n d(S_n P a_n)/dv  +  Q b_n  +  m_p</code></pre>
       <ul class="terms">
@@ -198,10 +232,10 @@
         stage writes it in LBL's
         template format, by LBL's own writer, and puts it where LBL looks for
         that object's template, so LBL's template step finds it and has nothing
-        to do. A template LBL built itself is never replaced. Through the same
-        75&nbsp;km/s high pass it agrees with LBL's own template for the same
-        spectra at a correlation of 0.93 and a slope of 0.94, and 0.99 and 0.99
-        in H.
+        to do. A template LBL built itself is never replaced. Through the
+        75&nbsp;km/s high pass of the day it was measured, it agrees with LBL's
+        own template for the same spectra at a correlation of 0.93 and a slope
+        of 0.94, and 0.99 and 0.99 in H.
       </p>
       <p>
         <strong>The star components past the first are variability
@@ -279,26 +313,126 @@
       </figure>
     </section>
 
-    <section class="card span-2">
-      <h2>Installing it</h2>
-      <p>A conda environment, described by the repository itself:</p>
-      <pre><code>git clone https://github.com/eartigau/pca2d_preclean.git
-cd pca2d_preclean
-conda env create -f environment.yml
-conda activate pca2d-preclean</code></pre>
+    <section class="card span-3" id="window">
+      <h2>The window</h2>
+      <pre><code>pca2d-gui</code></pre>
       <p>
-        That environment holds <strong>both codes</strong>: this one and
-        <a href="https://github.com/njcuk9999/lbl" target="_blank">LBL</a>.
-        Having to deactivate one to run the other is how a t.fits gets measured
-        by the wrong version of something. LBL pins its dependencies exactly,
-        <code>numpy==2.3.3</code>, <code>astropy==7.2.0</code>,
-        <code>scipy==1.17.0</code> and the rest, and asks for python 3.12;
-        <code>environment.yml</code> repeats those pins so that conda installs
-        them and pip finds them already satisfied. Check the install with
-        <code>./check.sh</code>: 273 tests, about six seconds, no file and no
-        network access.
+        For anyone who should not have to read a command line before their
+        first run. It does nothing the command line cannot: every setting is
+        one key of <code>config.yaml</code> or one flag of
+        <code>pca2d-preclean</code>, and <strong>the command it is about to run
+        is written out in full</strong>, so it can be read before anything
+        happens and copied into a terminal afterwards. It runs that command as
+        a subprocess and can stop it.
       </p>
-      <h3>Running it</h3>
+
+      <h3>The targets, and what is known about them</h3>
+      <p>
+        A data root is a folder of campaigns, and the window lists them with
+        the number of spectra, the median signal-to-noise, the median exposure
+        time, the magnitude with the band it is in, and the instrument. Rows
+        are grouped and tinted by instrument, a column heading sorts by that
+        column and again to reverse it, and what is not known sorts last,
+        never first.
+      </p>
+      <p>
+        Those numbers come from the headers, so the first visit to a data root
+        reads one header per spectrum: the per-order extraction signal-to-noise
+        APERO wrote, the exposure time, the barycentric velocity, the
+        coordinates, the magnitude under whichever keyword the instrument
+        writes, and <code>INSTRUME</code>, which is read from the FILE and never
+        from a configuration. The answers go into one index per root under
+        <code>~/.pca2d/scans/</code>, named after the root with a digest of its
+        full path, so two roots whose last folder is called <code>science</code>
+        cannot share one index. Every later visit draws the list at once from
+        that index, then checks the root and reads only what was added or
+        replaced. A campaign's first numbers arrive from ten spectra
+        <em>spread across it</em> rather than the first ten, and carry a tilde
+        until the rest are in: file names sort by date, and the first ten of a
+        campaign are one night's weather. On GJ 1 they give 134 against the
+        campaign's 163.
+      </p>
+
+      <h3>One target, or several against one observer basis</h3>
+      <p>
+        Tick one box for a solo run. <strong>Tick several and they are fitted
+        together against a single observer basis</strong>, each star keeping its
+        own spectrum per order parity, which is the way out of the case where
+        the star does not move enough against the sky. They must come from one
+        instrument: two ticked instruments refuse to run, because a run is one
+        domain, one grid and one set of extensions, all read from the
+        instrument.
+      </p>
+
+      <h3>What the sky allows, before anything is run</h3>
+      <p>
+        Under the list, the barycentric coverage of whatever is ticked, as a
+        histogram in bins of 3&nbsp;km/s stacked by star, with three numbers:
+        what the campaign covers, its span, and <strong>what the target's
+        ecliptic latitude ALLOWS</strong>. That last one is fixed by the solar
+        system, |BERV| &le; 29.78&nbsp;cos(&beta;), and it decides whether the
+        method can work on that target at all: TOI-1452, at +80.5 degrees, can
+        never span more than 9.8&nbsp;km/s. A coverage short of the span means
+        gaps, which more nights fill; a span short of what is possible means a
+        young campaign; a small possible means the wrong target. It is the
+        single most useful thing to look at before starting a twenty-minute
+        run, because the correction is worth a factor of two where the span is
+        wide and costs a factor of two where it is not.
+      </p>
+      <p>
+        Beside it, when the campaigns were observed: one mark per exposure in
+        its star's colour on a calendar axis, and two sliders that keep a date
+        window. What falls outside is neither fitted nor corrected, which is how
+        a campaign is cut into seasons and how the two ends of a shared baseline
+        are compared.
+      </p>
+
+      <h3>The settings that change a result, and only those</h3>
+      <p>
+        How many components in each frame, the static part, the star basis, the
+        velocity term, the number of sweeps, the shrinkage, which samples a
+        corrected file blanks, the high pass, the grid step, nightly coadding,
+        and whether LBL is run. Resting the pointer on one writes what it means
+        at the bottom of the window, and after a moment in a box. The stages,
+        <code>cube</code>, <code>fit</code>, <code>figures</code>,
+        <code>correct</code> and <code>lbl</code>, are ticked in any subset, and
+        a variant from <code>variants/</code> is the nominal plus the lines that
+        variant changes. <strong>LBL settings...</strong> opens the
+        <code>lbl:</code> block on its own: what is measured, what the corrected
+        object is called next to the delivered one, which template it is
+        measured against, where LBL's tree is, and which of its steps run.
+      </p>
+
+      <h3>What it writes, and what it remembers</h3>
+      <ul class="terms">
+        <li><strong>Export YAML</strong> saves the settings that differ from the
+          configuration as a variant file, which is how one run is made
+          reproducible. A variant that repeats the nominal says nothing, and the
+          window refuses to write one.</li>
+        <li><strong>Save as defaults</strong> writes those same settings into
+          <code>config.yaml</code>. It edits the lines it has to and nothing
+          else, so the comments that say which measurement chose each value
+          survive, where a <code>yaml.safe_dump</code> of the parsed document
+          would have deleted all of them. It asks first, and shows exactly which
+          keys it is about to change.</li>
+        <li><strong>Save log</strong> writes what the window has shown. The run
+          prints there as it goes, in the colours a terminal gets, green for
+          progress, blue for a number, orange for something skipped, red for
+          what stops a run, and the window's own lines take the same form,
+          <code>YYMMDD HH:MM:SS.SS | message</code>.</li>
+      </ul>
+      <p>
+        <strong>English or French</strong>, one button, everything included: the
+        labels, the explanations and the log lines. It holds no state of its own
+        beyond the last settings and what was ticked, in
+        <code>~/.pca2d_gui.json</code>, and the per-root index under
+        <code>~/.pca2d/</code>. It does not resolve the configuration itself and
+        never touches the data.
+      </p>
+    </section>
+
+    <section class="card span-2">
+      <h2>Running it</h2>
       <p>
         Spectra go in <code>data/&lt;object&gt;/</code> under the input root and
         everything a run writes goes under the output root, so the archive it
@@ -373,7 +507,7 @@ conda activate pca2d-preclean</code></pre>
       </p>
     </section>
 
-    <section class="card span-3">
+    <section class="card span-3" id="access">
       <h2>Access</h2>
       <p>
         The repository is <strong>private</strong> for the moment. If you would
