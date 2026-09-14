@@ -1061,7 +1061,10 @@ class App:
         self.sort_reverse = bool(self.saved.get("sort_reverse"))
         self.lbl_window = None
         root.title("pca2d-preclean")
-        root.geometry("1240x860")
+        # a 13-inch laptop has about 800 points of usable height, and the log
+        # at the bottom is the part that was falling off the screen
+        root.geometry("1280x800")
+        root.minsize(1000, 620)
         style = ttk.Style()
         # clam rather than the native aqua: aqua ignores most colour options, so
         # a window styled under it stays the grey it was born with
@@ -1073,17 +1076,21 @@ class App:
         self.status = ttk.Label(root, text=self.t("idle"), style="Hint.TLabel")
         self._build_top(root)
         panes = ttk.Panedwindow(root, orient="horizontal")
-        panes.pack(fill="both", expand=False, padx=14)
+        panes.pack(fill="x", expand=False, padx=14)
         left, right = ttk.Frame(panes), ttk.Frame(panes)
-        panes.add(left, weight=1)
-        panes.add(right, weight=2)
+        panes.add(left, weight=3)
+        panes.add(right, weight=4)
         self._build_objects(left)
         self._build_options(right)
+        # one panel on each side: stacked on one, they made that column half as
+        # tall again as the other and pushed the log off a laptop screen
+        self._build_berv(left)
+        self._build_time(right)
         self._build_command(root)
         self._build_log(root)
         self._propose_out()      # on opening, not only when the data root moves
         self.refresh_objects()
-        self.root.after(80, self._drain)
+        self._drain_id = self.root.after(80, self._drain)
         self.root.protocol("WM_DELETE_WINDOW", self._close)
 
     # ---- the look -----------------------------------------------------
@@ -1264,7 +1271,7 @@ class App:
         self.tree = ttk.Treeview(box, columns=("files", "snr", "exptime", "mag",
                                                "instrument"),
                                  show="tree headings", selectmode="extended",
-                                 height=13)
+                                 height=7)
         self.headings = (("#0", "col_object"), ("files", "col_files"),
                          ("snr", "col_snr"), ("exptime", "col_exptime"),
                          ("mag", "col_mag"), ("instrument", "col_instrument"))
@@ -1303,7 +1310,6 @@ class App:
         self.instrument_vars = {}
         self.count = ttk.Label(bar, style="Hint.TLabel", text="")
         self.count.pack(side="right")
-        self._build_berv(box)
 
     def _build_berv(self, parent):
         """The barycentric coverage of what is ticked, as a histogram.
@@ -1316,7 +1322,7 @@ class App:
         box = ttk.Labelframe(parent, text=self.t("berv"))
         box.pack(fill="x", padx=6, pady=(0, 6))
         self._register(box, "berv")
-        self.berv_canvas = self.tk.Canvas(box, height=128, highlightthickness=0,
+        self.berv_canvas = self.tk.Canvas(box, height=86, highlightthickness=0,
                                           background=SURFACE)
         self.berv_canvas.pack(fill="x", padx=6, pady=(4, 2))
         self.berv_note = ttk.Label(box, style="Hint.TLabel", text="")
@@ -1324,7 +1330,6 @@ class App:
         self._tip(self.berv_canvas, "help_berv")
         self._tip(self.berv_note, "help_berv")
         self.berv_canvas.bind("<Configure>", lambda _e: self._draw_berv())
-        self._build_time(parent)
 
     def _build_time(self, parent):
         """When the ticked campaigns were observed, and what to keep of them.
@@ -1336,7 +1341,7 @@ class App:
         box = ttk.Labelframe(parent, text=self.t("timeline"))
         box.pack(fill="x", padx=6, pady=(0, 6))
         self._register(box, "timeline")
-        self.time_canvas = self.tk.Canvas(box, height=96, highlightthickness=0,
+        self.time_canvas = self.tk.Canvas(box, height=80, highlightthickness=0,
                                           background=SURFACE)
         self.time_canvas.pack(fill="x", padx=6, pady=(4, 2))
         self.time_canvas.bind("<Configure>", lambda _e: self._draw_time())
@@ -1633,7 +1638,7 @@ class App:
         grid = ttk.Frame(box)
         grid.pack(fill="both", expand=True, padx=8, pady=6)
         for i, (key, path, kind) in enumerate(OPTIONS):
-            row, col = i % 6, (i // 6) * 3
+            row, col = i % 4, (i // 4) * 3
             label = ttk.Label(grid, text=self.t("opt_" + key))
             label.grid(row=row, column=col, sticky="w", pady=2)
             self._register(label, "opt_" + key)
@@ -1718,7 +1723,7 @@ class App:
         box = ttk.Labelframe(parent, text=self.t("output"))
         box.pack(fill="both", expand=True, padx=14, pady=(4, 12))
         self._register(box, "output")
-        self.log = tk.Text(box, wrap="word", font=self.fonts["mono"],
+        self.log = tk.Text(box, wrap="word", height=3, font=self.fonts["mono"],
                            background=LOG_BG, foreground=LOG_INK,
                            insertbackground=LOG_INK, relief="flat",
                            padx=8, pady=6, highlightthickness=0)
@@ -2282,7 +2287,7 @@ class App:
                 self._scanned(*item[1:])
             elif item[0] == "finished":
                 self._finished()
-        self.root.after(80, self._drain)
+        self._drain_id = self.root.after(80, self._drain)
 
     # ---- what the window itself says ----------------------------------
     def _line(self, key, *args):
@@ -2479,6 +2484,13 @@ class App:
     def _close(self):
         if self.proc is not None:
             self.proc.terminate()
+        # cancel the pending drain, or it fires into a window that is gone
+        after = getattr(self, "_drain_id", None)
+        if after is not None:
+            try:
+                self.root.after_cancel(after)
+            except Exception:                                   # noqa: BLE001
+                pass
         self.root.destroy()
 
 
