@@ -387,3 +387,42 @@ def test_a_campaign_finished_mid_scan_redraws_them_only_if_it_is_shown():
     window.picked = lambda: []                   # ticked by nobody
     window._one("GL205", 635, 635)
     assert drawn == [], "not in either panel, so not redrawn for it"
+
+
+def test_a_warning_over_the_bars_gets_its_own_ground():
+    """"UNDER CONSTRUCTION: still reading" was written straight onto the
+    histogram and read against the bars, worst where the campaign is densest.
+    The box is measured from the text that was drawn, never guessed from a
+    character count, and it goes UNDER it."""
+    from pca2d.gui import chip
+
+    class Canvas:
+        def __init__(self):
+            self.calls = []
+
+        def create_text(self, x, y, **kw):
+            self.calls.append(("text", x, y, kw))
+            return "t1"
+
+        def bbox(self, item):
+            assert item == "t1", "the box is measured from the text itself"
+            return (40, 10, 160, 24)
+
+        def create_rectangle(self, *xy, **kw):
+            self.calls.append(("rect", xy, kw))
+            return "r1"
+
+        def tag_lower(self, below, above):
+            self.calls.append(("lower", below, above))
+
+    canvas = Canvas()
+    item, box = chip(canvas, 100, 17, "still reading", ink="#b26a00",
+                     fill="#fdf1dd", outline="#e0a94a",
+                     font=("Helvetica", 10, "bold"), pad=5)
+    kinds = [c[0] for c in canvas.calls]
+    assert kinds == ["text", "rect", "lower"], "text, then its box, then under"
+    assert canvas.calls[1][1] == (35, 7, 165, 27), \
+        "the bbox, 5 px either side and 3 above and below"
+    assert canvas.calls[1][2]["fill"] == "#fdf1dd"
+    assert canvas.calls[2][1:] == ("r1", "t1"), "the box below the text"
+    assert (item, box) == ("t1", "r1")

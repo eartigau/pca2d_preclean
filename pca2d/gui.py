@@ -1046,6 +1046,23 @@ class Tip:
             self.window = None
 
 
+def chip(canvas, x, y, text, ink, fill, font, pad=5, outline=None):
+    """A label on its own ground, centred at (x, y), drawn over whatever is there.
+
+    A warning written straight onto a histogram is read against the bars: at
+    the density of a stacked campaign it is barely legible, and it is worst
+    exactly where there is most data to warn about. The text goes down first,
+    its box is measured from it rather than guessed from a character count, and
+    the box is lowered underneath it.
+    """
+    item = canvas.create_text(x, y, text=text, fill=ink, font=font)
+    x0, y0, x1, y1 = canvas.bbox(item)
+    box = canvas.create_rectangle(x0 - pad, y0 - pad + 2, x1 + pad, y1 + pad - 2,
+                                  fill=fill, outline=outline or fill)
+    canvas.tag_lower(box, item)
+    return item, box
+
+
 class App:
     """The window itself."""
 
@@ -1995,10 +2012,11 @@ class App:
         # said while the scan is still reading, since the histogram is then
         # drawn from part of the campaign and would otherwise look final
         if self._berv_partial(names):
-            # below the legend, never over it
-            canvas.create_text(width // 2, pad + 24,
-                               text=self.t("berv_building"),
-                               fill="#b26a00", font=("Helvetica", 10, "bold"))
+            # below the legend, never over it, and on its own ground: the bars
+            # it is warning about are what made it hard to read
+            chip(canvas, width // 2, pad + 24, self.t("berv_building"),
+                 ink="#b26a00", fill="#fdf1dd", outline="#e0a94a",
+                 font=("Helvetica", 10, "bold"))
         possible = summary.get("possible")
         self.berv_note.configure(
             text=self.t("berv_note")
