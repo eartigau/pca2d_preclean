@@ -127,9 +127,14 @@
         <code>corrected</code> beside the data root when the field is left
         empty: the corrected spectra are a copy of the campaign, tens of
         gigabytes, and belong on the disk the campaign is already on. A
-        <strong>run name</strong>, optional, which names the folder the run
-        writes into, and the window says when a run of that name already exists
-        rather than letting it be found out afterwards.
+        <strong>reduction name</strong>, which names the folder the run writes
+        into. It is proposed rather than left empty, as the targets followed by
+        six characters of a hash of everything that makes this reduction a
+        different result: the component counts, the velocity term, the sweeps,
+        the shrinkage, the high pass, the grid step, the coadding and the date
+        window. The same parameters give the same six, one number different
+        gives another six, and the window says when a reduction of that name
+        already exists rather than letting it be found out afterwards.
       </p>
       <p>
         A window opened for the first time has <strong>both roots empty</strong>
@@ -248,10 +253,10 @@
         The <strong>stages</strong>, <code>cube</code>, <code>fit</code>,
         <code>figures</code>, <code>correct</code> and <code>lbl</code>, are
         ticked in any subset and run in that order, so a fit can be reused and
-        only the correction redone. A <strong>variant</strong> from
-        <code>variants/</code> is the nominal plus the lines that variant
-        changes, and it writes under its own name so that two variants cannot
-        land in one folder.
+        only the correction redone. There is no variant picker: the parameters
+        converged, and a second set of settings offered beside the settings is a
+        window that contradicting itself. A variant is still a file and still
+        runs, from the command line.
       </p>
       <p>
         <strong>LBL settings...</strong> opens the <code>lbl:</code> block on

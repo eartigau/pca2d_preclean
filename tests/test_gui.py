@@ -29,19 +29,24 @@ def test_one_object_and_several_are_different_commands():
         "several objects are fitted together against one observer basis"
 
 
-def test_the_command_carries_the_counts_the_stages_and_the_variant():
+def test_the_command_carries_the_counts_and_the_stages():
     argv = build_command({"objects": ["TOI4552"], "n_star": 0, "n_earth": 3,
-                          "variant": "k0", "stage_cube": True, "stage_fit": True,
+                          "stage_cube": True, "stage_fit": True,
                           "dry_run": True})
     assert "--n-star" in argv and argv[argv.index("--n-star") + 1] == "0"
     assert argv[argv.index("--stages") + 1] == "cube,fit"
-    assert argv[argv.index("--variant") + 1] == "k0"
     assert argv[-1] == "--dry-run"
     every = build_command({"objects": ["TOI4552"],
                            **{"stage_" + s: True for s in
                               ("cube", "fit", "figures", "correct", "lbl")}})
     assert "--stages" not in every, "every stage is the default, so it is not said"
-    assert "--variant" not in build_command({"objects": ["X"], "variant": "(none)"})
+
+
+def test_the_window_does_not_run_a_variant_any_more():
+    """The parameters converged, so a second set of settings offered beside the
+    settings is a window that contradicts itself. `--variant` stays on the
+    command line, which is what variants/README.md reproduces from."""
+    assert "--variant" not in build_command({"objects": ["X"], "variant": "k0"})
 
 
 def test_the_export_writes_what_was_changed_and_nothing_else():
@@ -99,7 +104,7 @@ def test_every_item_explains_itself_in_both_languages():
     choice implies, in whichever of the two languages is on."""
     from pca2d.gui import EN, FR, STAGES, text
     keys = ["help_data_dir", "help_config", "help_out_dir", "help_objects",
-            "help_variant", "help_command", "help_log", "help_rescan",
+            "help_command", "help_log", "help_rescan",
             "help_lang", "help_run_button", "help_stop_button",
             "help_dry_button", "help_export_button", "help_savelog_button",
             "help_openout_button", "help_savedefaults_button",
@@ -499,25 +504,34 @@ def test_the_command_box_says_what_is_missing_rather_than_half_a_command():
     assert ready.startswith("pca2d-preclean --object PROXIMA")
 
 
-def test_a_run_gets_a_name_proposed_from_what_the_window_knows():
-    """An empty field says a run needs no name, and then two runs of the same
-    targets land in one folder and under one LBL object, where LBL measures the
-    mixture. The two things the window knows before a run are the dates it
-    keeps, spelled as the command line spells them, and the day."""
-    import datetime
-
+def test_a_reduction_is_named_by_its_targets_and_a_hash_of_the_rest():
+    """An empty field says a reduction needs no name, and then two of them land
+    in one folder and under one LBL object, where LBL measures the mixture. A
+    folder name has to say WHAT was reduced and whether it was reduced like the
+    one beside it: the targets, then six characters of a hash of everything
+    that makes it a different result."""
     from pca2d.gui import suggested_run_name
 
-    day = datetime.date(2026, 9, 14)
-    assert suggested_run_name({}, today=day) == "260914"
-    assert suggested_run_name({"run_name": "x"}, today=day) == "260914", \
-        "what is proposed does not depend on what is in the field"
-    assert suggested_run_name({"min_rjd": "58661.87",
-                               "max_rjd": "59772.04"}) == "rjd58662-59772"
-    assert suggested_run_name({"max_rjd": "59772.04"}) == "rjd-59772"
-    assert suggested_run_name({"min_rjd": "  ", "max_rjd": ""},
-                              today=day) == "260914"
-    assert suggested_run_name({"min_rjd": "not a date"}, today=day) == "260914"
+    base = {"objects": ["GL205", "GL48"], "n_star": "0", "n_earth": "3",
+            "dv": "0.5"}
+    name = suggested_run_name(base)
+    assert name.startswith("GL205+GL48_"), "the targets are readable"
+    assert len(name.rsplit("_", 1)[1]) == 6
+    assert suggested_run_name(dict(base)) == name, "the same run, the same name"
+    for key, value in (("n_earth", "4"), ("n_star", "1"), ("dv", "0.25"),
+                       ("shrink", False), ("min_rjd", "58661"),
+                       ("width_kms", "75")):
+        assert suggested_run_name(dict(base, **{key: value})) != name, \
+            "%s changes the result, so it changes the name" % key
+    assert suggested_run_name(dict(base, objects=["GL48", "GL205"])) == name, \
+        "the same pair in another order is the same reduction"
+    assert suggested_run_name(dict(base, objects=["GL205"])) != name
+
+    many = suggested_run_name({"objects": ["A", "B", "C", "D", "E"]})
+    assert many.startswith("A+B+3_"), "past three targets, how many is enough"
+    assert suggested_run_name({}).startswith("run_"), "nothing ticked yet"
+    assert "/" not in suggested_run_name({"objects": ["a/b"]}), \
+        "it becomes a folder name"
 
 
 def test_the_settings_fill_three_columns_however_many_there_are():

@@ -113,14 +113,15 @@ EN = {
     "out_dir": "output root (optional)",
     "browse": "Browse", "rescan": "Rescan",
     "objects": "objects", "settings": "settings", "stages": "stages",
-    "variant": "variant", "command": "the command this runs", "output": "output",
+    "command": "the command this runs", "output": "output",
     "col_object": "object", "col_files": "files", "col_instrument": "instrument",
     "col_snr": "SNR", "col_exptime": "exp (s)", "col_mag": "mag",
-    'run_name': 'run name', 'auto': 'auto',
+    'run_name': 'reduction name', 'auto': 'auto',
     'help_auto_button':
-        'Proposes a name again from the dates as they stand: the window kept,'
-        ' spelled as the command line spells it, or today if the whole campaign'
-        ' is in.',
+        'Proposes a name again from the targets and the settings as they'
+        ' stand: the targets, then six characters of a hash of everything that'
+        ' makes this reduction a different result. The same parameters give the'
+        ' same six, one number different gives another six.',
     'timeline': 'when the ticked campaigns were observed',
     'timeline_none': 'tick a target to see when it was observed',
     'timeline_note': 'keeping %s to %s: %d exposures of %d',
@@ -421,10 +422,6 @@ EN = {
         "Hands both sets of spectra to LBL, the delivered ones and the corrected"
         " ones, as two objects in one tree, so the velocities can be compared"
         " rather than believed.",
-    "help_variant":
-        "A file of variants/: the nominal configuration plus the few lines that"
-        " variant changes. What each one was measured to give is written in"
-        " variants/README.md, and a run made with one is reproducible by name.",
     "help_command":
         "Exactly what the Run button will execute. Copy it into a terminal and"
         " it does the same thing: the window is a wrapper, not a second way of"
@@ -466,15 +463,17 @@ FR = {
     "out_dir": "dossier de sortie (optionnel)",
     "browse": "Parcourir", "rescan": "Relire",
     "objects": "objets", "settings": "réglages", "stages": "étapes",
-    "variant": "variante", "command": "la commande qui sera lancée",
+    "command": "la commande qui sera lancée",
     "output": "sortie",
     "col_object": "objet", "col_files": "fichiers", "col_instrument": "instrument",
     "col_snr": "SNR", "col_exptime": "pose (s)", "col_mag": "mag",
-    'run_name': 'nom du passage', 'auto': 'auto',
+    'run_name': 'nom de la réduction', 'auto': 'auto',
     'help_auto_button':
-        "Repropose un nom à partir des dates telles qu'elles sont : la fenêtre"
-        ' gardée, écrite comme la ligne de commande l\'écrit, ou le jour même si'
-        ' toute la campagne est prise.',
+        'Repropose un nom à partir des cibles et des réglages tels'
+        " qu'ils sont : les cibles, puis six caractères d'une empreinte de tout"
+        ' ce qui fait de cette réduction un résultat différent. Les mêmes'
+        ' paramètres donnent les mêmes six, un nombre changé en donne six'
+        ' autres.',
     'timeline': 'quand les campagnes cochées ont été observées',
     'timeline_none': 'cocher une cible pour voir quand elle a été observée',
     'timeline_note': 'on garde du %s au %s : %d poses sur %d',
@@ -800,11 +799,6 @@ FR = {
         "Confie les deux jeux de spectres à LBL, les livrés et les corrigés,"
         " comme deux objets d'un même arbre, pour que les vitesses se comparent"
         " au lieu de se croire.",
-    "help_variant":
-        "Un fichier de variants/ : la configuration nominale plus les quelques"
-        " lignes que cette variante change. Ce que chacune a donné est écrit"
-        " dans variants/README.md, et un passage fait avec l'une d'elles est"
-        " reproductible par son nom.",
     "help_command":
         "Exactement ce que le bouton Lancer exécutera. Copiée dans un terminal,"
         " elle fait la même chose : la fenêtre est une enveloppe, pas une"
@@ -951,8 +945,6 @@ def build_command(state):
         value = str(state.get(key) or "").strip()
         if value:
             argv += [flag, value]
-    if state.get("variant") and state["variant"] != "(none)":
-        argv += ["--variant", state["variant"]]
     if state.get("n_star") not in (None, ""):
         argv += ["--n-star", str(state["n_star"])]
     if state.get("n_earth") not in (None, ""):
@@ -1024,29 +1016,43 @@ def check_images(tk, size=18, edge=None, tick=None, ground=None):
     return tuple(made)
 
 
-def suggested_run_name(state, today=None):
-    """A name to propose for this run: the dates it keeps, else the day.
+def suggested_run_name(state, digits=6):
+    """A name for this reduction: the targets, then a short hash of the rest.
 
-    A run name is what tells two runs of the same targets apart in the output
-    root and under LBL. The two things a window can know before the run happens
-    are the date window that is kept, spelled as the command line spells it
-    when no name is given (cli.window_label), and the day the run is being
-    made, in the same YYMMDD as every line of the log. Anything the run MEANS,
-    a person types.
+    Two things have to be read off a folder name in an output root months
+    later: WHAT was reduced, and whether it was reduced the same way as the one
+    beside it. The targets give the first, and no list of settings short enough
+    to be a folder name gives the second, so the settings are hashed: same
+    parameters, same six characters; one number different anywhere, a different
+    six. Unique in the only sense that matters here, which is that a clash is
+    improbable rather than impossible.
+
+    The hash covers what makes a run a different result: the targets, the
+    component counts, the velocity term, the sweeps, the shrinkage, the high
+    pass, the grid step, the nightly coadding, and the date window.
     """
-    import datetime
+    import hashlib
 
-    def bound(key):
-        value = str(state.get(key) or "").strip()
-        try:
-            return "%.0f" % float(value)
-        except ValueError:
-            return ""
+    # sorted, like the command line's own joint name: the same set of targets
+    # in another order is the same reduction
+    names = sorted(str(n).strip() for n in (state.get("objects") or [])
+                   if str(n).strip())
+    if not names:
+        head = "run"
+    elif len(names) <= 3:
+        head = "+".join(names)
+    else:
+        # three names is already a long folder name; past that, say how many
+        head = "%s+%d" % ("+".join(names[:2]), len(names) - 2)
+    head = re.sub(r"[^0-9A-Za-z._+-]", "_", head)[:40].strip("_+") or "run"
 
-    lo, hi = bound("min_rjd"), bound("max_rjd")
-    if lo or hi:
-        return "rjd%s-%s" % (lo, hi)
-    return (today or datetime.date.today()).strftime("%y%m%d")
+    keys = ("n_star", "n_earth", "velocity_term", "iters", "shrink",
+            "width_kms", "dv", "nightly_stack", "min_rjd", "max_rjd")
+    payload = "|".join(["+".join(sorted(names))] +
+                       ["%s=%s" % (key, state.get(key, "")) for key in keys])
+    short = hashlib.blake2b(payload.encode("utf-8"),
+                            digest_size=8).hexdigest()[:digits]
+    return "%s_%s" % (head, short)
 
 
 def command_line(state, pending):
@@ -1400,7 +1406,9 @@ class App:
         # that somebody emptied stays empty.
         kept = self.saved.get("run_name")
         if not str(kept or "").strip():
-            kept = suggested_run_name(self.saved)
+            proposed = dict(self.saved)
+            proposed["objects"] = self.saved.get("checked") or []
+            kept = suggested_run_name(proposed)
         self.vars["run_name"] = tk.StringVar(value=kept)
         entry = ttk.Entry(row, textvariable=self.vars["run_name"], width=26)
         entry.pack(side="left", padx=(6, 4))
@@ -1879,18 +1887,11 @@ class App:
                                    command=self._sync)
             box_.grid(row=0, column=i + 1, padx=3)
             self._tip(box_, "help_stage_" + stage)
-        variant = ttk.Label(run, text=self.t("variant"))
-        variant.grid(row=1, column=0, sticky="w", pady=4)
-        self._register(variant, "variant")
-        self.vars["variant"] = tk.StringVar(value=self.saved.get("variant",
-                                                                 "(none)"))
-        self.variant_box = ttk.Combobox(run, textvariable=self.vars["variant"],
-                                        values=self._variants(), width=18,
-                                        state="readonly")
-        self.variant_box.grid(row=1, column=1, columnspan=3, sticky="w")
-        self.vars["variant"].trace_add("write", lambda *_: self._sync())
-        self._tip(self.variant_box, "help_variant")
-        self._tip(variant, "help_variant")
+        # No variant picker: the parameters converged, and a second set of
+        # settings offered beside the settings is a window that contradicts
+        # itself. `pca2d-preclean --object X --variant NAME` still runs one, and
+        # Export YAML still writes one, which is how the runs in
+        # variants/README.md stay reproducible.
 
     def _build_command(self, parent):
         ttk, tk = self.ttk, self.tk
@@ -1974,14 +1975,6 @@ class App:
                 self._cfg = {}
         return self._cfg
 
-    def _variants(self):
-        folder = os.path.join(os.path.dirname(os.path.abspath(
-            self.vars["config"].get() if "config" in self.vars
-            else "config.yaml")), "variants")
-        names = sorted(os.path.splitext(os.path.basename(p))[0]
-                       for p in glob.glob(os.path.join(folder, "*.yaml")))
-        return ["(none)"] + names
-
     def state(self):
         out = {"objects": self.picked(), "lang": self.lang}
         for key, var in self.vars.items():
@@ -2037,7 +2030,6 @@ class App:
         """
         root = self.vars["data_dir"].get()
         self._cfg = None
-        self.variant_box.configure(values=self._variants())
         if self.scanning:
             # one scan at a time: two threads walking the same index would
             # overwrite each other's answers
@@ -2568,7 +2560,6 @@ class App:
             handle.write(head)
             yaml.safe_dump(body, handle, sort_keys=False, default_flow_style=False)
         self._say("log_export", path, level="value")
-        self.variant_box.configure(values=self._variants())
 
     def save_defaults(self):
         """Write what was changed into config.yaml itself, comments and all.
@@ -2680,10 +2671,8 @@ class App:
         window.protocol("WM_DELETE_WINDOW", window.withdraw)
 
     def _auto_name(self):
-        """Propose a name again, from the dates as they stand now."""
-        self.vars["run_name"].set(suggested_run_name(
-            {key: self.vars[key].get() for key in ("min_rjd", "max_rjd")
-             if key in self.vars}))
+        """Propose a name again, from the targets and settings as they stand."""
+        self.vars["run_name"].set(suggested_run_name(self.state()))
 
     def _propose_out(self):
         """Offer a place for the run's products, beside the data it reads.

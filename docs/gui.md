@@ -50,8 +50,10 @@ run is written out so that it can be copied into a terminal.
   stages already say whether the lbl step happens at all. Hovering one writes
   what it means at the bottom of the window, and after a moment in a box.
 - **The stages.** cube, fit, figures, correct, lbl: any subset, in that order.
-- **A variant**, from `variants/`: the nominal plus the lines that variant
-  changes. What was measured with it is in `variants/README.md`.
+- **No variant picker.** The parameters converged, and a second set of settings
+  offered beside the settings is a window that contradicts itself.
+  `pca2d-preclean --object X --variant NAME` still runs one, and Export YAML
+  still writes one, which is what `variants/README.md` reproduces from.
 - **The command**, in full, before anything runs.
 - **The output**, streamed as the run prints it, in the colours it uses in a
   terminal: green for progress, blue for a number, orange for something
