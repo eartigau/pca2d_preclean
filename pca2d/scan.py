@@ -412,6 +412,15 @@ def summaries(index):
 #: the width of a BERV bin, in km/s
 BERV_BIN = 3.0
 
+#: half-width of the BERV axis, in km/s, and a constant of the solar system
+#: rather than a drawing choice. The Earth's orbit gives at most 29.78 km/s and
+#: its rotation another 0.46 at the equator, so no target anywhere reaches 30.3.
+#: The histogram is drawn on this whole range ALWAYS, never on the range the
+#: data happen to occupy: a campaign that fills 6 km/s of it has to LOOK like
+#: six km/s of an empty axis, which is the thing that decides whether the two
+#: frames can be told apart at all.
+BERV_AXIS = 33.0
+
 
 def _ecl_lat(index, name):
     """The object's ecliptic latitude, from the first spectrum that has one."""
@@ -448,8 +457,11 @@ def berv_coverage(index, names, width=BERV_BIN):
     if not per_object:
         return np.array([]), {}, {"span": 0.0, "effective": 0.0, "objects": {}}
     every = np.concatenate(list(per_object.values()))
-    lo = float(np.floor(every.min() / width) * width)
-    hi = float(np.ceil(every.max() / width) * width)
+    # the WHOLE physically reachable range, not the range these exposures cover:
+    # bars that fill a third of the axis say "a third of what is reachable", and
+    # bars that fill an axis cropped to the data say nothing at all
+    lo = -float(np.ceil(BERV_AXIS / width) * width)
+    hi = -lo
     edges = np.arange(lo, hi + width, width)
     counts = {n: np.histogram(v, bins=edges)[0] for n, v in per_object.items()}
     filled = np.zeros(len(edges) - 1, dtype=bool)

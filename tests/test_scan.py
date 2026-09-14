@@ -282,8 +282,12 @@ def test_the_barycentric_coverage_is_bins_that_hold_something(tmp_path):
     coverage, and it is the coverage that says whether the two frames can be
     told apart."""
     tmp_path.mkdir(parents=True, exist_ok=True)
-    for name, bervs in (("SPREAD", np.arange(-15.0, 15.1, 3.0)),
-                        ("TWOENDS", np.array([-15.0, -14.0, 14.0, 15.0]))):
+    # off the bin boundaries on purpose: a value sitting exactly on an edge
+    # counts to the right of it, and the last bin of a histogram is closed, so
+    # a test written on round multiples of the bin width measures numpy's
+    # boundary rule rather than the campaign. Real BERVs never land on one.
+    for name, bervs in (("SPREAD", np.arange(-14.0, 14.1, 3.0)),
+                        ("TWOENDS", np.array([-14.0, -13.0, 13.0, 14.0]))):
         folder = tmp_path / name
         folder.mkdir()
         for i, berv in enumerate(bervs):
@@ -294,20 +298,20 @@ def test_the_barycentric_coverage_is_bins_that_hold_something(tmp_path):
     root = str(tmp_path)
     index, _tally = scan.update(root, home=str(tmp_path / "home"))
 
-    assert scan.bervs_of(index, "SPREAD").size == 11
+    assert scan.bervs_of(index, "SPREAD").size == 10
     _edges, _counts, wide = scan.berv_coverage(index, ["SPREAD"])
-    assert wide["span"] == 30.0
+    assert wide["span"] == 27.0
     assert wide["effective"] == 30.0, \
-        "eleven points from -15 to 15 fill ten bins of 3 km/s"
+        "ten points 3 km/s apart, each filling a bin of its own"
 
     _edges, _counts, ends = scan.berv_coverage(index, ["TWOENDS"])
-    assert ends["span"] == 30.0, "the same span"
+    assert ends["span"] == 28.0, "a span as wide, to within a km/s"
     assert ends["effective"] == 6.0, "but two bins: the coverage says so"
 
     edges, counts, both = scan.berv_coverage(index, ["SPREAD", "TWOENDS"])
     assert set(counts) == {"SPREAD", "TWOENDS"}
     assert all(len(c) == len(edges) - 1 for c in counts.values()), "one grid"
-    assert both["n"] == 15 and both["effective"] == 30.0
+    assert both["n"] == 14 and both["effective"] == 30.0
     assert both["objects"]["TWOENDS"]["effective"] == 6.0
 
 
@@ -438,3 +442,35 @@ def test_the_time_panel_bins_whatever_span_it_is_given(tmp_path):
     assert both["n"] == 30 + 35
     assert counts["SHORT"][-1] == 0, "the short one ends early on a shared axis"
     assert scan.time_coverage(index, [])[2]["n"] == 0
+
+
+def test_the_coverage_axis_is_the_whole_solar_system(tmp_path):
+    """The bins span every BERV a target could ever have, not the ones it got.
+
+    A campaign that filled 6 km/s has to LOOK like 6 km/s of an empty axis.
+    Cropping the axis to the data made a narrow campaign and a wide one draw
+    the same picture, which is the one thing this panel exists to tell apart.
+    """
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    folder = tmp_path / "NARROW"
+    folder.mkdir()
+    for i, berv in enumerate(np.array([-2.0, -1.0, 0.0, 1.0, 2.0])):
+        path = str(folder / ("%04dt.fits" % i))
+        write_tfits(path, mjd=60000.0 + i)
+        with fits.open(path, mode="update") as h:
+            h[1].header["BERV"] = float(berv)
+    index, _tally = scan.update(str(tmp_path), home=str(tmp_path / "home"))
+
+    edges, counts, summary = scan.berv_coverage(index, ["NARROW"])
+    assert edges[0] <= -scan.BERV_AXIS, "the axis reaches the negative extreme"
+    assert edges[-1] >= scan.BERV_AXIS, "and the positive one"
+    assert edges[0] == -edges[-1], "and is centred on zero, so no BERV is off it"
+    # 29.78 km/s from the orbit and 0.46 from the rotation: nothing reaches 30.3
+    assert scan.BERV_AXIS > 30.3
+
+    # the campaign itself still occupies the few bins it earned
+    filled = (counts["NARROW"] > 0).sum()
+    assert summary["effective"] == float(filled * scan.BERV_BIN)
+    assert filled * scan.BERV_BIN <= 9.0, "five points inside 4 km/s"
+    assert filled < 0.2 * (len(edges) - 1), \
+        "and they fill a small fraction of the axis, which is the whole point"

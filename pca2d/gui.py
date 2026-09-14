@@ -1896,6 +1896,23 @@ class App:
         tallest = max(1, max(int(c.max()) for c in counts.values() if c.size))
         n_bins = len(edges) - 1
         step = (width - 2 * pad) / max(n_bins, 1)
+
+        def x_of(v):
+            return pad + (v - edges[0]) / max(edges[-1] - edges[0], 1e-9) * (
+                width - 2 * pad)
+
+        # what the SKY allows this selection, |BERV| <= 29.78 cos(beta): the
+        # axis is the whole solar system, and a target at a high ecliptic
+        # latitude can never fill it however long it is observed. Drawn under
+        # the bars so an empty stretch inside the limits reads as a gap to be
+        # filled, and one outside them as nothing anybody can do.
+        reach = (summary or {}).get("possible")
+        if reach:
+            canvas.create_rectangle(x_of(-reach / 2.0), pad, x_of(reach / 2.0),
+                                    top, fill="#eef3f7", outline="")
+            for edge in (-reach / 2.0, reach / 2.0):
+                canvas.create_line(x_of(edge), pad, x_of(edge), top,
+                                   fill="#9fb8c9", dash=(2, 2))
         for i in range(n_bins):
             x0 = pad + i * step
             bottom = top
@@ -1924,11 +1941,12 @@ class App:
             x = canvas.bbox(label)[2] + 10
             if x > width - 60:
                 break
-        for value in (edges[0], 0.0, edges[-1]):
+        # every 10 km/s: on a fixed axis the labels are the ruler the bars are
+        # read against, and two numbers at the ends are not a ruler
+        for value in (-30.0, -20.0, -10.0, 0.0, 10.0, 20.0, 30.0):
             if not edges[0] <= value <= edges[-1]:
                 continue
-            x = pad + (value - edges[0]) / max(edges[-1] - edges[0], 1e-9) * (
-                width - 2 * pad)
+            x = x_of(value)
             canvas.create_line(x, top, x, top + 3, fill="#888")
             canvas.create_text(x, top + 9, text="%+.0f" % value, fill="#555",
                                font=("Helvetica", 8))
