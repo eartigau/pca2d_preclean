@@ -195,6 +195,9 @@ EN = {
     "log_index": "index of this data root: %s",
     "log_out_proposed": "output root proposed, beside the data: %s",
     "log_scan_start": "reading the data root %s",
+    "log_watch_added": "new in the data root: %s. Reading it.",
+    "log_watch_gone": "no longer in the data root: %s",
+    "log_watch_grew": "more spectra in %s than a moment ago. Reading them.",
     "log_scan_done": "%s: %d objects, %d spectra read, %d already known, %d gone",
     "log_scan_none": "no folder with spectra under %s",
     "log_busy": "still reading the data root: wait for it to finish",
@@ -559,6 +562,9 @@ FR = {
     "log_index": "index de ce dossier de données : %s",
     "log_out_proposed": "racine de sortie proposée, à côté des données : %s",
     "log_scan_start": "lecture du dossier de données %s",
+    "log_watch_added": "nouveau dans le dossier de données : %s. Lecture.",
+    "log_watch_gone": "n'est plus dans le dossier de données : %s",
+    "log_watch_grew": "plus de spectres dans %s qu'il y a un instant. Lecture.",
     "log_scan_done": "%s : %d objets, %d spectres lus, %d déjà connus, %d disparus",
     "log_scan_none": "aucun dossier contenant des spectres sous %s",
     "log_busy": "lecture du dossier de données en cours : attendre la fin",
@@ -857,6 +863,29 @@ TEXTS = {"en": EN, "fr": FR}
 def text(lang, key, default=None):
     """The label or the explanation, in the window's language."""
     return TEXTS.get(lang, EN).get(key, default if default is not None else key)
+
+
+#: how often the window looks at the data root for folders that appeared
+WATCH_MS = 10000
+
+
+def folder_news(found, shown, seen=None):
+    """What a look at the data root found that the window does not have.
+
+    `found` is {campaign: files in its folder}, `shown` what the list holds,
+    `seen` the previous look. Returns the campaigns that APPEARED, the ones that
+    are GONE, and the ones whose file count MOVED since the last look.
+
+    The count is compared with the previous look and never with the list,
+    because the list counts what the index holds: a spectrum the scan could not
+    read is missing from it for good, and comparing the two would ask for a
+    rescan every ten seconds for ever.
+    """
+    added = sorted(set(found) - set(shown))
+    gone = sorted(set(shown) - set(found))
+    grown = sorted(name for name in found
+                   if seen and name in seen and found[name] != seen[name])
+    return added, gone, grown
 
 
 def objects_in(root, pattern="*t.fits"):
@@ -1318,6 +1347,8 @@ class App:
             self._say("log_no_config", level="warn")
         self.refresh_objects()
         self._drain_id = self.root.after(80, self._drain)
+        self._seen = {}
+        self.root.after(WATCH_MS, self._watch_root)
         self.root.protocol("WM_DELETE_WINDOW", self.quit_window)
 
     # ---- the look -----------------------------------------------------
@@ -2436,6 +2467,50 @@ class App:
             self._draw_berv()
             self._draw_time()
 
+    def _watch_root(self):
+        """Look at the data root every WATCH_MS: campaigns appear while this is
+        open.
+
+        Spectra are copied in while the window sits there, and a list that only
+        changes when somebody presses Rescan is a list that is quietly wrong.
+        One folder listing per campaign, nothing opened, and off the main thread
+        because these data usually live on a disk that can be slow to answer.
+        """
+        self.root.after(WATCH_MS, self._watch_root)
+        root = self.vars["data_dir"].get().strip()
+        if not root or self.scanning or getattr(self, "_watching", False):
+            return
+        self._watching = True
+
+        def look():
+            try:
+                found = dict(objects_in(root))
+            except OSError:
+                found = None
+            self.lines.put(("watched", root, found))
+
+        threading.Thread(target=look, daemon=True).start()
+
+    def _watched(self, root, found):
+        """One look at the data root, applied on the main thread."""
+        self._watching = False
+        if found is None or self.scanning:
+            return
+        if root != self.vars["data_dir"].get().strip():
+            return                      # the root moved while we were looking
+        added, gone, grown = folder_news(found, self.rows,
+                                         getattr(self, "_seen", None))
+        self._seen = found
+        if not (added or gone or grown):
+            return
+        if added:
+            self._say("log_watch_added", ", ".join(added), level="value")
+        if gone:
+            self._say("log_watch_gone", ", ".join(gone), level="warn")
+        if grown and not added and not gone:
+            self._say("log_watch_grew", ", ".join(grown), level="value")
+        self.refresh_objects()
+
     def _scan(self, root):
         """Read what changed, off the main thread, touching no widget.
 
@@ -2610,6 +2685,8 @@ class App:
                 self._listed(item[1])
             elif item[0] == "object":
                 self._one(*item[1:])
+            elif item[0] == "watched":
+                self._watched(*item[1:])
             elif item[0] == "scanned":
                 self._scanned(*item[1:])
             elif item[0] == "finished":

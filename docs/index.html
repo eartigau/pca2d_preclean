@@ -179,6 +179,10 @@
         the root: a file is taken as it was if its size and modification time
         are unchanged, and only what was added or replaced is read, which is
         what <strong>Rescan</strong> does after copying new spectra in. The
+        window also does it for itself, every ten seconds: one folder listing
+        per campaign, nothing opened, so a campaign copied in while it sits open
+        turns up on its own rather than the next time somebody thinks to press
+        Rescan. The
         names and the file counts appear before a single header is read, since
         they cost one folder listing. A campaign's first numbers arrive from ten
         spectra <em>spread across it</em> rather than the first ten, and carry a

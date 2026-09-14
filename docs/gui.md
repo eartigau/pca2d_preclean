@@ -96,7 +96,13 @@ a signal-to-noise of 134 against the campaign's 163.
 
 A field added to the index re-reads the files that lack it, and only those,
 while the rows keep showing everything else they already knew. **Rescan** is that same
-check, for after copying new spectra in. A file that cannot be read is recorded
+check, for after copying new spectra in, and the window does it for itself:
+every ten seconds it lists the data root, one folder listing per campaign with
+nothing opened, and reads what appeared. A campaign copied in while the window
+sits open turns up on its own, rather than the next time somebody thinks to
+press Rescan. A file count is compared with the PREVIOUS look and never with the
+list, since the list counts what the index holds and a spectrum the scan could
+not read is missing from it for good. A file that cannot be read is recorded
 as unreadable rather than re-read at every visit. Deleting an index costs the
 few seconds of one scan, nothing else.
 

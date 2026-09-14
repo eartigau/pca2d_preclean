@@ -604,3 +604,39 @@ def test_the_disc_of_a_campaign_being_read_has_twelve_steps():
     assert pie_step("x", 100) is None
     assert len({pie_step(k, 100) for k in range(0, 100, 4)}) == 12, \
         "every step of the twelve is reachable"
+
+
+def test_a_campaign_copied_in_while_the_window_is_open_is_noticed():
+    """Spectra are copied into the data root while the window sits there, and a
+    list that only changes when somebody presses Rescan is quietly wrong."""
+    from pca2d.gui import folder_news
+
+    shown = {"GL205": 635, "GL48": 989}
+    same = folder_news({"GL205": 635, "GL48": 989}, shown,
+                       seen={"GL205": 635, "GL48": 989})
+    assert same == ([], [], []), "nothing moved, so nothing is read again"
+
+    added, gone, grown = folder_news({"GL205": 635, "GL48": 989, "TOI4552": 119},
+                                     shown, seen=None)
+    assert (added, gone, grown) == (["TOI4552"], [], []), "a new folder"
+
+    added, gone, grown = folder_news({"GL205": 635}, shown, seen=shown)
+    assert (added, gone, grown) == ([], ["GL48"], []), "and one that went"
+
+    added, gone, grown = folder_news({"GL205": 700, "GL48": 989}, shown,
+                                     seen=shown)
+    assert (added, gone, grown) == ([], [], ["GL205"]), "spectra copied in"
+
+
+def test_the_count_is_read_against_the_last_look_never_against_the_list():
+    """The list counts what the INDEX holds. A spectrum the scan could not read
+    is missing from it for good, so comparing the two would ask for a rescan
+    every ten seconds for ever."""
+    from pca2d.gui import folder_news
+
+    on_disk = {"GL205": 635}
+    in_list = {"GL205": 634}                 # one file the scan could not read
+    assert folder_news(on_disk, in_list, seen=on_disk) == ([], [], []), \
+        "the same disk as a moment ago is nothing to do"
+    assert folder_news(on_disk, in_list, seen={"GL205": 600}) == \
+        ([], [], ["GL205"]), "but a disk that changed is"
