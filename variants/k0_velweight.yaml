@@ -1,0 +1,48 @@
+# The k0 fits already on disk, corrected again with the amplitudes measured in
+# the metric that decides velocities: every sample weighted by the star's own
+# derivative there, (dT/dv)^2, rather than by the flux weights alone.
+#
+# Correction only: it reuses the fit of `k0`, so the basis is the same and only
+# the amplitude each exposure is corrected with changes. What is divided out,
+# which samples are blanked and the shrinkage are untouched.
+#
+#     pca2d-preclean --object TOI4552 --n-star 0 --variant k0_velweight
+#
+# Why these two targets: on TOI-2120, where the correction gains a lot, the two
+# metrics came out indistinguishable (rms 15.36 +- 1.21 against 15.00 +- 1.18,
+# the two series correlated at 0.994). The case that decides is the one where
+# the correction COSTS, TOI-4552 and Proxima, because the failure there is the
+# observer block absorbing stellar structure, and the velocity metric weighs
+# exactly the stellar lines: it can mend that or make it worse.
+reuse_fit: k0
+
+correct:
+  weight: velocity
+  velocity_floor: 0.05
+
+note: |
+  The velocity arm of option (a) on the targets where the correction loses,
+  2026-09-15. LBL objects <object>_PCA2D_0-3_k0_velweight, beside the flux arm's
+  <object>_PCA2D_0-3_k0.
+
+  MEASURED, 2026-09-15, on the exposures the two arms share (m/s):
+
+                        rms    robust   nightly   med err     n
+    PROXIMA  flux       2.93     2.37      3.02      1.08    765
+             (dF/dv)^2  2.89     2.44      2.99      1.07    765
+    TOI4552  flux      14.24    11.20     12.03      6.89    109
+             (dF/dv)^2 14.26    12.32     11.88      6.89    109
+
+  The two metrics are the same correction to within nothing anyone would use.
+  On Proxima the series are correlated at 0.9954 and differ by an rms of
+  0.28 m/s; a paired test on the absolute residuals prefers the derivative at
+  p < 0.01, but what it prefers is 0.04 m/s out of 2.93, and the robust sigma
+  goes the other way (2.37 -> 2.44). On TOI-4552 nothing is distinguishable at
+  all (t = -0.86, p = 0.39), and there too the robust sigma is worse. TOI-2120,
+  measured earlier the same day, was 15.36 +- 1.21 against 15.00 +- 1.18.
+
+  So the metric is a free choice, not an improvement: it was made the nominal
+  (config correct.weight: velocity) because it is the quantity a velocity is
+  actually measured from, not because these numbers asked for it. Three
+  targets spanning 2.9 to 15 m/s and 109 to 765 exposures say it changes
+  nothing measurable either way.
