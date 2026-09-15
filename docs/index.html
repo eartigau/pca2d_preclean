@@ -91,67 +91,138 @@
       </figure>
     </section>
 
-    <section class="card span-3" id="trouble">
-      <h2>When the install fails</h2>
+    <section class="card span-3">
+      <h2>The idea, in three panels</h2>
       <p>
-        One failure is common enough to name, because nothing in its message
-        points at its cause. <code>conda env create</code> ends with
-        <code>CondaEnvException: Pip failed</code>, and above it:
+        This is the whole method, seen at once. A campaign is drawn as a river:
+        1667 to 1672&nbsp;nm of TOI-2120, one row per exposure, 316 of them,
+        stacked in order of barycentric velocity and drawn <strong>in the
+        star's rest frame</strong>. That frame is the trick of the picture:
+        <strong>what belongs to the star stands still, so it runs vertically,
+        and what belongs to the sky and the instrument is carried across the
+        rows, so it runs at an angle.</strong> The eye separates them before any
+        arithmetic does.
       </p>
-      <pre><code>× git version did not run successfully.
-  xcrun: error: unable to load libxcrun
-  (/Library/Developer/CommandLineTools/usr/lib/libxcrun.dylib:
-   fat file, but missing compatible architecture (have 'arm64,arm64e', need 'x86_64'))
-ERROR: Failed to build 'git+https://github.com/njcuk9999/lbl@main'</code></pre>
-      <p>
-        It is not LBL, and it is not pip. <strong>The environment is x86_64,
-        running under Rosetta on an Apple Silicon Mac.</strong>
-        <code>environment.yml</code> asks pip for LBL from git, pip runs
-        <code>git</code>, Apple's <code>/usr/bin/git</code> is a stub that calls
-        <code>xcrun</code>, and <code>xcrun</code> loads
-        <code>libxcrun.dylib</code>, which on recent Command Line Tools ships
-        arm64 slices only. An x86_64 process cannot load an arm64 library, so
-        <code>git version</code> fails and conda reports the only thing it saw,
-        which is that pip failed. Nothing here is specific to this package: any
-        environment that pip-installs from a git URL hits it.
-      </p>
-
-      <h3>Three lines that say whether that is what happened</h3>
-      <pre><code>uname -m                                   # the shell:      arm64 on Apple Silicon
-conda activate &lt;env&gt;
-python -c "import platform; print(platform.machine())"   # the environment
-conda config --show subdir                 # osx-arm64, or osx-64 under Rosetta</code></pre>
-      <p>
-        Three answers that agree on <code>arm64</code> and
-        <code>osx-arm64</code> mean this is not your problem. Any
-        <code>x86_64</code> or <code>osx-64</code> among them is the cause.
-      </p>
-
-      <h3>The fix worth doing</h3>
-      <p>
-        Rebuild the environment natively. It is not only the way out of this
-        error: LBL is hours of arithmetic, and hours of arithmetic under
-        emulation are longer hours.
-      </p>
-      <pre><code>CONDA_SUBDIR=osx-arm64 conda env create -f environment.yml -n pca2d-preclean
-conda activate pca2d-preclean
-conda config --env --set subdir osx-arm64   # so later installs stay native</code></pre>
-      <p>
-        And check the terminal itself, since an environment inherits the
-        architecture of the shell that made it: Finder, Applications, Terminal,
-        Get Info, and <em>Open using Rosetta</em> must be unticked. If
-        <code>uname -m</code> says <code>x86_64</code>, look there first.
-      </p>
-
-      <h3>Two ways round it, if the environment has to stay x86_64</h3>
+      <figure class="wide">
+        <img src="figures/sequence_1669nm.svg" alt="The five stages from the delivered flux to the corrected spectrum, 1667 to 1672 nm" />
+        <figcaption>
+          Panels 4 and 5 are the diagnostics that go with it: the same river
+          with the star taken out instead, and with everything taken out, which
+          is what is left unexplained. Underneath, five of those exposures in
+          flux, before in blue and after in orange. Yellow is what the fit gave
+          no weight, and a corrected file carries it as NaN.
+        </figcaption>
+      </figure>
       <ul class="terms">
-        <li>Give the environment its own git, of its own architecture, so pip
-          stops reaching for Apple's stub:
-          <code>conda install -n &lt;env&gt; -c conda-forge git</code>.</li>
-        <li>Or take git out of the install: clone LBL by hand and point pip at
-          the folder, <code>git clone https://github.com/njcuk9999/lbl</code>
-          then <code>pip install -e ./lbl</code>.</li>
+        <li><strong>1. What arrives.</strong> The log of the delivered flux,
+          less a Savitzky-Golay of it, which takes the continuum off and leaves
+          the lines. The star's lines are the vertical ones. The bright diagonal
+          crossing them is OH airglow, sky emission that sits at a fixed place
+          on the detector and therefore sweeps across the star as the Earth's
+          velocity changes over the year.</li>
+        <li><strong>2. What the model says is there.</strong> One basis fitted
+          in the star's frame and one in the observer's, solved together for
+          every exposure at once. The reconstruction has the star's vertical
+          lines and the sky's diagonal ones, each where it belongs, because the
+          model was told which of the two travels.</li>
+        <li><strong>3. What a corrected file holds.</strong> Panel 1 with the
+          observer block divided out of it. The diagonal is gone and the
+          vertical lines are untouched: the star was never in the block that was
+          removed. That panel is not an illustration of the correction, it IS
+          the correction, sample for sample, and a test keeps the two
+          together.</li>
       </ul>
+    </section>
+
+    <section class="card span-3">
+      <h2>The model behind it</h2>
+      <p>
+        That is what the picture above is: over a year of observing, the
+        barycentric velocity sweeps by tens of kilometres per second, which is
+        enough to separate the star from the atmosphere, but only if the model
+        is told which of the two travels. In one line,
+        Each exposure is the log of its flux less a Savitzky-Golay of it (a
+        100&nbsp;km/s high pass, 201 samples of 0.5&nbsp;km/s; runs made before
+        2026-09-11 used 151 of them, 75&nbsp;km/s), on one log-uniform grid in
+        the observer's frame, as two rows, its even orders and its odd ones:
+      </p>
+      <pre><code>y_n  =  S_n P a_n  +  v_n d(S_n P a_n)/dv  +  Q b_n  +  m_p</code></pre>
+      <ul class="terms">
+        <li><code>S_n</code> carries the star basis <code>P</code> into exposure
+          <code>n</code> by its barycentric velocity. On a log grid a Doppler
+          shift is a translation of atanh(v/c)/(dv/c) samples, relativistic,
+          and <code>S_n</code> is an exact Lanczos operator for it rather than
+          an interpolation that would smear what it touched.</li>
+        <li><code>P a_n</code> is the star; <code>Q b_n</code> is what stands
+          still on the detector: telluric absorption, OH emission, the
+          instrument.</li>
+        <li><code>v_n</code> is one velocity per exposure, times the
+          derivative of the star as reconstructed. Without it the observer
+          block learns the star's own motion and the correction divides it out
+          of the flux. With it the motion is fitted, and stays in.</li>
+        <li><code>m_p</code> is one offset per order parity, in the observer's
+          frame. Consecutive orders overlap, and at a given wavelength one
+          parity samples near an order's centre and the other near its edge,
+          where the resolution differs. It is taken out before the fit and put
+          back into the correction.</li>
+      </ul>
+      <p>
+        The coefficients of both blocks are solved together for each exposure,
+        under weights taken from the noise you can <em>measure</em> rather than
+        the noise a photon model claims. The two disagree by a factor of fifty
+        at the red end of a SPIRou spectrum: past about 2200&nbsp;nm the thermal
+        background dominates, the pipeline subtracts its <em>mean</em> and not
+        its variance, and a photon model computed from what is left reports the
+        noisiest part of the detector as the quietest.
+      </p>
+    </section>
+
+    <section class="card span-3" id="install">
+      <h2>Install it</h2>
+      <p>
+        One conda environment, described by the repository itself, and five
+        lines. It holds <strong>both codes</strong>, this one and
+        <a href="https://github.com/njcuk9999/lbl" target="_blank">LBL</a>,
+        because having to deactivate one to run the other is how a t.fits gets
+        measured by the wrong version of something.
+      </p>
+      <pre><code>git clone https://github.com/eartigau/pca2d_preclean.git
+cd pca2d_preclean
+conda env create -f environment.yml
+conda activate pca2d-preclean
+./check.sh</code></pre>
+      <p>
+        One alias, written once, so that a new terminal is one word from being
+        ready:
+      </p>
+      <pre><code>echo "alias pca2d='source $PWD/pca2d.sh'" &gt;&gt; ~/.zshrc</code></pre>
+      <p>
+        <code>pca2d</code> then leaves whatever conda environments are active,
+        however many deep, enters this one, and prints what there is to run.
+        Leaving rather than activating on top is the point: the environments
+        that matter here hold versions of LBL, and the wrong one on the path is
+        how a t.fits gets measured by the wrong version of something.
+      </p>
+      <p>
+        <code>./check.sh</code> is the check that it worked: 489 tests, about
+        thirteen seconds, and not one spectrum or network call among them. Then put the spectra of
+        a target in <code>data/&lt;object&gt;/</code> under the input root,
+        which is never written to, and either
+      </p>
+      <pre><code>pca2d-preclean --object TOI-2120     # the whole thing, t.fits to velocities
+pca2d-gui                            # the same, in a window</code></pre>
+      <p>
+        The environment pins rather than floors its versions, because LBL pins
+        its own exactly: <code>numpy==2.3.3</code>, <code>astropy==7.2.0</code>,
+        <code>scipy==1.17.0</code> and the rest, python 3.12.
+        <code>environment.yml</code> repeats those pins so that conda installs
+        them and pip finds them already satisfied. The repository itself is
+        <strong>private for the moment</strong>: the clone needs access, which
+        is <a href="#access">a message away</a>. And if
+        <code>conda env create</code> ends in <code>Pip failed</code>, the
+        reason is almost always <a href="#trouble">the one at the foot of this
+        page</a>, which has nothing to do with this package.
+      </p>
     </section>
 
     <section class="card span-3" id="window">
@@ -164,9 +235,9 @@ conda config --env --set subdir osx-arm64   # so later installs stay native</cod
         <code>pca2d-preclean</code>, and <strong>the command it is about to run
         is written out in full</strong>, so it can be read before anything
         happens and copied into a terminal afterwards. It runs that command as
-        a subprocess, shows its output as it comes, and can stop it. It comes
-        with the package, so <a href="#install">installing it</a> is all there
-        is to do first.
+        a subprocess, shows its output as it comes, and can stop it. It came
+        with the package you just installed, so that one word is the whole of
+        starting it.
       </p>
       <figure class="wide">
         <img src="figures/gui_window.png" alt="The pca2d-preclean window: data roots, the target list, the settings, the barycentric coverage, the campaign timeline, the command and the log" />
@@ -405,116 +476,6 @@ conda config --env --set subdir osx-arm64   # so later installs stay native</cod
       </p>
     </section>
 
-    <section class="card span-3" id="install">
-      <h2>Install it</h2>
-      <p>
-        One conda environment, described by the repository itself, and five
-        lines. It holds <strong>both codes</strong>, this one and
-        <a href="https://github.com/njcuk9999/lbl" target="_blank">LBL</a>,
-        because having to deactivate one to run the other is how a t.fits gets
-        measured by the wrong version of something.
-      </p>
-      <pre><code>git clone https://github.com/eartigau/pca2d_preclean.git
-cd pca2d_preclean
-conda env create -f environment.yml
-conda activate pca2d-preclean
-./check.sh</code></pre>
-      <p>
-        One alias, written once, so that a new terminal is one word from being
-        ready:
-      </p>
-      <pre><code>echo "alias pca2d='source $PWD/pca2d.sh'" &gt;&gt; ~/.zshrc</code></pre>
-      <p>
-        <code>pca2d</code> then leaves whatever conda environments are active,
-        however many deep, enters this one, and prints what there is to run.
-        Leaving rather than activating on top is the point: the environments
-        that matter here hold versions of LBL, and the wrong one on the path is
-        how a t.fits gets measured by the wrong version of something.
-      </p>
-      <p>
-        <code>./check.sh</code> is the check that it worked: 489 tests, about
-        thirteen seconds, and not one spectrum or network call among them. Then put the spectra of
-        a target in <code>data/&lt;object&gt;/</code> under the input root,
-        which is never written to, and either
-      </p>
-      <pre><code>pca2d-preclean --object TOI-2120     # the whole thing, t.fits to velocities
-pca2d-gui                            # the same, in a window</code></pre>
-      <p>
-        The environment pins rather than floors its versions, because LBL pins
-        its own exactly: <code>numpy==2.3.3</code>, <code>astropy==7.2.0</code>,
-        <code>scipy==1.17.0</code> and the rest, python 3.12.
-        <code>environment.yml</code> repeats those pins so that conda installs
-        them and pip finds them already satisfied. The repository itself is
-        <strong>private for the moment</strong>: the clone needs access, which
-        is <a href="#access">a message away</a>. If
-        <code>conda env create</code> ends in <code>Pip failed</code>, the
-        reason is almost always <a href="#trouble">the one below</a>.
-      </p>
-    </section>
-
-    <section class="card span-3">
-      <h2>The idea</h2>
-      <p>
-        Over a year of observing, the barycentric velocity sweeps by tens of
-        kilometres per second. That is enough to separate the star from the
-        atmosphere, but only if the model is told which of the two travels.
-        Each exposure is the log of its flux less a Savitzky-Golay of it (a
-        100&nbsp;km/s high pass, 201 samples of 0.5&nbsp;km/s; runs made before
-        2026-09-11 used 151 of them, 75&nbsp;km/s), on one log-uniform grid in
-        the observer's frame, as two rows, its even orders and its odd ones:
-      </p>
-      <pre><code>y_n  =  S_n P a_n  +  v_n d(S_n P a_n)/dv  +  Q b_n  +  m_p</code></pre>
-      <ul class="terms">
-        <li><code>S_n</code> carries the star basis <code>P</code> into exposure
-          <code>n</code> by its barycentric velocity. On a log grid a Doppler
-          shift is a translation of atanh(v/c)/(dv/c) samples, relativistic,
-          and <code>S_n</code> is an exact Lanczos operator for it rather than
-          an interpolation that would smear what it touched.</li>
-        <li><code>P a_n</code> is the star; <code>Q b_n</code> is what stands
-          still on the detector: telluric absorption, OH emission, the
-          instrument.</li>
-        <li><code>v_n</code> is one velocity per exposure, times the
-          derivative of the star as reconstructed. Without it the observer
-          block learns the star's own motion and the correction divides it out
-          of the flux. With it the motion is fitted, and stays in.</li>
-        <li><code>m_p</code> is one offset per order parity, in the observer's
-          frame. Consecutive orders overlap, and at a given wavelength one
-          parity samples near an order's centre and the other near its edge,
-          where the resolution differs. It is taken out before the fit and put
-          back into the correction.</li>
-      </ul>
-      <p>
-        The coefficients of both blocks are solved together for each exposure,
-        under weights taken from the noise you can <em>measure</em> rather than
-        the noise a photon model claims. The two disagree by a factor of fifty
-        at the red end of a SPIRou spectrum: past about 2200&nbsp;nm the thermal
-        background dominates, the pipeline subtracts its <em>mean</em> and not
-        its variance, and a photon model computed from what is left reports the
-        noisiest part of the detector as the quietest.
-      </p>
-    </section>
-
-    <section class="card span-3">
-      <h2>Every step, on one page</h2>
-      <p>
-        1667 to 1672&nbsp;nm of TOI-2120, drawn in the star's rest frame with
-        the 316 rows ordered by barycentric velocity. Vertical structure
-        belongs to the star; anything slanted does not. The OH airglow runs
-        diagonally through the reconstruction and is gone from the third panel.
-      </p>
-      <figure class="wide">
-        <img src="figures/sequence_1669nm.svg" alt="The five stages from the delivered flux to the corrected spectrum, 1667 to 1672 nm" />
-        <figcaption>
-          1 the high pass &middot; 2 the reconstruction &middot; <strong>3
-          minus the observer block and its parity offset, which is what a
-          corrected file holds</strong> &middot; 4 minus the star block
-          instead &middot; 5 minus everything. Underneath, five of those
-          exposures in flux, before in blue and after in orange. Yellow is
-          what the fit gave no weight.
-        </figcaption>
-      </figure>
-    </section>
-
     <section class="card span-3">
       <h2>What a corrected file holds</h2>
       <p>
@@ -715,6 +676,69 @@ pca2d-gui                            # the same, in a window</code></pre>
         <code>v</code> when the velocity term was fitted: <code>1-3v</code>
         above.
       </p>
+    </section>
+
+    <section class="card span-3" id="trouble">
+      <h2>When the install fails</h2>
+      <p>
+        One failure is common enough to name, because nothing in its message
+        points at its cause. <code>conda env create</code> ends with
+        <code>CondaEnvException: Pip failed</code>, and above it:
+      </p>
+      <pre><code>× git version did not run successfully.
+  xcrun: error: unable to load libxcrun
+  (/Library/Developer/CommandLineTools/usr/lib/libxcrun.dylib:
+   fat file, but missing compatible architecture (have 'arm64,arm64e', need 'x86_64'))
+ERROR: Failed to build 'git+https://github.com/njcuk9999/lbl@main'</code></pre>
+      <p>
+        It is not LBL, and it is not pip. <strong>The environment is x86_64,
+        running under Rosetta on an Apple Silicon Mac.</strong>
+        <code>environment.yml</code> asks pip for LBL from git, pip runs
+        <code>git</code>, Apple's <code>/usr/bin/git</code> is a stub that calls
+        <code>xcrun</code>, and <code>xcrun</code> loads
+        <code>libxcrun.dylib</code>, which on recent Command Line Tools ships
+        arm64 slices only. An x86_64 process cannot load an arm64 library, so
+        <code>git version</code> fails and conda reports the only thing it saw,
+        which is that pip failed. Nothing here is specific to this package: any
+        environment that pip-installs from a git URL hits it.
+      </p>
+
+      <h3>Three lines that say whether that is what happened</h3>
+      <pre><code>uname -m                                   # the shell:      arm64 on Apple Silicon
+conda activate &lt;env&gt;
+python -c "import platform; print(platform.machine())"   # the environment
+conda config --show subdir                 # osx-arm64, or osx-64 under Rosetta</code></pre>
+      <p>
+        Three answers that agree on <code>arm64</code> and
+        <code>osx-arm64</code> mean this is not your problem. Any
+        <code>x86_64</code> or <code>osx-64</code> among them is the cause.
+      </p>
+
+      <h3>The fix worth doing</h3>
+      <p>
+        Rebuild the environment natively. It is not only the way out of this
+        error: LBL is hours of arithmetic, and hours of arithmetic under
+        emulation are longer hours.
+      </p>
+      <pre><code>CONDA_SUBDIR=osx-arm64 conda env create -f environment.yml -n pca2d-preclean
+conda activate pca2d-preclean
+conda config --env --set subdir osx-arm64   # so later installs stay native</code></pre>
+      <p>
+        And check the terminal itself, since an environment inherits the
+        architecture of the shell that made it: Finder, Applications, Terminal,
+        Get Info, and <em>Open using Rosetta</em> must be unticked. If
+        <code>uname -m</code> says <code>x86_64</code>, look there first.
+      </p>
+
+      <h3>Two ways round it, if the environment has to stay x86_64</h3>
+      <ul class="terms">
+        <li>Give the environment its own git, of its own architecture, so pip
+          stops reaching for Apple's stub:
+          <code>conda install -n &lt;env&gt; -c conda-forge git</code>.</li>
+        <li>Or take git out of the install: clone LBL by hand and point pip at
+          the folder, <code>git clone https://github.com/njcuk9999/lbl</code>
+          then <code>pip install -e ./lbl</code>.</li>
+      </ul>
     </section>
 
     <section class="card span-3" id="access">
