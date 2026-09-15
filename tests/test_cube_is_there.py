@@ -91,3 +91,121 @@ def test_what_is_wrong_is_said_before_any_stage_runs(tmp_path, capsys):
     assert "cube_tfits_4e793f8df25f" in out, "the path, so it can be looked for"
     assert "not there" in out
     assert "fit, correct" in out, "and which stages were going to open it"
+
+
+# ---- and everything else a stage opens ----------------------------------
+from pca2d.cli import FIT_FILES, check_inputs, missing_fit   # noqa: E402
+
+
+def full_plan(tmp_path, cube_ok=True, fit_ok=True, fitdir=None):
+    out = tmp_path / "out" / "0-3"
+    out.mkdir(parents=True, exist_ok=True)
+    if fit_ok:
+        for name in FIT_FILES.values():
+            open(out / name, "wb").close()
+    path = cube(tmp_path / "cube_tfits_abc") if cube_ok \
+        else str(tmp_path / "cube_tfits_gone")
+    plan = plan_for(path)
+    plan["outdir"] = str(out)
+    if fitdir:
+        plan["fitdir"] = fitdir
+    return plan
+
+
+def test_correcting_without_a_fit_runs_the_fit_rather_than_crashing(tmp_path):
+    """reconstruct.py raises a bare FileNotFoundError on a missing
+    twoframe_components.fits: the cube trap, one stage further along."""
+    plan = full_plan(tmp_path, fit_ok=False)
+    gone = missing_fit(plan, ["correct"])
+    assert [g[1] for g in gone] == ["twoframe_components.fits"]
+    assert check_inputs(plan, ["correct"]) == ["fit", "correct"]
+
+
+def test_drawing_without_a_fit_runs_the_fit_too(tmp_path):
+    """A missing fit.npz does not crash the bundle, it quietly puts sequence.py
+    on the report's "what did not build" page: a report with no river plot in
+    it, which is exactly what went wrong on SMETHELLS_20."""
+    plan = full_plan(tmp_path, fit_ok=False)
+    assert [g[1] for g in missing_fit(plan, ["figures"])] == ["fit.npz"]
+    assert check_inputs(plan, ["figures"]) == ["fit", "figures"]
+
+
+def test_a_fit_put_back_gets_its_cube_checked_too(tmp_path):
+    """Backwards along the chain, or the fit that was just added would open a
+    cube nobody looked for."""
+    plan = full_plan(tmp_path, cube_ok=False, fit_ok=False)
+    assert check_inputs(plan, ["correct"]) == ["cube", "fit", "correct"]
+
+
+def test_a_fit_that_is_there_changes_nothing(tmp_path):
+    plan = full_plan(tmp_path)
+    assert missing_fit(plan, ["figures", "correct"]) == []
+    assert check_inputs(plan, ["figures", "correct"]) == ["figures", "correct"]
+
+
+def test_the_fit_stage_already_asked_for_is_left_alone(tmp_path):
+    plan = full_plan(tmp_path, fit_ok=False)
+    assert check_inputs(plan, ["fit", "correct"]) == ["fit", "correct"], \
+        "no second fit stage"
+
+
+def test_a_variant_reusing_another_fit_is_left_to_check_reused_fit(tmp_path):
+    """Its fit is somewhere else, and putting a fit stage back here would make
+    a variant rebuild the very fit it exists to reuse."""
+    plan = full_plan(tmp_path, fit_ok=False, fitdir=str(tmp_path / "base"))
+    assert missing_fit(plan, ["correct"]) == []
+    assert check_inputs(plan, ["correct"]) == ["correct"]
+
+
+def test_lbl_alone_is_never_turned_into_a_fit(tmp_path):
+    """The one thing lbl reads from an earlier stage is the corrected spectra,
+    and lbl.prepare already says in words that it found none."""
+    plan = full_plan(tmp_path, cube_ok=False, fit_ok=False)
+    assert check_inputs(plan, ["lbl"]) == ["lbl"]
+
+
+# ---- reusing something from disk means checking it first ----------------
+def test_one_place_decides_whether_a_cube_on_disk_is_a_cube():
+    """Every caller about to reuse a cube asks cube_ready, and no caller asks
+    os.path.isdir on its own: "is the folder there" is a different question,
+    and answering it instead is how a half-emptied cache reports a cache hit
+    and then dies in np.load."""
+    import inspect
+
+    from pca2d import cli
+    for func in (cli.run_cube, cli.run_joint_cube):
+        body = inspect.getsource(func)
+        assert "cube_ready" in body, "%s reuses without asking" % func.__name__
+
+
+def test_a_half_emptied_cube_is_rebuilt_not_reused(tmp_path, monkeypatch):
+    from pca2d import cli
+    from pca2d.cli import cube_ready
+
+    path = cube(tmp_path / "cube_tfits_part", complete=False)
+    assert cube_ready(path) and "data.npy" in cube_ready(path)
+    assert cube_ready(cube(tmp_path / "cube_tfits_whole")) is None
+
+    built = []
+    monkeypatch.setattr("pca2d.build.main", lambda argv: built.append(argv))
+    plan = {"cube": path, "files": ["a.fits"],
+            "written_config": str(tmp_path / "c.yaml"),
+            "config": {"output": {"use_cache": True},
+                       "domain": {"wave_min": 965.0, "wave_max": 1950.0,
+                                  "dv": 0.5}}}
+    cli.run_cube(plan)
+    assert built, "an incomplete cube is built again, not handed to the fit"
+
+
+def test_a_complete_cube_is_still_reused(tmp_path, monkeypatch):
+    from pca2d import cli
+
+    built = []
+    monkeypatch.setattr("pca2d.build.main", lambda argv: built.append(argv))
+    plan = {"cube": cube(tmp_path / "cube_tfits_whole"), "files": ["a.fits"],
+            "written_config": str(tmp_path / "c.yaml"),
+            "config": {"output": {"use_cache": True},
+                       "domain": {"wave_min": 965.0, "wave_max": 1950.0,
+                                  "dv": 0.5}}}
+    cli.run_cube(plan)
+    assert built == [], "the whole point of the cache"

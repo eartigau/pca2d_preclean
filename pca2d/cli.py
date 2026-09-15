@@ -519,15 +519,25 @@ def run_joint_cube(plan, build_main):
 
     from . import joint as _joint
 
-    if os.path.isdir(plan["cube"]) and plan["config"]["output"]["use_cache"]:
-        log("a joint cube for these objects and this configuration is already"
-            " on disk, reusing it: %s" % plan["cube"], "warn")
-        return
+    if plan["config"]["output"]["use_cache"]:
+        why = cube_ready(plan["cube"])
+        if why is None:
+            log("a joint cube for these objects and this configuration is"
+                " already on disk, reusing it: %s" % plan["cube"], "warn")
+            return
+        if os.path.isdir(plan["cube"]):
+            log("the joint cube at %s is %s, so it is built again rather than"
+                " reused" % (plan["cube"], why), "warn")
     for member in plan["members"]:
-        if os.path.isdir(member["cube"]) and plan["config"]["output"]["use_cache"]:
-            log("  %-10s its own cube is already built: %s"
-                % (member["object"], member["cube"]))
-            continue
+        if plan["config"]["output"]["use_cache"]:
+            why = cube_ready(member["cube"])
+            if why is None:
+                log("  %-10s its own cube is already built: %s"
+                    % (member["object"], member["cube"]))
+                continue
+            if os.path.isdir(member["cube"]):
+                log("  %-10s its cube is %s, building it again"
+                    % (member["object"], why), "warn")
         path = os.path.join(plan["outdir"],
                             "cube_config_%s.yaml" % member["object"])
         with open(path, "w") as handle:
@@ -547,6 +557,12 @@ def run_joint_cube(plan, build_main):
 CUBE_FILES = ("data.npy", "grid.npy", "sigma.npy", "meta.fits")
 #: the stages that open a cube. lbl works from the corrected files instead
 NEEDS_CUBE = ("fit", "figures", "correct")
+#: what the fit leaves behind, and which stage opens which. Deleting either is
+#: the same trap as deleting a cube, one stage further along: reconstruct.py
+#: raises a bare FileNotFoundError on twoframe_components.fits, and a missing
+#: fit.npz puts sequence.py on the report's "what did not build" page instead
+#: of drawing anything
+FIT_FILES = {"figures": "fit.npz", "correct": "twoframe_components.fits"}
 
 
 def cubes_of(plan):
@@ -564,27 +580,51 @@ def cubes_of(plan):
     return cubes
 
 
-def missing_cubes(plan):
-    """[(what it is for, path, why)] of the cubes that are not usable.
+def cube_ready(path):
+    """None when a cube can be read, otherwise why it cannot.
 
-    Not just "is the folder there": a cache emptied while a run was not looking
-    can leave the folder and take data.npy with it, and the error for that is a
-    traceback out of np.load three stages later.
+    The one place that decides whether a cube on disk counts as a cube. Every
+    caller that was about to reuse one asks here: "is the folder there" is not
+    the same question, and a cache emptied while a run was not looking can
+    leave the folder and take data.npy with it. Reusing THAT reports a cube hit
+    and then dies in np.load, which is worse than no cube at all.
     """
+    if not os.path.isdir(path):
+        return "not there"
+    gone = [f for f in CUBE_FILES if not os.path.exists(os.path.join(path, f))]
+    return "incomplete, no " + ", ".join(gone) if gone else None
+
+
+def missing_cubes(plan):
+    """[(what it is for, path, why)] of the cubes that are not usable."""
     out = []
     for what, path in cubes_of(plan):
-        if not os.path.isdir(path):
-            out.append((what, path, "not there"))
+        why = cube_ready(path)
+        if why:
+            out.append((what, path, why))
+    return out
+
+
+def missing_fit(plan, wanted):
+    """[(stage, file, path)] of the fit products a stage would open and cannot.
+
+    Nothing for a variant that reuses another run's fit: that fit is somewhere
+    else and check_reused_fit is the one that looks for it.
+    """
+    if plan.get("fitdir"):
+        return []
+    out = []
+    for stage, name in FIT_FILES.items():
+        if stage not in wanted:
             continue
-        gone = [f for f in CUBE_FILES
-                if not os.path.exists(os.path.join(path, f))]
-        if gone:
-            out.append((what, path, "incomplete, no " + ", ".join(gone)))
+        path = os.path.join(plan["outdir"], name)
+        if not os.path.exists(path):
+            out.append((stage, name, path))
     return out
 
 
 def check_cubes(plan, wanted):
-    """Before anything runs: every cube a stage will open, checked.
+    """The cube half of check_inputs, kept apart because it is the older half.
 
     Returns the stage list to run. A cube that is not there is put back on the
     list of things to build, loudly: a user deleted their cache on 2026-09-15,
@@ -611,6 +651,36 @@ def check_cubes(plan, wanted):
            "them" if len(gone) > 1 else "it",
            "them" if len(gone) > 1 else "it"), "warn")
     return ["cube"] + list(wanted)
+
+
+def check_inputs(plan, wanted):
+    """Before anything runs: everything a remaining stage will open, checked.
+
+    The stages are a chain, cube to fit to figures and correct, and each link
+    is skippable precisely so that work already done is not redone. That makes
+    every link a place where a file can be gone and nobody notices until the
+    stage that needs it opens it. Backwards along the chain: the fit's products
+    first, so that putting the fit back is then itself checked for a cube.
+
+    Not lbl: the one thing IT reads from an earlier stage is the corrected
+    spectra, and lbl.prepare already says, in words, that it found none and
+    what to run. A missing file that is already explained is not this
+    function's business.
+    """
+    wanted = list(wanted)
+    gone = missing_fit(plan, wanted)
+    if gone and "fit" not in wanted:
+        for stage, name, path in gone:
+            log("%s would open %s and it is not there: %s"
+                % (stage, name, path), "warn")
+        log("the fit stage was not asked for. Running it first: this is the"
+            " long one", "warn")
+        wanted = ["fit"] + wanted
+    elif gone:
+        for stage, name, _path in gone:
+            log("%s needs %s, which this run's fit stage will write"
+                % (stage, name), "info")
+    return check_cubes(plan, wanted)
 
 
 def warn_if_run_exists(plan):
@@ -640,11 +710,16 @@ def run_cube(plan):
 
     if plan.get("members"):
         return run_joint_cube(plan, build_main)
-    if os.path.isdir(plan["cube"]) and plan["config"]["output"]["use_cache"]:
-        log("a cube for this exact configuration is already on disk, reusing"
-            " it: %s" % plan["cube"], "warn")
-        log("--rebuild-cube forces it to be built again", "warn")
-        return
+    if plan["config"]["output"]["use_cache"]:
+        why = cube_ready(plan["cube"])
+        if why is None:
+            log("a cube for this exact configuration is already on disk,"
+                " reusing it: %s" % plan["cube"], "warn")
+            log("--rebuild-cube forces it to be built again", "warn")
+            return
+        if os.path.isdir(plan["cube"]):
+            log("the cube at %s is %s, so it is built again rather than"
+                " reused" % (plan["cube"], why), "warn")
     cfg = plan["config"]
     log("building the cube: %d spectra onto %.0f-%.0f nm at %.2f km/s"
         % (len(plan["files"]), cfg["domain"]["wave_min"],
@@ -947,9 +1022,9 @@ def main(argv=None):
         if skipped:
             log("the fit is %s's, so %s not run for this variant"
                 % (plan["fitdir"], ", ".join(skipped)), "info")
-    # every cube a remaining stage will open, checked here and not found
+    # everything a remaining stage will open, checked here and not found
     # missing by np.load three stages in
-    wanted = check_cubes(plan, wanted)
+    wanted = check_inputs(plan, wanted)
     if args.dry_run:
         log("dry run: stopping here, nothing written", "warn")
         return None
