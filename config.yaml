@@ -497,6 +497,11 @@ objects:
   # Barnard's star, whose two campaigns cannot share a folder: a run is one
   # instrument, and one LBL object name per data set. Both pipelines write
   # OBJECT = Gl699, which is what the files are matched on.
+  SMETHELLS_20:
+    input:
+      # the folder is APERO's own DRSOBJN; the headers say OBJECT = TIC464410508,
+      # which is the same star under the catalogue it was proposed from
+      object_header: TIC464410508
   TRAPPIST1_SPIROU:
     input:
       # the folder says which spectrograph, the headers say the star: APERO
