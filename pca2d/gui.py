@@ -156,11 +156,11 @@ EN = {
         " young; a small possible means the target is the wrong one.",
     "run": "Run", "stop": "Stop", "dry": "Dry run", "export": "Export YAML...",
     "savelog": "Save log...", "openout": "Open outputs",
-    "savedefaults": "Save as defaults...", "lblwin": "LBL settings...",
+    "savedefaults": "Save as defaults...",
     "all": "all", "none": "none",
     "idle": "idle", "running": "running", "lang": "Français",
     "tab_targets": "  targets  ", "tab_settings": "  settings  ",
-    "tab_run": "  run  ",
+    "tab_lbl": "  LBL  ", "tab_run": "  analysis  ",
     "quit": "Quit", "quit_title": "quit pca2d-preclean",
     "quit_running":
         "A run is going, and it is a subprocess of this window: quitting stops"
@@ -182,7 +182,7 @@ EN = {
     "log_no_config":
         "no config.yaml came with this installation: Browse to one, or run the"
         " window from a checkout.",
-    "lbl_title": "LBL settings", "close": "Close",
+    "lbl_title": "LBL settings",
     "nothing_export": "every setting is the configuration's own, so a variant"
                       " file would say nothing.",
     "export_title": "save these settings as a variant",
@@ -524,11 +524,11 @@ FR = {
     "run": "Lancer", "stop": "Arrêter", "dry": "Essai à blanc",
     "export": "Exporter le YAML...", "savelog": "Enregistrer le journal...",
     "openout": "Ouvrir les sorties",
-    "savedefaults": "Enregistrer comme défauts...", "lblwin": "Réglages LBL...",
+    "savedefaults": "Enregistrer comme défauts...",
     "all": "tout", "none": "rien",
     "idle": "au repos", "running": "en cours", "lang": "English",
     "tab_targets": "  cibles  ", "tab_settings": "  réglages  ",
-    "tab_run": "  passage  ",
+    "tab_lbl": "  LBL  ", "tab_run": "  analyse  ",
     "quit": "Quitter", "quit_title": "quitter pca2d-preclean",
     "quit_running":
         "Un passage est en cours, et c'est un processus fils de cette fenêtre :"
@@ -549,7 +549,7 @@ FR = {
     "log_no_config":
         "aucun config.yaml n'est livré avec cette installation : choisissez-en"
         " un, ou lancez la fenêtre depuis un dépôt cloné.",
-    "lbl_title": "réglages LBL", "close": "Fermer",
+    "lbl_title": "réglages LBL",
     "nothing_export": "tous les réglages sont ceux de la configuration : un"
                       " fichier de variante ne dirait rien.",
     "export_title": "enregistrer ces réglages comme variante",
@@ -1384,7 +1384,6 @@ class App:
         # None = the default order, by instrument then name
         self.sort_column = self.saved.get("sort_column") or None
         self.sort_reverse = bool(self.saved.get("sort_reverse"))
-        self.lbl_window = None
         root.title("pca2d-preclean")
         # a 13-inch laptop has about 800 points of usable height, and the log
         # at the bottom is the part that was falling off the screen
@@ -1406,7 +1405,7 @@ class App:
         book.pack(fill="both", expand=True, padx=12, pady=(2, 8))
         self.tabs = []
         pages = {}
-        for key in ("tab_targets", "tab_settings", "tab_run"):
+        for key in ("tab_targets", "tab_settings", "tab_lbl", "tab_run"):
             page = ttk.Frame(book, padding=8)
             book.add(page, text=self.t(key))
             self.tabs.append((book, page, key))
@@ -1430,6 +1429,10 @@ class App:
         # them down somewhere
         self._build_options(pages["tab_settings"])
         self._build_buttons(pages["tab_settings"], "settings")
+
+        # what LBL is asked, which is a setting like the others and used to be
+        # a window of its own
+        self._build_lbl(pages["tab_lbl"])
 
         # and the run: what it will be called, the command in full, the buttons
         # that start and end it, and everything it says
@@ -1662,8 +1665,6 @@ class App:
                 pass
         self._draw_headings()
         self._state()
-        if self.lbl_window is not None:
-            self.lbl_window.title(self.t("lbl_title"))
         self._sync()
 
     # ---- widgets ------------------------------------------------------
@@ -2267,8 +2268,7 @@ class App:
     #: which buttons belong to which tab: what changes a setting is with the
     #: settings, what starts or ends a run is with the run
     BUTTONS = {
-        "settings": (("lblwin", "open_lbl", None, "help_lblwin_button"),
-                     ("export", "export", None, "help_export_button"),
+        "settings": (("export", "export", None, "help_export_button"),
                      ("savedefaults", "save_defaults", None,
                       "help_savedefaults_button")),
         "run": (("run", "start", "run_button", "help_run_button"),
@@ -3064,31 +3064,26 @@ class App:
                   else "explorer" if os.name == "nt" else "xdg-open")
         subprocess.Popen([opener, path])
 
-    def open_lbl(self):
-        """The `lbl:` block in its own window: the wrapper's own questions.
+    def _build_lbl(self, parent):
+        """The `lbl:` block, on its own page: the wrapper's own questions.
 
-        Built once and hidden rather than destroyed, so that the language switch
-        keeps finding its labels and the window comes back as it was left.
+        A window of its own was one window too many once the settings had
+        pages: this is a setting like the others, it is simply LBL's rather
+        than the fit's, and it is the step that produces velocities.
         """
         ttk, tk = self.ttk, self.tk
-        if self.lbl_window is not None:
-            self.lbl_window.deiconify()
-            self.lbl_window.lift()
-            return
-        window = self.lbl_window = tk.Toplevel(self.root)
-        window.title(self.t("lbl_title"))
-        window.geometry("620x380")
-        head = ttk.Label(window, text=self.t("lbl_title"), style="Head.TLabel")
-        head.pack(anchor="w", padx=12, pady=(12, 0))
-        self._register(head, "lbl_title")
-        note = ttk.Label(window, style="Hint.TLabel", wraplength=580,
+        note = ttk.Label(parent, style="Hint.TLabel", wraplength=900,
                          justify="left", text=self.t("help_lblwin_button"))
-        note.pack(anchor="w", padx=12, pady=(2, 8))
+        note.pack(anchor="w", pady=(0, 8))
         self._register(note, "help_lblwin_button")
-        grid = ttk.Frame(window)
-        grid.pack(fill="both", expand=True, padx=12)
+        box = ttk.Labelframe(parent, text=self.t("lbl_title"))
+        box.pack(fill="x", pady=4)
+        self._register(box, "lbl_title")
+        grid = ttk.Frame(box)
+        grid.pack(fill="x", padx=8, pady=6)
+        per_column = -(-len(OPTIONS_LBL) // 2)
         for i, (key, path, kind) in enumerate(OPTIONS_LBL):
-            row, col = i % 6, (i // 6) * 2
+            row, col = i % per_column, (i // per_column) * 2
             label = ttk.Label(grid, text=self.t("opt_" + key))
             label.grid(row=row, column=col, sticky="w", pady=3)
             self._register(label, "opt_" + key)
@@ -3102,19 +3097,15 @@ class App:
             elif isinstance(kind, tuple):
                 var = tk.StringVar(value=str(default))
                 widget = ttk.Combobox(grid, textvariable=var, values=list(kind),
-                                      width=12, state="readonly")
+                                      width=14, state="readonly")
             else:
                 var = tk.StringVar(value="" if default is None else str(default))
-                widget = ttk.Entry(grid, textvariable=var, width=24)
-            widget.grid(row=row, column=col + 1, sticky="w", padx=(8, 20))
+                widget = ttk.Entry(grid, textvariable=var, width=30)
+            widget.grid(row=row, column=col + 1, sticky="w", padx=(8, 28))
             var.trace_add("write", lambda *_: self._sync())
             self.vars[key] = var
             self._tip(widget, "help_" + key)
             self._tip(label, "help_" + key)
-        close = ttk.Button(window, text=self.t("close"), command=window.withdraw)
-        close.pack(anchor="e", padx=12, pady=10)
-        self._register(close, "close")
-        window.protocol("WM_DELETE_WINDOW", window.withdraw)
 
     def _stage(self, changed):
         """A stage box moved: the ones that depend on it follow."""

@@ -9,9 +9,10 @@ run is written out so that it can be copied into a terminal.
 
 ## Three pages
 
-Everything at once was a wall. The window is three pages, and each has room to
-be read: **targets**, what is being reduced; **settings**, how; and **run**, the
-command, the buttons that start and end it, and everything it says. The banner
+Everything at once was a wall. The window is four pages, and each has room to be
+read: **targets**, what is being reduced; **settings**, how; **LBL**, what the
+step that produces velocities is asked; and **analysis**, the command, the
+buttons that start and end it, and everything it says. The banner
 and the language button stay above them. What follows is where each thing is.
 
 The corners are round, which ttk does not do: no theme here draws one, so the
@@ -68,7 +69,7 @@ Without PIL none of it happens and the window is the square one it was.
   (`mean: star`), and a sample lost by one exposure is blanked in all of them,
   so the campaign carries one set of lines (`correct.mask: common`). The older
   paths are still read from a config or a variant file, for redoing the runs
-  that were made on them. Whether LBL is run is in the LBL window, since the
+  that were made on them. Whether LBL is run is on the LBL page, since the
   stages already say whether the lbl step happens at all. Hovering one writes
   what it means at the bottom of the window, and after a moment in a box.
 - **The stages, as the chain they are:** `cube → fit → correct → lbl`, with the
@@ -144,14 +145,16 @@ not read is missing from it for good. A file that cannot be read is recorded
 as unreadable rather than re-read at every visit. Deleting an index costs the
 few seconds of one scan, nothing else.
 
-## The LBL window
+## The LBL page
 
-**LBL settings...** opens the `lbl:` block on its own: what is measured (the
+The `lbl:` block, between the settings and the analysis: what is measured (the
 delivered spectra, the corrected ones, or both), what the corrected object is
 called next to the delivered one, which template it is measured against, where
-LBL's tree is, which of its steps run, and whether the spectra get there as
-symlinks or copies. That is the equivalent of the wrapper, and it is the step
-that produces velocities.
+LBL's tree is, which of its steps run, whether LBL is actually run, and whether
+the spectra get there as symlinks or copies. That is the equivalent of the
+wrapper, and it is the step that produces velocities. It had a window of its own
+until the pages existed, which was one window too many: these are settings like
+the others, they are simply LBL's rather than the fit's.
 
 ## The buttons that write something
 
