@@ -612,6 +612,26 @@ def bervs_of(index, name):
                     dtype=float)
 
 
+def snr_against_berv(index, name):
+    """(berv, snr) of every spectrum of one object, as two arrays.
+
+    The pair the coverage histogram cannot show: a campaign can cover the whole
+    barycentric range and cover the far end of it with its worst nights, and
+    the fit weighs a spectrum by 1/sigma^2, so where the signal-to-noise sits
+    ALONG that range is what decides how well the two frames are separated.
+    """
+    files = ((index.get("objects") or {}).get(name) or {}).get("files") or {}
+    berv, snr = [], []
+    for record in files.values():
+        if not isinstance(record, dict):
+            continue
+        if record.get("berv") is None or record.get("snr") is None:
+            continue
+        berv.append(float(record["berv"]))
+        snr.append(float(record["snr"]))
+    return np.array(berv, dtype=float), np.array(snr, dtype=float)
+
+
 def berv_coverage(index, names, width=BERV_BIN):
     """What the chosen stars' barycentric coverage actually is.
 

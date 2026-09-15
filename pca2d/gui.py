@@ -29,6 +29,8 @@ import sys
 import threading
 import time
 
+import numpy as np
+
 from . import scan
 from .logger import stamp
 
@@ -171,6 +173,16 @@ EN = {
     "savedefaults": "Save as defaults...",
     "all": "all", "none": "none",
     "idle": "idle", "running": "running", "lang": "Français",
+    "snr_berv": "signal-to-noise against barycentric velocity",
+    "snr_none": "tick a target to see where its best nights sit",
+    "help_snr_berv":
+        "One dot per spectrum, in its star's colour: the signal-to-noise APERO"
+        " measured against the barycentric velocity it was taken at. The"
+        " histogram above says which velocities a campaign covers; this says"
+        " what it covers them WITH. The fit weighs a spectrum by 1/sigma^2, so"
+        " a range covered at one end by the worst nights of a campaign is not"
+        " the range the fit really sees, and the two frames come apart less"
+        " well than the coverage promises.",
     "tab_targets": "  targets  ", "tab_settings": "  settings  ",
     "tab_lbl": "  LBL  ", "tab_run": "  analysis  ",
     "quit": "Quit", "quit_title": "quit pca2d-preclean",
@@ -558,6 +570,17 @@ FR = {
     "savedefaults": "Enregistrer comme défauts...",
     "all": "tout", "none": "rien",
     "idle": "au repos", "running": "en cours", "lang": "English",
+    "snr_berv": "rapport signal sur bruit en fonction du BERV",
+    "snr_none": "cochez une cible pour voir où sont ses meilleures nuits",
+    "help_snr_berv":
+        "Un point par spectre, dans la couleur de son étoile : le rapport"
+        " signal sur bruit mesuré par APERO, en fonction de la vitesse"
+        " barycentrique à laquelle il a été pris. L'histogramme du dessus dit"
+        " quelles vitesses une campagne couvre ; celui-ci dit AVEC QUOI elle"
+        " les couvre. L'ajustement pondère un spectre en 1/sigma^2, donc une"
+        " plage couverte à une extrémité par les pires nuits d'une campagne"
+        " n'est pas la plage que l'ajustement voit vraiment, et les deux"
+        " référentiels se séparent moins bien que la couverture ne le promet.",
     "tab_targets": "  cibles  ", "tab_settings": "  réglages  ",
     "tab_lbl": "  LBL  ", "tab_run": "  analyse  ",
     "quit": "Quitter", "quit_title": "quitter pca2d-preclean",
@@ -1507,6 +1530,7 @@ class App:
         # the two panels under the list left the right half of the page empty
         self._build_objects(left)
         self._build_berv(right)
+        self._build_snr(right)
         self._build_time(right)
 
         # how: every setting that changes a result, and the buttons that write
@@ -1982,6 +2006,81 @@ class App:
         self._tip(self.berv_note, "help_berv")
         self.berv_canvas.bind("<Configure>", lambda _e: self._draw_berv())
 
+    def _build_snr(self, parent):
+        """Signal-to-noise against barycentric velocity, one point per spectrum.
+
+        The pair the histogram cannot show. A campaign can cover the whole
+        range and cover one end of it with its worst nights, and the fit weighs
+        a spectrum by 1/sigma^2: where the signal-to-noise SITS along the range
+        is what decides how well the two frames come apart.
+        """
+        ttk = self.ttk
+        box = ttk.Labelframe(parent, text=self.t("snr_berv"))
+        box.pack(fill="both", expand=True, padx=6, pady=(0, 6))
+        self._register(box, "snr_berv")
+        self.snr_canvas = self.tk.Canvas(box, height=96, highlightthickness=0,
+                                         background=SURFACE)
+        self.snr_canvas.pack(fill="both", expand=True, padx=6, pady=(4, 6))
+        self._tip(self.snr_canvas, "help_snr_berv")
+        self.snr_canvas.bind("<Configure>", lambda _e: self._draw_snr())
+
+    def _draw_snr(self):
+        """One dot per spectrum, in its star's colour: SNR against BERV."""
+        canvas = getattr(self, "snr_canvas", None)
+        if canvas is None:
+            return
+        canvas.delete("all")
+        names = self.picked()
+        width = max(int(canvas.winfo_width()), 50)
+        height = max(int(canvas.winfo_height()), 40)
+        if not names:
+            canvas.create_text(width // 2, height // 2,
+                               text=self.t("snr_none"), fill="#888",
+                               font=("Helvetica", 10))
+            return
+        series = {}
+        for name in names:
+            berv, snr = scan.snr_against_berv(self.index, name)
+            if berv.size:
+                series[name] = (berv, snr)
+        if not series:
+            canvas.create_text(width // 2, height // 2, text=self.t("berv_wait"),
+                               fill="#b26a00", font=("Helvetica", 10))
+            return
+
+        pad, foot, gutter = 6, 16, 26
+        top = height - foot
+        highest = max(float(np.nanmax(s)) for _b, s in series.values())
+        highest = max(highest, 1.0)
+        span = scan.BERV_AXIS
+
+        def x_of(v):
+            return gutter + (v + span) / (2 * span) * (width - gutter - pad)
+
+        def y_of(value):
+            return top - (value / highest) * (top - pad)
+
+        for level in (0, highest / 2.0, highest):
+            y = y_of(level)
+            canvas.create_line(gutter, y, width - pad, y,
+                               fill="#e8edf3" if level else "#bbb")
+            canvas.create_text(gutter - 4, y, text="%d" % round(level),
+                               anchor="e", fill="#555", font=("Helvetica", 8))
+        for value in (-30.0, -20.0, -10.0, 0.0, 10.0, 20.0, 30.0):
+            x = x_of(value)
+            canvas.create_line(x, top, x, top + 3, fill="#888")
+            canvas.create_text(x, top + 9, text="%+.0f" % value, fill="#555",
+                               font=("Helvetica", 8))
+        for name, (berv, snr) in series.items():
+            colour = self._star_colour(name)
+            step = max(1, berv.size // 900)   # a canvas is not a plot library
+            for b, sn in zip(berv[::step], snr[::step]):
+                if not (np.isfinite(b) and np.isfinite(sn)):
+                    continue
+                x, y = x_of(b), y_of(sn)
+                canvas.create_oval(x - 1.6, y - 1.6, x + 1.6, y + 1.6,
+                                   fill=colour, outline="")
+
     def _build_time(self, parent):
         """When the ticked campaigns were observed, and what to keep of them.
 
@@ -2310,6 +2409,7 @@ class App:
         self._warned = instruments if len(instruments) > 1 else None
         self._nights(names)
         self._draw_berv()
+        self._draw_snr()
         self._draw_time()
         self._sync()
 
@@ -2647,15 +2747,33 @@ class App:
                                fill="#b26a00", font=("Helvetica", 10))
             self.berv_note.configure(text="")
             return
-        pad, foot = 6, 16
+        # a gutter on the left for the counts: a histogram whose height means
+        # "how many spectra" and never says how many is a shape, not a
+        # measurement
+        pad, foot, gutter = 6, 16, 26
         top = height - foot
         tallest = max(1, max(int(c.max()) for c in counts.values() if c.size))
         n_bins = len(edges) - 1
-        step = (width - 2 * pad) / max(n_bins, 1)
+        step = (width - gutter - pad) / max(n_bins, 1)
 
         def x_of(v):
-            return pad + (v - edges[0]) / max(edges[-1] - edges[0], 1e-9) * (
-                width - 2 * pad)
+            return gutter + (v - edges[0]) / max(edges[-1] - edges[0], 1e-9) * (
+                width - gutter - pad)
+
+        def y_of(count):
+            return top - (count / float(tallest)) * (top - pad)
+
+        # round numbers, and never more of them than there is room for
+        ticks = [0, tallest]
+        for fraction in (0.5, 0.25, 0.75):
+            if (top - pad) > 60:
+                ticks.append(int(round(tallest * fraction)))
+        for count in sorted(set(t for t in ticks if 0 <= t <= tallest)):
+            y = y_of(count)
+            canvas.create_line(gutter, y, width - pad, y,
+                               fill="#e8edf3" if count else "#bbb")
+            canvas.create_text(gutter - 4, y, text="%d" % count, anchor="e",
+                               fill="#555", font=("Helvetica", 8))
 
         # what the SKY allows this selection, |BERV| <= 29.78 cos(beta): the
         # axis is the whole solar system, and a target at a high ecliptic
@@ -2670,7 +2788,7 @@ class App:
                 canvas.create_line(x_of(edge), pad, x_of(edge), top,
                                    fill="#9fb8c9", dash=(2, 2))
         for i in range(n_bins):
-            x0 = pad + i * step
+            x0 = gutter + i * step
             bottom = top
             for name in names:
                 c = counts.get(name)
@@ -2683,10 +2801,10 @@ class App:
                                         fill=self._star_colour(name),
                                         outline="")
                 bottom -= h
-        canvas.create_line(pad, top, width - pad, top, fill="#bbb")
+        canvas.create_line(gutter, top, width - pad, top, fill="#bbb")
         # a legend, or the colours say nothing: one square and one name per star,
         # in the order they are stacked
-        x = pad + 2
+        x = gutter + 2
         for name in names:
             if name not in counts:
                 continue
@@ -2875,6 +2993,7 @@ class App:
         # spectra would be a redraw of both panels a few hundred times.
         if known >= total and name in self.picked():
             self._draw_berv()
+            self._draw_snr()
             self._draw_time()
 
     def _watch_root(self):
@@ -2967,6 +3086,7 @@ class App:
         # until a tick changes or the window is resized, and "UNDER
         # CONSTRUCTION: still reading" sat on a finished histogram until then
         self._draw_berv()
+        self._draw_snr()
         self._draw_time()
         self._state()
         if not rows:

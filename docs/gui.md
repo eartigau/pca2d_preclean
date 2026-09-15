@@ -99,8 +99,8 @@ Without PIL none of it happens and the window is the square one it was.
   skipped, red for what stops a run. The window's own lines are in the same
   form, `YYMMDD HH:MM:SS.SS | message`, and in the window's language.
 - **The barycentric coverage** of whatever is ticked, as a histogram in bins of
-  3 km/s, stacked by star, filling whatever height the page has beside the list
-  and redrawn as the window is resized, with three numbers under it: what the campaign
+  3 km/s, stacked by star, counted on a numbered y axis, filling whatever height
+  the page has beside the list and redrawn as the window is resized, with three numbers under it: what the campaign
   covers, its span, and what its ecliptic latitude ALLOWS. That last one is
   fixed by the sky, `|BERV| <= 29.78 cos(beta)`, and it decides whether the
   method can work on a target at all: TOI-1452 at +80.5 degrees can never span
@@ -108,6 +108,12 @@ Without PIL none of it happens and the window is the square one it was.
   fill; a span short of the possible means a young campaign; a small possible
   means the wrong target. While the scan is still reading, the panel says so
   rather than looking final.
+- **The signal-to-noise against the barycentric velocity**, one dot per
+  spectrum in its star's colour, under the histogram. The histogram says which
+  velocities a campaign covers; this says what it covers them WITH. The fit
+  weighs a spectrum by 1/sigma^2, so a range whose far end is covered by a
+  campaign's worst nights is not the range the fit really sees, and the two
+  frames come apart less well than the coverage promises.
 - **English or French**, one button, everything included: the labels, the
   explanations and the window's own log lines.
 
