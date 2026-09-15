@@ -42,6 +42,61 @@ from .progress import human, stage
 STAGES = ("cube", "fit", "figures", "correct", "lbl")
 
 
+#: The settings the window can change that are CONFIG keys, and the flag each
+#: one travels under. Without these, a value typed in the window reached
+#: nothing: only n_star and n_earth had flags, so changing the high pass, the
+#: shrinkage or the metric and pressing Run ran the configuration's own values
+#: and said nothing about it (2026-09-15). A flag also means a run's own log
+#: records what it was asked, which a config file edited afterwards does not.
+SETTING_FLAGS = (
+    ("--weight", "correct.weight", str,
+     "the metric the correction's amplitudes are measured in: 'flux', every"
+     " sample as the fit saw it, or 'velocity', each weighted by the star's own"
+     " derivative there, (dT/dv)^2. It implies a refit of the amplitudes"),
+    ("--velocity-term", "twoframe.velocity_term", "bool",
+     "fit one velocity per exposure beside the components"),
+    ("--iters", "twoframe.iters", int, "sweeps at most"),
+    ("--shrink", "correct.shrink", "bool",
+     "divide each observer component out only where it is significant"),
+    ("--high-pass", "highpass.width_kms", float,
+     "the Savitzky-Golay high pass, in km/s"),
+    ("--dv", "domain.dv", float, "the grid step, in km/s"),
+    ("--nightly-stack", "input.nightly_stack", str,
+     "coadd each night: true, false, or auto"),
+)
+
+
+def add_setting_flags(parser):
+    """Give the parser one flag per config key the window can change."""
+    for flag, path, kind, help_text in SETTING_FLAGS:
+        if kind == "bool":
+            parser.add_argument(flag, dest=flag[2:].replace("-", "_"),
+                                choices=("true", "false"), default=None,
+                                help="%s (config %s)" % (help_text, path))
+        else:
+            parser.add_argument(flag, dest=flag[2:].replace("-", "_"),
+                                type=kind, default=None,
+                                help="%s (config %s)" % (help_text, path))
+    return parser
+
+
+def apply_setting_flags(config, args):
+    """Put what the command line said into the resolved configuration."""
+    said = []
+    for flag, path, kind, _help in SETTING_FLAGS:
+        value = getattr(args, flag[2:].replace("-", "_"), None)
+        if value is None:
+            continue
+        if kind == "bool":
+            value = str(value).lower() == "true"
+        section, key = path.split(".")
+        config.setdefault(section, {})[key] = value
+        said.append("%s = %s" % (path, value))
+    if said:
+        log("from the command line: %s" % ", ".join(said), "value")
+    return config
+
+
 def parse_args(argv=None):
     p = argparse.ArgumentParser(
         prog="pca2d-preclean", description=__doc__,
@@ -66,6 +121,7 @@ def parse_args(argv=None):
                         " to it. Empty keeps everything under the output root."
                         " A path that is not there stops the run rather than"
                         " quietly filling the internal disk")
+    add_setting_flags(p)
     p.add_argument("--no-fits-dir", action="store_true",
                    help="keep everything under the output root, whatever the"
                         " config says: the window sends this when its products"
@@ -250,6 +306,7 @@ def joint_members(args, variant):
             cfg["output"]["fits_directory"] = None
         elif getattr(args, "fits_dir", None):
             cfg["output"]["fits_directory"] = args.fits_dir
+        apply_setting_flags(cfg, args)
         # the date window decides which exposures are IN THE CUBE, so it has to
         # be on every member's own configuration, not only on the joint copy
         # made from the first of them: set there alone, the member cubes would
@@ -287,6 +344,7 @@ def joint_plan(args, variant):
         raise SystemExit(2)
     config = copy.deepcopy(members[0]["config"])
     # the same command-line overrides a solo run takes
+    apply_setting_flags(config, args)
     if args.n_star is not None:
         config["twoframe"]["n_star"] = args.n_star
     if args.n_earth is not None:
@@ -373,6 +431,8 @@ def resolve(args):
             " it." % (directory, args.config, config["input"]["directory"]),
             "error")
         raise SystemExit(2)
+    # what the command line said about the settings, before anything reads them
+    apply_setting_flags(config, args)
     if args.n_star is not None:
         config["twoframe"]["n_star"] = args.n_star
     if args.n_earth is not None:

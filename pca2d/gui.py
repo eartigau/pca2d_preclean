@@ -35,7 +35,15 @@ from . import scan
 from .logger import stamp
 
 HOME_STATE = os.path.expanduser("~/.pca2d_gui.json")
-ANSI = re.compile(r"\033\[(\d+)m")
+#: EVERY escape sequence, not only the ones this window paints with. LBL
+#: colours its own output (`\033[92;1m` for a bright bold green, `\033[0;0m` to
+#: reset), and a pattern that matched a single number left those on screen as
+#: "[92;1m" and "[0;0m" around every line it printed. Semicolons, empty codes
+#: and the other SGR forms are all matched here and removed; which of the codes
+#: inside decides the colour is LEVELS' business, below.
+ANSI = re.compile(r"\033\[[0-9;]*m")
+#: the numbers inside one of those, so a sequence like 92;1 is read as 92 and 1
+ANSI_CODES = re.compile(r"[0-9]+")
 #: One palette, taken from the family the rest of these tools belong to
 #: (themes_outils/DESIGN_SYSTEM.md): the same sky-blue accent and the same dark
 #: ground, so that going from one of them to another feels like one place. The
@@ -66,6 +74,7 @@ OPTIONS = [
     ("velocity_term", "twoframe.velocity_term", "bool"),
     ("iters", "twoframe.iters", "int"),
     ("shrink", "correct.shrink", "bool"),
+    ("weight", "correct.weight", ("flux", "velocity")),
     # no correct.mask here either: one line set for the whole campaign
     # ("common"), decided in the code
     ("width_kms", "highpass.width_kms", "float"),
@@ -264,6 +273,19 @@ EN = {
     "opt_velocity_term": "fit a velocity per exposure",
     "opt_iters": "sweeps at most",
     "opt_shrink": "divide only what is significant",
+    "opt_weight": "amplitudes measured on",
+    "help_weight":
+        "The metric the correction's amplitudes are measured in. `flux`, the"
+        " nominal: every sample as the fit saw it. `velocity`: each sample"
+        " weighted by the star's own derivative there, (dT/dv)^2, because what"
+        " a contaminant does to a radial velocity is its overlap with that"
+        " derivative, and a contaminant flat where the star has structure moves"
+        " no line. It implies a refit of the amplitudes for every exposure, so"
+        " the correction is slower; it changes nothing else, not what is"
+        " divided out, not which samples are blanked, not the shrinkage."
+        " Measured on TOI-2120, where the correction gains a factor three, the"
+        " two are indistinguishable: 15.4 +- 1.2 against 15.0 +- 1.2 m/s. The"
+        " targets where the correction COSTS are the ones that will decide.",
     "opt_width_kms": "high pass (km/s)", "opt_dv": "grid step (km/s)",
     "opt_nightly_stack": "coadd each night", "opt_run": "run LBL (hours)",
     "opt_lbl_prepare": "write LBL's tree",
@@ -665,6 +687,21 @@ FR = {
     "opt_velocity_term": "ajuster une vitesse par pose",
     "opt_iters": "itérations au plus",
     "opt_shrink": "ne diviser que le significatif",
+    "opt_weight": "amplitudes mesurées sur",
+    "help_weight":
+        "La métrique dans laquelle les amplitudes de la correction sont"
+        " mesurées. `flux`, le nominal : chaque échantillon tel que"
+        " l'ajustement l'a vu. `velocity` : chaque échantillon pondéré par la"
+        " dérivée de l'étoile à cet endroit, (dT/dv)^2, parce que ce qu'un"
+        " contaminant fait à une vitesse radiale est son recouvrement avec"
+        " cette dérivée, et qu'un contaminant plat là où l'étoile a de la"
+        " structure ne déplace aucune raie. Cela implique de réajuster les"
+        " amplitudes de chaque pose, donc la correction est plus lente ; rien"
+        " d'autre ne change, ni ce qui est divisé, ni les échantillons"
+        " blanchis, ni le rétrécissement. Mesuré sur TOI-2120, où la correction"
+        " gagne un facteur trois, les deux sont indiscernables : 15,4 +- 1,2"
+        " contre 15,0 +- 1,2 m/s. Ce sont les cibles où la correction COÛTE qui"
+        " trancheront.",
     "opt_width_kms": "passe-haut (km/s)", "opt_dv": "pas de grille (km/s)",
     "opt_nightly_stack": "empiler chaque nuit", "opt_run": "lancer LBL (heures)",
     "opt_lbl_prepare": "écrire l'arbre du LBL",
@@ -1120,6 +1157,24 @@ def build_command(state):
         argv += ["--n-star", str(state["n_star"])]
     if state.get("n_earth") not in (None, ""):
         argv += ["--n-earth", str(state["n_earth"])]
+    # EVERY other setting this window can change, each under its own flag.
+    # Until 2026-09-15 only the two counts travelled: the high pass, the
+    # shrinkage, the sweeps, the grid step, the coadding and the velocity term
+    # were shown, changed, and then silently ignored by the run, which used the
+    # configuration's own values. A flag also puts what was asked in the run's
+    # own log, where a config edited afterwards would not be.
+    for key, flag in (("velocity_term", "--velocity-term"),
+                      ("iters", "--iters"), ("shrink", "--shrink"),
+                      ("weight", "--weight"), ("width_kms", "--high-pass"),
+                      ("dv", "--dv"), ("nightly_stack", "--nightly-stack")):
+        if key not in state:
+            continue
+        value = state[key]
+        if isinstance(value, bool):
+            value = "true" if value else "false"
+        value = str(value).strip()
+        if value:
+            argv += [flag, value]
     stages = [s for s in STAGES if state.get("stage_" + s)]
     if stages and len(stages) != len(STAGES):
         argv += ["--stages", ",".join(stages)]
@@ -3247,9 +3302,17 @@ class App:
     def _write(self, line, forced=None):
         tag = forced or "plain"
         if forced is None:
-            for code in ANSI.findall(line):
-                if code in LEVELS:
-                    tag = LEVELS[code][0]
+            for sequence in ANSI.findall(line):
+                for code in ANSI_CODES.findall(sequence):
+                    # 92 is 32's bright twin, 91 is 31's, and so on: a bright
+                    # colour is the same colour as far as this window cares
+                    code = str(int(code) - 60) if code in ("90", "91", "92",
+                                                           "93", "94", "95",
+                                                           "96", "97") else code
+                    if code in LEVELS:
+                        tag = LEVELS[code][0]
+                        break
+                if tag != "plain":
                     break
         body = ANSI.sub("", line)
         if body.startswith("\r"):

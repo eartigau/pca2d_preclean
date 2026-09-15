@@ -736,3 +736,51 @@ def test_the_window_runs_the_code_it_is_itself():
     assert os.path.isdir(os.path.join(home, "pca2d"))
     assert os.path.dirname(os.path.abspath(pca2d.__file__)) == \
         os.path.join(home, "pca2d"), "the package the window imported"
+
+
+def test_every_setting_the_window_shows_reaches_the_run():
+    """The trap this closes: only --n-star and --n-earth used to travel, so the
+    high pass, the shrinkage, the sweeps, the grid step, the coadding and the
+    velocity term were shown, changed, and then ignored by the run, which used
+    the configuration's own values and said nothing."""
+    from pca2d.cli import SETTING_FLAGS
+    from pca2d.gui import OPTIONS, build_command
+
+    state = {"objects": ["X"], "n_star": 0, "n_earth": 3, "weight": "velocity",
+             "width_kms": 100.0, "shrink": True, "iters": 16, "dv": 0.5,
+             "nightly_stack": "auto", "velocity_term": False, "mask": "common"}
+    argv = build_command(state)
+    carried = {flag for flag in argv if flag.startswith("--")}
+
+    flags = {path: flag for flag, path, _k, _h in SETTING_FLAGS}
+    for key, path, _kind in OPTIONS:
+        if path in ("twoframe.n_star", "twoframe.n_earth"):
+            continue                        # those two have always travelled
+        assert path in flags, \
+            "%s is on the settings page with no flag to travel under" % path
+        assert flags[path] in carried, "%s never reaches the run" % key
+
+    assert argv[argv.index("--weight") + 1] == "velocity"
+    assert argv[argv.index("--shrink") + 1] == "true", "a bool as the CLI wants"
+    assert argv[argv.index("--velocity-term") + 1] == "false"
+
+
+def test_a_setting_a_run_was_asked_for_lands_in_its_configuration():
+    """And the other half: the flag has to change what the run resolves."""
+    import types
+
+    from pca2d.cli import apply_setting_flags, parse_args
+
+    args = parse_args(["--object", "X", "--weight", "velocity",
+                       "--high-pass", "75", "--shrink", "false", "--dv", "0.25"])
+    config = {"correct": {"weight": "flux", "shrink": True},
+              "highpass": {"width_kms": 100.0}, "domain": {"dv": 0.5}}
+    apply_setting_flags(config, args)
+    assert config["correct"] == {"weight": "velocity", "shrink": False}
+    assert config["highpass"]["width_kms"] == 75.0
+    assert config["domain"]["dv"] == 0.25
+
+    untouched = {"correct": {"weight": "flux"}}
+    apply_setting_flags(untouched, parse_args(["--object", "X"]))
+    assert untouched == {"correct": {"weight": "flux"}}, \
+        "a flag nobody passed changes nothing"
