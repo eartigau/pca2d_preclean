@@ -272,11 +272,11 @@ def test_what_is_not_known_sorts_last_either_way():
                 "GL699_SPIROU", (column, reverse)
 
 
-def test_the_command_is_found_beside_the_interpreter_that_runs_the_window():
-    """The window is started by an entry point in an environment's bin, and its
-    sibling is the command, whatever PATH the window inherited. Started from
-    another shell it reported "No such file or directory: 'pca2d-preclean'"
-    although the command was installed all along."""
+def test_the_command_that_is_spawned_is_this_package():
+    """The window used to look for the pca2d-preclean script beside its own
+    interpreter, which is right until two of them are installed. It runs its
+    own module now, through its own python: the two are one version, and the
+    window never depends on a PATH it inherited from a shell."""
     import os
     import sys
 
@@ -284,11 +284,11 @@ def test_the_command_is_found_beside_the_interpreter_that_runs_the_window():
 
     argv = preclean_argv()
     assert argv, "this environment has the package, so something must work"
-    if len(argv) == 1:
+    if len(argv) == 1:                       # the fallback, without the package
         assert os.path.isabs(argv[0]) and os.access(argv[0], os.X_OK)
     else:
-        assert argv[:2] == [sys.executable, "-m"], argv
-        assert argv[2] == "pca2d.cli"
+        assert argv[0] == sys.executable
+        assert argv[-2:] == ["-m", "pca2d.cli"], argv
 
 
 def test_the_shown_command_stays_the_one_to_paste_in_a_terminal():
@@ -726,7 +726,11 @@ def test_the_window_runs_the_code_it_is_itself():
 
     argv = preclean_argv()
     assert argv[0] == sys.executable, "the python running the window"
-    assert argv[1:] == ["-m", "pca2d.cli"], "and its own module, not a script"
+    assert argv[-2:] == ["-m", "pca2d.cli"], "its own module, not a script"
+    if sys.version_info >= (3, 11):
+        assert "-P" in argv, \
+            "without it, `-m` puts the working directory ahead of PYTHONPATH" \
+            " and a second clone sitting there is what runs"
 
     home = package_home()
     assert os.path.isdir(os.path.join(home, "pca2d"))

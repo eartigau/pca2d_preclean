@@ -191,6 +191,11 @@ EN = {
         " TARGET of t.fits spectra; nothing is ever written in it. The output"
         " root is proposed beside it once it is chosen, and the config is the"
         " one that came with this installation.",
+    "log_other_clone":
+        "the configuration you point at lives in ANOTHER copy of this package"
+        " (%s), while the code running is %s. The run uses the code running;"
+        " the settings shown are that other copy's. Point the config at the"
+        " same place unless you mean to mix them.",
     "log_no_config":
         "no config.yaml came with this installation: Browse to one, or run the"
         " window from a checkout.",
@@ -572,6 +577,11 @@ FR = {
         " contient UN DOSSIER PAR CIBLE de spectres t.fits ; rien n'y est jamais"
         " écrit. Le dossier de sortie est proposé à côté une fois celui-ci"
         " choisi, et la configuration est celle livrée avec cette installation.",
+    "log_other_clone":
+        "la configuration que vous visez est dans UNE AUTRE copie de ce paquet"
+        " (%s), alors que le code qui tourne est %s. Le passage utilise le code"
+        " qui tourne ; les réglages affichés sont ceux de l'autre copie. Visez"
+        " le même endroit, sauf si vous voulez vraiment les mélanger.",
     "log_no_config":
         "aucun config.yaml n'est livré avec cette installation : choisissez-en"
         " un, ou lancez la fenêtre depuis un dépôt cloné.",
@@ -1026,7 +1036,14 @@ def preclean_argv():
             return [beside]
         found = shutil.which("pca2d-preclean")
         return [found] if found else None
-    return [sys.executable, "-m", "pca2d.cli"]
+    # -P, and it is the whole point: `python -m` puts the WORKING DIRECTORY
+    # first on the import path, ahead of PYTHONPATH, so pinning this package
+    # through the environment is not enough on its own. The run starts in the
+    # config file's folder, and a folder holding another pca2d/ then wins.
+    # Measured from a second clone: `-m` alone ran that clone, `-P -m` ran this
+    # one. Python 3.11 and later; before that, the environment is all there is.
+    safe = ["-P"] if sys.version_info >= (3, 11) else []
+    return [sys.executable] + safe + ["-m", "pca2d.cli"]
 
 
 def instruments_of(rows, names):
@@ -1513,6 +1530,8 @@ class App:
             # a copy installed without one: say it here rather than let a run
             # fail on a config.yaml resolved against the working directory
             self._say("log_no_config", level="warn")
+        else:
+            self._warn_other_clone(self.vars["config"].get())
         self.refresh_objects()
         self._drain_id = self.root.after(80, self._drain)
         self._seen = {}
@@ -1829,6 +1848,21 @@ class App:
         for key in ("min_rjd", "max_rjd"):
             self.vars[key] = tk.StringVar(value=self.saved.get(key, ""))
             self.vars[key].trace_add("write", lambda *_: self._sync())
+
+    def _warn_other_clone(self, config_path):
+        """Say it when the configuration lives in ANOTHER copy of this package.
+
+        A configuration is read from where it is, and the code is the code this
+        window is running: those are two different things, and when the config
+        sits in a second clone they are two different VERSIONS. That is how a
+        window came to write a flag the run refused (2026-09-15), and the
+        settings read on this page were yesterday's while the run was today's.
+        """
+        folder = os.path.dirname(os.path.abspath(str(config_path)))
+        theirs = os.path.join(folder, "pca2d", "__init__.py")
+        mine = os.path.join(package_home(), "pca2d", "__init__.py")
+        if os.path.exists(theirs) and os.path.abspath(theirs) != mine:
+            self._say("log_other_clone", folder, package_home(), level="warn")
 
     def _config_fits_dir(self):
         """What the configuration says the products disk is, if it says one."""
