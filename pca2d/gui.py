@@ -1601,7 +1601,7 @@ class App:
         # that start and end it, and everything it says
         self._build_name(pages["tab_run"])
         self._build_command(pages["tab_run"])
-        self._build_buttons(pages["tab_run"], "run", quit_too=True)
+        self._build_buttons(pages["tab_run"], "run")
         self._build_log(pages["tab_run"])
         self.stop_button.configure(state="disabled")
         self._propose_out()      # on opening, not only when the data root moves
@@ -1874,9 +1874,18 @@ class App:
             self.logo_label.pack(side="left", padx=(0, 8))
             self._tip(self.logo_label, "help_apero")
         ttk.Label(frame, text="pca2d", style="Head.TLabel").pack(side="left")
+        # Quit in the banner, not on one page: it ends the window, which is not
+        # a property of whichever page happens to be open, and looking for it
+        # meant going back to the run page to leave from anywhere else. Packed
+        # first, so it sits at the far corner with the language button beside it.
+        quit_button = ttk.Button(frame, text=self.t("quit"), width=10,
+                                 command=self.quit_window)
+        quit_button.pack(side="right")
+        self._register(quit_button, "quit")
+        self._tip(quit_button, "help_quit_button")
         button = ttk.Button(frame, text=self.t("lang"),
                             command=self.switch_language, width=10)
-        button.pack(side="right")
+        button.pack(side="right", padx=(0, 6))
         self._register(button, "lang")
         self._tip(button, "help_lang")
         self._register(ttk.Label(frame, style="Hint.TLabel", wraplength=780,
@@ -2604,8 +2613,8 @@ class App:
             if attr:
                 setattr(self, attr, button)
         if quit_too:
-            # at the other end of the bar, away from Run: the button that ends
-            # everything should not be a neighbour of the one that starts it
+            # kept for a bar that wants its own: the window's own Quit lives in
+            # the banner now, where every page can reach it
             quit_button = ttk.Button(bar, text=self.t("quit"),
                                      command=self.quit_window)
             quit_button.pack(side="right")

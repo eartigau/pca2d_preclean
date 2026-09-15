@@ -187,7 +187,9 @@ the others, they are simply LBL's rather than the fit's.
   `yaml.safe_dump` of the parsed document would have deleted all of them. It
   asks first, and shows exactly which keys it is about to change.
 - **Save log** writes what the window has shown.
-- **Quit**, at the other end of the bar from Run, closes the window. The
+- **Quit**, in the banner beside the language button, where every page can
+  reach it: it ends the window, which is not a property of whichever page
+  happens to be open. It closes the window. The
   settings are written at every change, so nothing here is lost by leaving; a
   run is a subprocess of the window and is stopped by leaving, so it asks first.
   The window's own close box asks the same question.
