@@ -32,6 +32,7 @@ import copy
 import glob
 import os
 import re
+import shlex
 import sys
 import time
 
@@ -747,6 +748,23 @@ def shrink_args(cfg):
     return out
 
 
+def _velocity_pages(plan):
+    """The run's own velocities, on the end of the run's own report.
+
+    A correction is worth what it does to the velocities, so they go in the
+    document rather than waiting for somebody to run lblscan by hand. Never
+    fatal: LBL has already finished by the time this runs, and a report that
+    could not be appended to is not a reason to lose the velocities.
+    """
+    from .rvpages import velocity_pages
+    try:
+        velocity_pages(plan)
+    except Exception as exc:                                  # noqa: BLE001
+        log("the RV pages could not be added to the report (%s: %s). The"
+            " velocities themselves are in lbl/lblrdb."
+            % (type(exc).__name__, exc), "warn")
+
+
 def run_lbl(plan):
     from . import lbl as splbl
 
@@ -791,6 +809,7 @@ def run_lbl(plan):
                         " its spectra" % member["object"], "error")
                     continue
                 splbl.run(prepared["script"])
+        _velocity_pages(plan)
         return
     prepared = splbl.prepare(plan)
     if block.get("run", False):
@@ -800,6 +819,7 @@ def run_lbl(plan):
                 " template to find that out again", "error")
             raise SystemExit(2)
         splbl.run(prepared["script"])
+        _velocity_pages(plan)
         return
     log("LBL is not run by this stage unless asked. Both objects are staged"
         " and everything it needs is written; to run it:", "info")
@@ -874,6 +894,12 @@ def main(argv=None):
     # and the code that ran it, so the result can be traced and made again
     from .provenance import code_version, stamp as code_stamp
     plan["config"]["provenance"] = dict(code_version())
+    # and what it was ASKED, word for word. The resolved config says what every
+    # key ended up being, which is not the same thing: it cannot tell a value
+    # typed in the window from a value that was in the file all along, and a
+    # file edited after the run says whatever it says now.
+    plan["config"]["provenance"]["command"] = " ".join(
+        shlex.quote(a) for a in sys.argv)
     log("code        pca2d %s" % code_stamp(plan["config"]["provenance"]), "value")
     import yaml
     with open(plan["written_config"], "w") as fh:

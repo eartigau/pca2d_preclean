@@ -169,7 +169,34 @@ def summary(config, args, fit):
             rows.append(("rejected by the MAD cut",
                          "%d" % int(np.asarray(fit["rejected"]).sum())))
     width = max(len(k) for k, _ in rows)
-    return "\n".join("%-*s   %s" % (width, k, v) for k, v in rows)
+    head = "\n".join("%-*s   %s" % (width, k, v) for k, v in rows)
+
+    # Every setting the window can change, all of them, whether or not it was
+    # touched. A report that names only the settings that differ from some
+    # default makes the reader guess what the default was; a report that names
+    # only the ones above made a (dF/dv)^2 run indistinguishable from a flux
+    # run on its own front page.
+    from ..config import WINDOW_SETTINGS, setting_value
+    keys = [path for path, _what in WINDOW_SETTINGS]
+    kw = max(len(k) for k in keys)
+    said = []
+    for path, what in WINDOW_SETTINGS:
+        value = setting_value(config, path)
+        if isinstance(value, (list, tuple)):
+            value = ", ".join(str(v) for v in value)
+        said.append("  %-*s  %-9s   %s" % (kw, path, value, what))
+    block = ("\n\nEVERY SETTING THE WINDOW CAN SET, AND WHAT THIS RUN USED\n"
+             + "\n".join(said))
+
+    # and the command it was actually given, which the settings above cannot
+    # show: they are the outcome, not the request
+    command = (config.get("provenance") or {}).get("command")
+    if command:
+        block += "\n\nTHE COMMAND THIS RUN WAS GIVEN\n  " + command
+    else:
+        block += ("\n\nTHE COMMAND THIS RUN WAS GIVEN\n  not recorded: the run"
+                  " predates provenance.command (2026-09-15)")
+    return head + block
 
 
 def periodogram_args(py, script, fit_path, out, config):

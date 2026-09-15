@@ -804,3 +804,31 @@ def test_a_two_valued_setting_is_two_buttons_holding_its_own_words():
             assert len(one) >= 3, "%s: a choice needs at least two buttons" % key
             for pair in one[1:]:
                 assert len(pair) == 2, "%s: (value, what the button says)" % key
+
+
+def test_every_window_setting_is_on_the_report_page():
+    """config.WINDOW_SETTINGS is what the report's summary page prints, and the
+    window is what sets them. They have to be the same list in both directions:
+    a setting added to the window and not here would change a run and never
+    appear on the run's own front page, which is how a (dF/dv)^2 run and a flux
+    run read identically on 2026-09-15."""
+    from pca2d.config import WINDOW_SETTINGS
+    from pca2d.gui import ALL_OPTIONS
+
+    window = [path for _name, path, _kind in ALL_OPTIONS]
+    listed = [path for path, _what in WINDOW_SETTINGS]
+    assert sorted(window) == sorted(listed), (
+        "only in the window: %s; only on the page: %s"
+        % (sorted(set(window) - set(listed)), sorted(set(listed) - set(window))))
+    assert window == listed, "same order, so the page reads like the window"
+    assert all(what for _path, what in WINDOW_SETTINGS), "one line each"
+
+
+def test_a_setting_the_config_does_not_carry_is_said_out_loud():
+    from pca2d.config import setting_value
+
+    config = {"correct": {"weight": "velocity"}, "twoframe": {"n_star": 0}}
+    assert setting_value(config, "correct.weight") == "velocity"
+    assert setting_value(config, "twoframe.n_star") == 0
+    assert setting_value(config, "lbl.run") == "(not set)"
+    assert setting_value(config, "correct.weight.deeper") == "(not set)"

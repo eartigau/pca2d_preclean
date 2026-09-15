@@ -732,6 +732,57 @@ def detect_instrument(directory: str, pattern: str = "*t.fits") -> str:
 VARIANT_META = ("reuse_fit", "note")
 
 
+#: Every configuration key the window can set, in the order the window shows
+#: it, and what each one means in one line.
+#:
+#: It lives here rather than in gui.py because a report has to print it and a
+#: report must not import tkinter. The report's summary page lists all of them
+#: with the value the run actually resolved: until 2026-09-15 that page named
+#: the components and the high pass and nothing else, so a run made with
+#: correct.weight: velocity, which refits every amplitude in the correction,
+#: read on the page exactly like a run made without it. tests/test_gui.py ties
+#: this tuple to gui.ALL_OPTIONS in both directions, so a setting cannot be
+#: added to the window without appearing on the page.
+WINDOW_SETTINGS = (
+    ("twoframe.n_star", "star components in the basis"),
+    ("twoframe.n_earth", "observer components in the basis"),
+    ("twoframe.velocity_term", "one velocity per exposure fitted beside them"),
+    ("twoframe.iters", "sweeps at most"),
+    ("correct.shrink", "divide each observer component out only where"
+                       " significant"),
+    ("correct.weight", "metric the correction's amplitudes are measured in"),
+    ("highpass.width_kms", "the Savitzky-Golay high pass, in km/s"),
+    ("domain.dv", "the grid step, in km/s"),
+    ("input.nightly_stack", "coadd each night: true, false, or auto"),
+    ("lbl.run", "run LBL after the correction"),
+    ("lbl.prepare", "write LBL's tree and its config"),
+    ("lbl.before", "measure the uncorrected spectra too"),
+    ("lbl.after", "measure the corrected spectra"),
+    ("lbl.star_template", "give LBL the fit's own star spectrum as template"),
+    ("lbl.strpca", "keep the STRPCA columns"),
+    ("lbl.directory", "LBL's data tree"),
+    ("lbl.suffix", "what the corrected object is called in LBL"),
+    ("lbl.teff", "effective temperature handed to LBL"),
+    ("lbl.template", "an existing template to reuse instead"),
+    ("lbl.steps", "which LBL steps run"),
+    ("lbl.link", "symlink or copy the spectra into LBL's tree"),
+)
+
+
+def setting_value(config, path):
+    """The value `path` ("correct.weight") has in a resolved config.
+
+    Returns the string "(not set)" for a key the config does not carry, which
+    is a fact about the run worth printing rather than a hole to hide.
+    """
+    node = config
+    for part in path.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return "(not set)"
+        node = node[part]
+    return node
+
+
 def load_config(path: str | None, object_name: str | None = None,
                 data_dir: str | None = None, out_dir: str | None = None,
                 instrument: str | None = None, variant: dict | None = None) -> dict:
