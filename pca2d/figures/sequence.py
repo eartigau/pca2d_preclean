@@ -96,7 +96,7 @@ def _filled(block, ok):
     return np.where(ok, block, np.broadcast_to(fill, block.shape))
 
 
-def panel(ax, image, x, scale, title, cmap=None, unit="rows"):
+def panel(ax, image, x, scale, title, cmap=None, unit="rows", ylabel=True):
     im = ax.imshow(image, aspect="auto", cmap=cmap or nan_cmap("RdBu_r"),
                    vmin=-scale, vmax=scale, origin="upper",
                    extent=[x[0], x[-1], image.shape[0] - 0.5, -0.5])
@@ -104,7 +104,11 @@ def panel(ax, image, x, scale, title, cmap=None, unit="rows"):
     # WHICH rows: a cube built with nightly stacking has one row per night, and
     # a reader counting 259 of them for Proxima's 782 spectra had nothing on the
     # page to tell them why (2026-09-13)
-    ax.set_ylabel("%s, ordered by BERV" % unit, fontsize=8)
+    # On ONE panel, not on every one: the label is longer than a panel is tall,
+    # so five of them written down the same axis overlap each other and the
+    # panels between them. The caller labels the middle image.
+    if ylabel:
+        ax.set_ylabel("%s, ordered by BERV" % unit, fontsize=8)
     ax.tick_params(labelsize=7)
     return im
 
@@ -283,8 +287,14 @@ def pages_for(objects):
             + [(None, " + ".join(names) + "   (all)")])
 
 
-def draw_window(ctx, centre, width, n_overplot=5, only=None, label=None):
+def draw_window(ctx, centre, width, n_overplot=5, only=None, label=None,
+                panels=None):
     """One page: the five panels, then a few of the rows in flux.
+
+    `panels` keeps the first few of them and drops the rest, with the flux row
+    underneath either way: the first three ARE the method (what arrives, what
+    the model says is there, what a corrected file holds), and the two after
+    them are diagnostics that a page explaining the idea does not need.
 
     Returns the figure, or None when the window has nothing to draw. The report
     puts it in its PDF; the site saves the same figure as SVG, so the two can
@@ -347,6 +357,8 @@ def draw_window(ctx, centre, width, n_overplot=5, only=None, label=None):
                    if pooled.size else scale)
 
     titles = arrays["titles"]
+    if panels:
+        titles = titles[:int(panels)]
     n_img = len(titles)
     fig, axes = plt.subplots(n_img + 1, 1,
                              figsize=(9.4, 1.85 * n_img + 3.0),
@@ -354,14 +366,16 @@ def draw_window(ctx, centre, width, n_overplot=5, only=None, label=None):
                              gridspec_kw={"height_ratios":
                                           [1.0] * n_img + [1.7]})
     im = im_resid = None
+    middle = n_img // 2
     for r, (name, title) in enumerate(titles):
         extra = ("" if name in ("given", "model")
                  else "   scatter %.4f" % np.nanstd(block[name]))
         if name in RESIDUAL_PANELS:
             im_resid = panel(axes[r], block[name], x, resid_scale, title + extra,
-                             unit=unit)
+                             unit=unit, ylabel=r == middle)
         else:
-            im = panel(axes[r], block[name], x, scale, title + extra, unit=unit)
+            im = panel(axes[r], block[name], x, scale, title + extra, unit=unit,
+                       ylabel=r == middle)
 
     # the same rows in flux, before and after, from the raw flux the
     # cube build kept around this window (see cache.py)
