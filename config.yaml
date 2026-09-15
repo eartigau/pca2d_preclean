@@ -535,6 +535,23 @@ objects:
       object_header: Gl699
     target:
       planets: []
+  GL406:
+    input:
+      # Wolf 359 (CN Leo), dM6 at 2.41 pc (SIMBAD, parallax 415.18 mas).
+      # APERO's folder is DRSOBJN = GL406 and its headers say OBJECT = GJ406.
+      object_header: GJ406
+    target:
+      # nothing confirmed: the NASA Exoplanet Archive's ps table returns no row
+      # for Wolf 359 / GJ 406 / CN Leo (queried 2026-09-15). The two candidates
+      # of Tuomi et al. 2019 were never confirmed and are not marked here.
+      planets: []
+    lbl:
+      # these headers carry no OBJTEMP or PP_TEFF, unlike the TOI targets, so
+      # LBL's mask step would stop with nothing to stand on. 2818 K is Mann et
+      # al. 2015 (ApJ 804, 64), the M-dwarf calibration; the 15 references
+      # SIMBAD holds for this star have a median of 2887 K and a spread of
+      # 208 K (1.4826 MAD), which is far finer than the PHOENIX grid needs
+      teff: 2818
   # GJ1 has no known planet, which is why it is the quiet reference here.
 
 # TOI2120 needs nothing here: APERO wrote OBJTEMP = 3179 K in its headers, and

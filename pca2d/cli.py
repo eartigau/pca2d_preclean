@@ -542,6 +542,77 @@ def run_joint_cube(plan, build_main):
                  plan["cube"], plan["written_config"])
 
 
+#: the files a cube folder has to hold for anything to read it. `snippets` is
+#: not one: it is a convenience for the figures and they redraw without it
+CUBE_FILES = ("data.npy", "grid.npy", "sigma.npy", "meta.fits")
+#: the stages that open a cube. lbl works from the corrected files instead
+NEEDS_CUBE = ("fit", "figures", "correct")
+
+
+def cubes_of(plan):
+    """[(what it is for, path)] of every cube a run reads, in that order.
+
+    A joint run builds one cube per member and then the cube their rows share,
+    and the joint one is the only thing the fit opens; the members' are read to
+    make it. All of them are checked, because a member's cube missing is the
+    same kind of surprise one stage later.
+    """
+    cubes = [("%s, its own" % m["object"], m["cube"])
+             for m in plan.get("members") or []]
+    cubes.append((str(plan["config"]["input"].get("object") or "the run"),
+                  plan["cube"]))
+    return cubes
+
+
+def missing_cubes(plan):
+    """[(what it is for, path, why)] of the cubes that are not usable.
+
+    Not just "is the folder there": a cache emptied while a run was not looking
+    can leave the folder and take data.npy with it, and the error for that is a
+    traceback out of np.load three stages later.
+    """
+    out = []
+    for what, path in cubes_of(plan):
+        if not os.path.isdir(path):
+            out.append((what, path, "not there"))
+            continue
+        gone = [f for f in CUBE_FILES
+                if not os.path.exists(os.path.join(path, f))]
+        if gone:
+            out.append((what, path, "incomplete, no " + ", ".join(gone)))
+    return out
+
+
+def check_cubes(plan, wanted):
+    """Before anything runs: every cube a stage will open, checked.
+
+    Returns the stage list to run. A cube that is not there is put back on the
+    list of things to build, loudly: a user deleted their cache on 2026-09-15,
+    started a run with the cube stage unticked because it had always been
+    cached before, and got a FileNotFoundError out of np.load after the fit
+    stage had already announced itself. There is exactly one thing to do about
+    a missing cube, and it is to build it; the only choice is whether that is
+    said out loud or found out from a traceback.
+    """
+    if not any(stage in wanted for stage in NEEDS_CUBE):
+        return wanted
+    gone = missing_cubes(plan)
+    if not gone:
+        return wanted
+    for what, path, why in gone:
+        log("the cube for %s is %s: %s" % (what, why, path), "warn")
+    if "cube" in wanted:
+        log("the cube stage is in this run, so %d will be built before"
+            " anything reads them" % len(gone), "info")
+        return wanted
+    log("the cube stage was not asked for, and %s would open %s. Building"
+        " %s first: it reads every spectrum once and takes a few minutes"
+        % (", ".join(s for s in NEEDS_CUBE if s in wanted),
+           "them" if len(gone) > 1 else "it",
+           "them" if len(gone) > 1 else "it"), "warn")
+    return ["cube"] + list(wanted)
+
+
 def warn_if_run_exists(plan):
     """Say so when this run's folder already holds a fit.
 
@@ -859,10 +930,9 @@ def main(argv=None):
                plan["outdir"]), "value")
     if args.clean_cache:
         from . import cache as _cache
-        removed, _ = _cache.clean(plan["config"], dry_run=args.dry_run)
-        if removed and not args.dry_run and "cube" not in wanted:
-            log("the cube stage is not in --stages, so the stages after it have"
-                " no cube to read until it runs again", "warn")
+        _cache.clean(plan["config"], dry_run=args.dry_run)
+        # what that leaves the run without is said by check_cubes below, which
+        # says it for a cache emptied by anything and not only by this flag
     if not plan["files"]:
         log("no spectra matched %s in %s"
             % (plan["config"]["input"].get("pattern"), plan["directory"]),
@@ -877,6 +947,9 @@ def main(argv=None):
         if skipped:
             log("the fit is %s's, so %s not run for this variant"
                 % (plan["fitdir"], ", ".join(skipped)), "info")
+    # every cube a remaining stage will open, checked here and not found
+    # missing by np.load three stages in
+    wanted = check_cubes(plan, wanted)
     if args.dry_run:
         log("dry run: stopping here, nothing written", "warn")
         return None
