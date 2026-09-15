@@ -1500,7 +1500,11 @@ class App:
                         borderwidth=0)
         style.map("TNotebook.Tab",
                   background=[("selected", SURFACE), ("active", ACCENT_SOFT)],
-                  foreground=[("selected", ACCENT)])
+                  foreground=[("selected", ACCENT)],
+                  # the theme shrinks the selected tab, 16 8 down to 6 4 6 2,
+                  # and a row of tabs that changes size as it is clicked reads
+                  # as the window flinching. One size, whatever is selected.
+                  padding=[("selected", (16, 8)), ("active", (16, 8))])
         self._round(style)
         style.configure("Treeview", background=SURFACE, fieldbackground=SURFACE,
                         foreground=INK, rowheight=26, bordercolor=LINE,
@@ -1648,6 +1652,15 @@ class App:
         for name in ("TButton", "Run.TButton", "TEntry", "TCombobox"):
             style.configure(name, background=BG, lightcolor=BG, darkcolor=BG,
                             bordercolor=BG)
+        # the tabs have corners too, and the theme still painted the selected
+        # one white behind its picture
+        style.configure("TNotebook.Tab", background=BG, lightcolor=BG,
+                        darkcolor=BG, bordercolor=BG)
+        style.map("TNotebook.Tab",
+                  background=[("selected", BG), ("active", BG)],
+                  lightcolor=[("selected", BG), ("active", BG)],
+                  foreground=[("selected", ACCENT), ("active", ACCENT)],
+                  padding=[("selected", (16, 8)), ("active", (16, 8))])
         style.map("TButton", background=[("active", BG), ("pressed", BG),
                                          ("disabled", BG)])
         style.map("Run.TButton", background=[("active", BG), ("pressed", BG),
