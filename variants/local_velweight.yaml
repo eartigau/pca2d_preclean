@@ -1,0 +1,26 @@
+# local, plus the amplitudes measured where velocity lives: every sample
+# weighted by the star's own derivative there, (dT/dv)^2, rather than by the
+# flux weights alone. Correction only: it reuses the fit of `local`, so the
+# basis is the same and only the amplitude each exposure is corrected with
+# changes. What is divided out, which samples are blanked and the shrinkage are
+# untouched.
+#
+#     pca2d-preclean --object TOI2120 --data-dir local_data --n-star 0 --variant local_velweight
+reuse_fit: local
+
+output:
+  fits_directory: null
+
+lbl:
+  # a tree of its own: the one in lbl/ is folders of links onto the
+  # external disk, and LBL writes in every one of them
+  directory: lbl_local
+
+correct:
+  weight: velocity
+  velocity_floor: 0.05
+
+note: |
+  The velocity arm of option (a), 2026-09-15. Its LBL object is
+  TOI2120_PCA2D_0-3_local_velweight, beside the flux arm's
+  TOI2120_PCA2D_0-3_local and the delivered spectra.

@@ -4,7 +4,10 @@ cache/
 outputs/
 # the output root the window proposes beside the data root
 corrected/
+# spectra pulled next to the code when the shared disks are not mounted
+local_data/
 lbl/
+lbl_local/
 *.npz
 *.npy
 *.log

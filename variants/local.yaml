@@ -1,0 +1,19 @@
+# The nominal, kept entirely on this machine: no products on the external disk.
+#
+# config.yaml sends every run's products to output.fits_directory, a disk that
+# is not always mounted. This is the same run with that turned off, for working
+# from a local copy of a campaign (local_data/, pulled from rali).
+#
+#     pca2d-preclean --object TOI2120 --data-dir local_data --n-star 0 --variant local
+output:
+  fits_directory: null
+
+lbl:
+  # a tree of its own: the one in lbl/ is folders of links onto the
+  # external disk, and LBL writes in every one of them
+  directory: lbl_local
+
+note: |
+  Not a scientific variant: the nominal, on one machine. Pair it with
+  local_velweight, which reuses this fit and measures the amplitudes in the
+  velocity metric.

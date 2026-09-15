@@ -472,6 +472,18 @@ objects:
   # Barnard's star, whose two campaigns cannot share a folder: a run is one
   # instrument, and one LBL object name per data set. Both pipelines write
   # OBJECT = Gl699, which is what the files are matched on.
+  TRAPPIST1_SPIROU:
+    input:
+      # the folder says which spectrograph, the headers say the star: APERO
+      # writes OBJECT = Trappist-1 (DRSOBJN TRAPPIST1), and TRAPPIST-1 is
+      # observed by NIRPS too, so the two campaigns cannot share one folder name
+      object_header: Trappist-1
+    target:
+      # the seven planets, in days: the NASA Exoplanet Archive's default
+      # parameter set, checked against its TAP service on 2026-09-15, which is
+      # Agol et al. 2021 (PSJ 2, 1) for all seven
+      planets: [1.510826, 2.421937, 4.049219, 6.101013, 9.207540,
+                12.352446, 18.772866]
   GL699_SPIROU:
     input:
       object_header: Gl699
