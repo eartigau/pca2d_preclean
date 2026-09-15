@@ -54,44 +54,6 @@
   <main class="layout">
 
     <section class="card span-3">
-      <h2>What it buys</h2>
-      <p>
-        TOI-2120, 316 SPIRou exposures over 452 days, corrected with one star
-        and three observer components, then measured by LBL on the same
-        exposures before and after:
-      </p>
-      <div class="numbers">
-        <table>
-          <thead>
-            <tr><th>spectra</th><th>template</th><th>rms</th><th>robust sigma</th>
-                <th>nightly rms</th><th>median error</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>as delivered</td><td>LBL's own</td><td>47.7 m/s</td><td>35.0 m/s</td>
-                <td>46.7 m/s</td><td>7.29 m/s</td></tr>
-            <tr><td>corrected, 1-3v</td><td>LBL's own</td><td>27.3 m/s</td><td>20.6 m/s</td>
-                <td>25.5 m/s</td><td>7.00 m/s</td></tr>
-            <tr><td>corrected, 1-3v</td><td>the fit's star</td><td>26.3 m/s</td><td>17.8 m/s</td>
-                <td>24.6 m/s</td><td>8.35 m/s</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <figure class="wide">
-        <img src="figures/lbl_velocities.svg" alt="LBL velocities of the same exposures, delivered and corrected" />
-        <figcaption>
-          One panel per LBL object, on the exposures they all have, each about
-          its median. The robust sigma is 1.4826 times the MAD; the nightly rms
-          is that of the weighted nightly means, over 81 nights. The median
-          error barely moves: what the correction removes is not photon noise
-          but structure that LBL used to read as velocity. Against the fit's
-          own star template the same spectra scatter a little less and their
-          formal errors are 19% larger, line by line on the same lines; why is
-          not pinned down yet.
-        </figcaption>
-      </figure>
-    </section>
-
-    <section class="card span-3">
       <h2>The idea, in three panels</h2>
       <p>
         This is the whole method, seen at once. A campaign is drawn as a river:
@@ -175,6 +137,28 @@
         its variance, and a photon model computed from what is left reports the
         noisiest part of the detector as the quietest.
       </p>
+    </section>
+
+    <section class="card span-3">
+      <h2>What a corrected file holds</h2>
+      <p>
+        Panel 3, sample for sample. A corrected file is the delivered flux
+        times <code>exp(&minus;(Q b_n + m_p))</code> on its own pixels, and
+        NaN wherever the fit gave a sample no weight, so LBL is never handed
+        data the model never saw. The star block and the velocity term stay
+        in: they are what LBL is about to measure. Everything else in the
+        t.fits, wavelength solution and blaze included, is copied through.
+      </p>
+      <figure class="wide">
+        <img src="figures/corrected_file_1267nm.svg" alt="Panel 3 of the report, the corrected files, and the files written before the parity offset was put in the correction" />
+        <figcaption>
+          1266 to 1268&nbsp;nm. Top, panel 3 of the report; middle, the
+          corrected files read back through the same high pass, 0.0127 rms
+          from it, the round trip through the file's own pixels; bottom, the
+          files as written until 2026-09-10, when the parity offset was left in
+          them: 0.0275 rms, and the telluric residuals are plain to see.
+        </figcaption>
+      </figure>
     </section>
 
     <section class="card span-3" id="install">
@@ -477,28 +461,6 @@ pca2d-gui                            # the same, in a window</code></pre>
     </section>
 
     <section class="card span-3">
-      <h2>What a corrected file holds</h2>
-      <p>
-        Panel 3, sample for sample. A corrected file is the delivered flux
-        times <code>exp(&minus;(Q b_n + m_p))</code> on its own pixels, and
-        NaN wherever the fit gave a sample no weight, so LBL is never handed
-        data the model never saw. The star block and the velocity term stay
-        in: they are what LBL is about to measure. Everything else in the
-        t.fits, wavelength solution and blaze included, is copied through.
-      </p>
-      <figure class="wide">
-        <img src="figures/corrected_file_1267nm.svg" alt="Panel 3 of the report, the corrected files, and the files written before the parity offset was put in the correction" />
-        <figcaption>
-          1266 to 1268&nbsp;nm. Top, panel 3 of the report; middle, the
-          corrected files read back through the same high pass, 0.0127 rms
-          from it, the round trip through the file's own pixels; bottom, the
-          files as written until 2026-09-10, when the parity offset was left in
-          them: 0.0275 rms, and the telluric residuals are plain to see.
-        </figcaption>
-      </figure>
-    </section>
-
-    <section class="card span-3">
       <h2>LBL, built in</h2>
       <p>
         The corrected spectra exist to be measured, and the only honest way to
@@ -676,6 +638,45 @@ pca2d-gui                            # the same, in a window</code></pre>
         <code>v</code> when the velocity term was fitted: <code>1-3v</code>
         above.
       </p>
+    </section>
+
+    <section class="card span-3">
+      <h2>What it is worth, measured</h2>
+      <p>
+        Everything above is a method; this is what it does to the numbers that
+        matter. TOI-2120, 316 SPIRou exposures over 452 days, corrected with one
+        star and three observer components, then measured by LBL on the same
+        exposures before and after:
+      </p>
+      <div class="numbers">
+        <table>
+          <thead>
+            <tr><th>spectra</th><th>template</th><th>rms</th><th>robust sigma</th>
+                <th>nightly rms</th><th>median error</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>as delivered</td><td>LBL's own</td><td>47.7 m/s</td><td>35.0 m/s</td>
+                <td>46.7 m/s</td><td>7.29 m/s</td></tr>
+            <tr><td>corrected, 1-3v</td><td>LBL's own</td><td>27.3 m/s</td><td>20.6 m/s</td>
+                <td>25.5 m/s</td><td>7.00 m/s</td></tr>
+            <tr><td>corrected, 1-3v</td><td>the fit's star</td><td>26.3 m/s</td><td>17.8 m/s</td>
+                <td>24.6 m/s</td><td>8.35 m/s</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <figure class="wide">
+        <img src="figures/lbl_velocities.svg" alt="LBL velocities of the same exposures, delivered and corrected" />
+        <figcaption>
+          One panel per LBL object, on the exposures they all have, each about
+          its median. The robust sigma is 1.4826 times the MAD; the nightly rms
+          is that of the weighted nightly means, over 81 nights. The median
+          error barely moves: what the correction removes is not photon noise
+          but structure that LBL used to read as velocity. Against the fit's
+          own star template the same spectra scatter a little less and their
+          formal errors are 19% larger, line by line on the same lines; why is
+          not pinned down yet.
+        </figcaption>
+      </figure>
     </section>
 
     <section class="card span-3" id="trouble">
