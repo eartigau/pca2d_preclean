@@ -59,15 +59,39 @@ def test_the_pages_of_a_partial_matrix_are_drawn():
 
 
 def test_the_compilation_draws_every_variant_against_the_original():
-    """One overlay of nightly means, then a panel per variant; the original in
-    grey, the variants in the categorical palette, a sequential map past it."""
+    """One overlay of nightly means, then a panel per variant, then the two
+    panels that drop time: the distribution of the velocities and their
+    periodograms. The original in grey, the variants in the categorical
+    palette, a sequential map past it."""
     import matplotlib.pyplot as plt
     original = dict(_fake_run("0-0", 47, 99), label="original")
     variants = [dict(_fake_run("1-3v", 26 + i, i), label="variant %d" % i) for i in range(3)]
     fig = lblscan.compilation_figure(original, variants)
-    assert len(fig.axes) == 4
+    assert len(fig.axes) == 6, "the overlay, three variants, the histogram," \
+                               " the periodograms"
+    histogram, periodogram = fig.axes[-2], fig.axes[-1]
+    # every series in both, the original included: the point of either panel is
+    # the comparison, and one curve alone compares nothing
+    assert len(periodogram.get_lines()) >= len(variants) + 1
+    assert len(histogram.get_legend().get_texts()) == len(variants) + 1
+    assert periodogram.get_xscale() == "log", "periods span three decades"
     assert lblscan.variant_colour(0, 3) == lblscan.VARIANTS[0]
     assert lblscan.variant_colour(8, 9) != lblscan.variant_colour(0, 9)
+    plt.close(fig)
+
+
+def test_a_campaign_too_short_for_a_periodogram_says_so(tmp_path):
+    """Three nights have no periods to speak of, and a Lomb-Scargle over an
+    empty frequency range is an exception in the middle of a report."""
+    import matplotlib.pyplot as plt
+    t = np.array([100.1, 100.6, 101.0])
+    run = {"t": t, "v": np.array([1.0, -2.0, 0.5]), "e": np.ones(3),
+           "label": "short", "stats": lblscan.velocity_stats(
+               t, np.array([1.0, -2.0, 0.5]), np.ones(3))}
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    lblscan.periodogram_panel(ax, [run], [lblscan.ORIGINAL])
+    assert ax.texts and "too short" in ax.texts[0].get_text()
     plt.close(fig)
 
 

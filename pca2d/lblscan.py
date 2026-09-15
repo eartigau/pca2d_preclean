@@ -476,6 +476,79 @@ def variant_colour(k, n):
     return plt.get_cmap("viridis")(k / max(n - 1, 1))
 
 
+def dv_histogram(ax, runs, colours):
+    """Every series' velocities as a histogram, on ONE set of bins.
+
+    The time panels say where the two differ; this says by how much, which is
+    the number a correction is judged on. Shared bins, because two histograms
+    binned differently are two pictures and not a comparison, and the range is
+    the 99th percentile of everything drawn, so one wild exposure does not
+    squeeze the distribution into the middle bin.
+    """
+    values = [run["v"] - np.median(run["v"]) for run in runs]
+    lim = float(np.percentile(np.abs(np.concatenate(values)), 99)) * 1.25
+    lim = lim if np.isfinite(lim) and lim > 0 else 1.0
+    bins = np.linspace(-lim, lim, 41)
+    for run, value, colour in zip(runs, values, colours):
+        s = run.get("stats") or velocity_stats(run["t"], run["v"], run["e"])
+        ax.hist(value, bins=bins, histtype="stepfilled", color=colour,
+                alpha=0.18, lw=0.0)
+        ax.hist(value, bins=bins, histtype="step", color=colour, lw=1.3,
+                label="%s: rms %.2f, robust %.2f m/s"
+                      % (run["label"], s["rms"], s["robust"]))
+    ax.axvline(0, color="0.7", lw=0.6)
+    ax.set_xlabel("velocity - median (m/s)", fontsize=8.5)
+    ax.set_ylabel("exposures", fontsize=8.5)
+    ax.legend(fontsize=7, frameon=False, loc="upper left")
+    ax.grid(alpha=0.15)
+    ax.tick_params(labelsize=7.5)
+    return ax
+
+
+def periodogram_panel(ax, runs, colours, pmin=1.1, samples=4000):
+    """Lomb-Scargle of every series, overplotted on one axis.
+
+    Overplotted and not stacked: the question is whether a peak SURVIVED the
+    correction or was made by it, and two panels answer that by eye and badly.
+    Every exposure, weighted by LBL's own error bar, over periods from `pmin`
+    days to the campaign's baseline; the power is the standard normalisation,
+    so the two curves are on one scale. The peak period of each is in the
+    legend, which is the number one reads off a plot like this anyway.
+    """
+    from astropy.timeseries import LombScargle
+
+    t = runs[0]["t"]
+    baseline = float(np.max(t) - np.min(t))
+    if not np.isfinite(baseline) or baseline <= pmin:
+        ax.text(0.5, 0.5, "the campaign is too short for a periodogram",
+                fontsize=8, ha="center", va="center", transform=ax.transAxes,
+                color="0.4")
+        ax.set_xticks([])
+        ax.set_yticks([])
+        return ax
+    freq = np.linspace(1.0 / baseline, 1.0 / pmin, samples)
+    period = 1.0 / freq
+    for run, colour in zip(runs, colours):
+        power = LombScargle(run["t"], run["v"], run["e"]).power(freq)
+        ax.plot(period, power, lw=0.9, color=colour, alpha=0.9,
+                label="%s: peak %.3g d" % (run["label"],
+                                           period[int(np.argmax(power))]))
+    # annual and half-annual: the BERV, the water column and the solar
+    # elevation all live there, so a peak at either is expected rather than
+    # alarming. Drawn only when the campaign is long enough to reach them.
+    for p in (365.25, 182.6):
+        if baseline > p:
+            ax.axvline(p, color="#1f4e9c", lw=0.7, ls="-.", alpha=0.35)
+    ax.set_xscale("log")
+    ax.set_xlim(pmin, baseline)
+    ax.set_xlabel("period (d)", fontsize=8.5)
+    ax.set_ylabel("Lomb-Scargle power", fontsize=8.5)
+    ax.legend(fontsize=7, frameon=False, loc="upper right")
+    ax.grid(alpha=0.15)
+    ax.tick_params(labelsize=7.5)
+    return ax
+
+
 def compilation_figure(original, variants, title=None):
     """RV time series of every variant against the original, in one figure.
 
@@ -484,19 +557,31 @@ def compilation_figure(original, variants, title=None):
     each about its own median, the original in grey and every variant in its
     colour, with its rms and nightly rms in the legend. Below: one panel per
     variant, its exposures in its colour over the original's in light grey.
+    Last row, the two ways of looking at the same velocities without time:
+    the distribution of all of them, and their periodograms overplotted.
     """
     n = len(variants)
-    fig, axes = plt.subplots(n + 1, 1, figsize=(11, 3.6 + 1.9 * n), sharex=True,
-                             gridspec_kw={"height_ratios": [2.3] + [1.0] * n})
+    runs = [original] + list(variants)
+    colours = [ORIGINAL] + [variant_colour(k, n) for k in range(n)]
+    fig = plt.figure(figsize=(11, 6.1 + 1.9 * n))
+    grid = fig.add_gridspec(n + 2, 1,
+                            height_ratios=[2.3] + [1.0] * n + [1.5])
+    axes = [fig.add_subplot(grid[0])]
+    axes += [fig.add_subplot(grid[k + 1], sharex=axes[0]) for k in range(n)]
+    for ax in axes[:-1]:
+        ax.tick_params(labelbottom=False)
+    last = grid[n + 1].subgridspec(1, 2, wspace=0.22)
+    dv_histogram(fig.add_subplot(last[0]), runs, colours)
+    periodogram_panel(fig.add_subplot(last[1]), runs, colours)
     centred = lambda run: run["v"] - np.median(run["v"])
     top = axes[0]
-    for k, run in enumerate([original] + list(variants)):
-        colour = ORIGINAL if k == 0 else variant_colour(k - 1, n)
+    for run, colour in zip(runs, colours):
         nt = nightly(run["t"], run["v"], run["e"])
         s = run["stats"]
+        first = run is original
         top.plot(nt[0], nt[1] - np.median(run["v"]), "o-", color=colour,
-                 ms=4.0 if k == 0 else 3.2, lw=1.1 if k == 0 else 0.8,
-                 alpha=1.0 if k == 0 else 0.9, zorder=3 if k == 0 else 2,
+                 ms=4.0 if first else 3.2, lw=1.1 if first else 0.8,
+                 alpha=1.0 if first else 0.9, zorder=3 if first else 2,
                  label="%s: rms %.1f, nightly rms %.1f m/s"
                        % (run["label"], s["rms"], s["nightly_rms"]))
     top.axhline(0, color="0.7", lw=0.6)
@@ -504,10 +589,9 @@ def compilation_figure(original, variants, title=None):
     top.legend(fontsize=7.5, frameon=False, loc="upper left")
     top.grid(alpha=0.15)
     top.tick_params(labelsize=8)
-    lim = np.percentile(np.abs(np.concatenate([centred(r) for r in [original] + list(variants)])),
-                        99.5)
+    lim = np.percentile(np.abs(np.concatenate([centred(r) for r in runs])), 99.5)
     for k, (ax, run) in enumerate(zip(axes[1:], variants)):
-        colour = variant_colour(k, n)
+        colour = colours[k + 1]
         ax.errorbar(original["t"], centred(original), yerr=original["e"], fmt="o", ms=2,
                     lw=0.4, color="0.72", ecolor="0.8", capsize=0, zorder=1)
         ax.errorbar(run["t"], centred(run), yerr=run["e"], fmt="o", ms=2.4, lw=0.5,
