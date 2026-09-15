@@ -59,30 +59,44 @@ MAG_KEYS = (("ESO OCS TARG JMAG", "J"), ("OBJMAG", "H"), ("HMAG", "H"),
             ("JMAG", "J"))
 
 
-#: The shared log, at the top of the data root: one line per spectrum read, so
-#: that a second window, or another person on the same disk, starts from what
-#: has already been read instead of reading it all again. The index under the
-#: home stays the local copy; this one travels with the data.
+#: The shared log, one per campaign, INSIDE that campaign's folder: one line per
+#: spectrum with the keywords read from it. It travels with the folder, which a
+#: file at the top of the root does not: campaigns are copied and rsynced one at
+#: a time, and a log that stays behind is a campaign read again at the other
+#: end. Two windows reading two campaigns also write two files rather than one.
 CSV_NAME = "pca2d_index.csv"
-#: its columns: what identifies the file, then every keyword a row shows
-CSV_FIELDS = ("object", "file", "size", "mtime", "instrument", "snr",
-              "exptime", "mjd", "berv", "mag", "mag_band", "ecl_lat",
-              "unreadable")
+#: its columns: what identifies the file, then every keyword a row shows. No
+#: object column: the folder it sits in is the object.
+CSV_FIELDS = ("file", "size", "mtime", "instrument", "snr", "exptime", "mjd",
+              "berv", "mag", "mag_band", "ecl_lat", "unreadable")
 
 
-def csv_path(root):
-    """Where the shared log of one data root is."""
+def folders_of(root):
+    """The campaign folders of a data root, listed and nothing more.
+
+    One readdir, no globbing inside them: this is called before anything is
+    read, to find the logs that are already there.
+    """
+    try:
+        with os.scandir(os.path.expanduser(root or ".")) as entries:
+            return sorted(entry.name for entry in entries if entry.is_dir())
+    except OSError:
+        return []
+
+
+def csv_path(root, name):
+    """Where one campaign's log is: inside that campaign's folder."""
     return os.path.join(os.path.abspath(os.path.expanduser(root or ".")),
-                        CSV_NAME)
+                        str(name), CSV_NAME)
 
 
-def csv_row(name, filename, record):
-    """One spectrum's line: its object, its file, its stamp, its keywords."""
+def csv_row(filename, record):
+    """One spectrum's line: its file, its stamp, and its keywords."""
     stamp = record.get("stamp") or [None, None]
-    row = {"object": name, "file": filename,
+    row = {"file": filename,
            "size": stamp[0] if len(stamp) > 0 else None,
            "mtime": stamp[1] if len(stamp) > 1 else None}
-    for key in CSV_FIELDS[4:]:
+    for key in CSV_FIELDS[3:]:
         value = record.get(key)
         row[key] = "" if value is None else value
     return row
@@ -99,7 +113,7 @@ def csv_record(row):
     except (KeyError, TypeError, ValueError):
         return None
     record = {"stamp": stamp}
-    for key in CSV_FIELDS[4:]:
+    for key in CSV_FIELDS[3:]:
         value = (row.get(key) or "").strip()
         if key in ("instrument", "mag_band"):
             record[key] = value or None
@@ -114,39 +128,38 @@ def csv_record(row):
     return record
 
 
-def read_csv(root):
-    """{object: {file: record}} from the shared log, or {} if there is none.
+def read_csv(root, name):
+    """{file: record} from one campaign's log, or {} if there is none.
 
     The last line for a file wins: the log is appended to while a scan runs and
-    rewritten when it finishes, so a file read twice appears twice until then.
+    rewritten when that campaign is finished, so a file read twice appears
+    twice until then. The header row IS the schema: a log written by a version
+    with other columns is ignored rather than half believed.
     """
     out = {}
     try:
-        with open(csv_path(root), newline="") as handle:
+        with open(csv_path(root, name), newline="") as handle:
             reader = csv.DictReader(handle)
-            # the header IS the schema: a log written by a version with other
-            # columns is treated as absent rather than half believed
             if list(reader.fieldnames or ()) != list(CSV_FIELDS):
                 return {}
             for row in reader:
                 record = csv_record(row)
-                name, filename = row.get("object"), row.get("file")
-                if record and name and filename:
-                    out.setdefault(name, {})[filename] = record
+                if record and row.get("file"):
+                    out[row["file"]] = record
     except (OSError, ValueError, csv.Error):
         return {}
     return out
 
 
-def append_csv(root, rows):
-    """Add these lines to the shared log. False when the root cannot be written.
+def append_csv(root, name, rows):
+    """Add these lines to a campaign's log. False when it cannot be written.
 
-    One open and one write per batch, since a full rewrite every ten files
-    would be the whole campaign written a thousand times over a scan.
+    One open and one write per batch, since rewriting the whole campaign every
+    ten files would be it written a hundred times over one scan.
     """
     if not rows:
         return True
-    path = csv_path(root)
+    path = csv_path(root, name)
     try:
         fresh = not os.path.exists(path)
         with open(path, "a", newline="") as handle:
@@ -160,22 +173,21 @@ def append_csv(root, rows):
     return True
 
 
-def write_csv(index, root):
-    """Rewrite the shared log from the index: one line per file, none stale.
+def write_csv(files, root, name):
+    """Rewrite one campaign's log: one line per file it holds, none stale.
 
     Through a temporary file in the same folder and a rename, so a window
     reading it while this one writes sees the old file or the new one and never
     half of either.
     """
-    path = csv_path(root)
+    path = csv_path(root, name)
     temp = "%s.%d.tmp" % (path, os.getpid())
     try:
         with open(temp, "w", newline="") as handle:
             writer = csv.DictWriter(handle, fieldnames=CSV_FIELDS)
             writer.writeheader()
-            for name, entry in sorted((index.get("objects") or {}).items()):
-                for filename, record in sorted((entry.get("files") or {}).items()):
-                    writer.writerow(csv_row(name, filename, record))
+            for filename, record in sorted((files or {}).items()):
+                writer.writerow(csv_row(filename, record))
         os.replace(temp, path)
     except OSError:
         try:
@@ -215,14 +227,16 @@ def load(root, home=None):
                                                          dict):
         index = {"version": VERSION, "objects": {}}
     index["root"] = os.path.abspath(os.path.expanduser(root or "."))
-    # and whatever the shared log holds that this copy does not: a window
-    # opening a root somebody else has already read starts from their work
+    # and whatever each campaign's own log holds that this copy does not: a
+    # window opening a root somebody has already read starts from their work
     table = index.setdefault("objects", {})
-    for name, files in read_csv(root).items():
+    for name in folders_of(root):
+        files = read_csv(root, name)
+        if not files:
+            continue
         known = table.setdefault(name, {}).setdefault("files", {})
         for filename, record in files.items():
-            if filename not in known:
-                known[filename] = record
+            known.setdefault(filename, record)
     return index
 
 
@@ -481,7 +495,7 @@ def update(root, index=None, pattern="*t.fits", objects=None, on_file=None,
     # round, and they all sharpen together (the user, 2026-09-13: "ça permet de
     # voir où on va avant de finir la première").
     step = max(1, int(every or 10))
-    shared = True                       # until the root turns out to be read-only
+    refused = set()                     # campaigns whose folder will not take it
     while any(plan["todo"] for plan in plans.values()):
         for name, plan in plans.items():
             batch, plan["todo"] = plan["todo"][:step], plan["todo"][step:]
@@ -501,29 +515,31 @@ def update(root, index=None, pattern="*t.fits", objects=None, on_file=None,
                 plan["fresh"][filename] = record
                 plan["done"] += 1
                 tally["read"] += 1
-                lines.append(csv_row(name, filename, record))
+                lines.append(csv_row(filename, record))
                 if on_file is not None:
                     on_file(name, plan["done"], plan["to_read"])
             plan["entry"]["files"] = plan["fresh"]
             # the batch, appended to the shared log before the next one is read:
             # a scan that is interrupted, or a second window opened halfway
             # through it, keeps every file already read
-            if shared and not append_csv(root, lines):
-                shared = False          # a read-only root, said once by trying
+            # per campaign, not per root: an archive may hold one folder that
+            # is read-only and another that is not
+            if name not in refused and not append_csv(root, name, lines):
+                refused.add(name)
             if on_object is not None:
                 on_object(name, len(plan["fresh"]), plan["total"])
 
     for name, plan in plans.items():
         plan["entry"]["scanned"] = datetime.datetime.now().isoformat(
             timespec="seconds")
-    # and once it is all read, the log is rewritten from the index: the lines
-    # appended along the way are deduplicated and the files that are gone go.
-    # Also when there is no log at all and nothing was read, which is a root
-    # this machine already knows by heart and nobody else can: the whole point
-    # of the log is the second reader.
-    if shared and (tally["read"] or tally["gone"]
-                   or not os.path.exists(csv_path(root))):
-        write_csv(index, root)
+        # its log, rewritten from what the index now holds for it: the lines
+        # appended along the way are deduplicated and the files that are gone
+        # go. Also when it read nothing and has no log, which is a campaign
+        # this machine knows by heart and nobody else can: the whole point of
+        # the log is the second reader.
+        if name not in refused and (plan["done"]
+                                    or not os.path.exists(csv_path(root, name))):
+            write_csv(plan["entry"].get("files"), root, name)
     return index, tally
 
 

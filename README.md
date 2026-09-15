@@ -289,8 +289,8 @@ removal once understood. It is the document to read before changing a default.
 
 Two roots, and a run reads from one and writes to the other. Spectra go under
 the input root, one folder per target, and the only thing ever written there is
-`pca2d_index.csv`, the shared log of what has been read of it (`docs/gui.md`).
-The
+one `pca2d_index.csv` per campaign folder, the log of what has been read of that
+campaign, which travels with it (`docs/gui.md`). The
 instrument is read from the `INSTRUME` keyword of the files, never chosen on a
 command line, because reading the wrong extension raises no error: it returns
 different photons.

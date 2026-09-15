@@ -159,6 +159,8 @@ EN = {
     "savedefaults": "Save as defaults...", "lblwin": "LBL settings...",
     "all": "all", "none": "none",
     "idle": "idle", "running": "running", "lang": "Français",
+    "tab_targets": "  targets  ", "tab_settings": "  settings  ",
+    "tab_run": "  run  ",
     "quit": "Quit", "quit_title": "quit pca2d-preclean",
     "quit_running":
         "A run is going, and it is a subprocess of this window: quitting stops"
@@ -525,6 +527,8 @@ FR = {
     "savedefaults": "Enregistrer comme défauts...", "lblwin": "Réglages LBL...",
     "all": "tout", "none": "rien",
     "idle": "au repos", "running": "en cours", "lang": "English",
+    "tab_targets": "  cibles  ", "tab_settings": "  réglages  ",
+    "tab_run": "  passage  ",
     "quit": "Quitter", "quit_title": "quitter pca2d-preclean",
     "quit_running":
         "Un passage est en cours, et c'est un processus fils de cette fenêtre :"
@@ -1362,24 +1366,46 @@ class App:
         root.configure(background=BG)
 
         self.vars = {}
-        self.status = ttk.Label(root, text=self.t("idle"), style="Hint.TLabel")
-        self._build_top(root)
-        panes = ttk.Panedwindow(root, orient="horizontal")
-        # BOTH directions, and expanding: the panes kept their height whatever
-        # the window did, so a taller window only ever made the log taller and
-        # the list of targets stayed seven rows on a 27-inch screen
-        panes.pack(fill="both", expand=True, padx=14)
+        self._build_header(root)
+        # Three pages, because everything at once on one page was a wall: WHAT
+        # is being reduced, HOW, and the run itself with its log. Each of them
+        # then has room to be read, and the window can be any size.
+        book = ttk.Notebook(root)
+        book.pack(fill="both", expand=True, padx=12, pady=(2, 8))
+        self.tabs = []
+        pages = {}
+        for key in ("tab_targets", "tab_settings", "tab_run"):
+            page = ttk.Frame(book, padding=8)
+            book.add(page, text=self.t(key))
+            self.tabs.append((book, page, key))
+            pages[key] = page
+        self.book = book
+
+        # what is being reduced: the roots, the campaigns, and what they cover
+        self._build_paths(pages["tab_targets"])
+        panes = ttk.Panedwindow(pages["tab_targets"], orient="horizontal")
+        panes.pack(fill="both", expand=True)
         left, right = ttk.Frame(panes), ttk.Frame(panes)
         panes.add(left, weight=3)
         panes.add(right, weight=4)
+        # the list on one side, what the ticked campaigns cover on the other:
+        # the two panels under the list left the right half of the page empty
         self._build_objects(left)
-        self._build_options(right)
-        # one panel on each side: stacked on one, they made that column half as
-        # tall again as the other and pushed the log off a laptop screen
-        self._build_berv(left)
+        self._build_berv(right)
         self._build_time(right)
-        self._build_command(root)
-        self._build_log(root)
+
+        # how: every setting that changes a result, and the buttons that write
+        # them down somewhere
+        self._build_options(pages["tab_settings"])
+        self._build_buttons(pages["tab_settings"], "settings")
+
+        # and the run: what it will be called, the command in full, the buttons
+        # that start and end it, and everything it says
+        self._build_name(pages["tab_run"])
+        self._build_command(pages["tab_run"])
+        self._build_buttons(pages["tab_run"], "run", quit_too=True)
+        self._build_log(pages["tab_run"])
+        self.stop_button.configure(state="disabled")
         self._propose_out()      # on opening, not only when the data root moves
         if not self.vars["config"].get().strip():
             # a copy installed without one: say it here rather than let a run
@@ -1431,6 +1457,13 @@ class App:
                   background=[("pressed", "#08557f"), ("active", "#0d7cc2"),
                               ("disabled", "#9dbdd4")],
                   foreground=[("disabled", "#eef4f8")])
+        style.configure("TNotebook", background=BG, borderwidth=0)
+        style.configure("TNotebook.Tab", background=BG, foreground=MUTED,
+                        padding=(14, 7), font=(body, 12, "bold"),
+                        borderwidth=0)
+        style.map("TNotebook.Tab",
+                  background=[("selected", SURFACE), ("active", ACCENT_SOFT)],
+                  foreground=[("selected", ACCENT)])
         style.configure("Treeview", background=SURFACE, fieldbackground=SURFACE,
                         foreground=INK, rowheight=26, bordercolor=LINE,
                         font=self.fonts["body"])
@@ -1475,6 +1508,11 @@ class App:
 
     def switch_language(self):
         self.lang = "fr" if self.lang == "en" else "en"
+        for book, page, key in getattr(self, "tabs", []):
+            try:
+                book.tab(page, text=self.t(key))
+            except Exception:                                   # noqa: BLE001
+                pass
         for widget, key, how in self.labels:
             try:
                 if how == "text":
@@ -1490,31 +1528,35 @@ class App:
         self._sync()
 
     # ---- widgets ------------------------------------------------------
-    def _build_top(self, parent):
-        ttk, tk = self.ttk, self.tk
+    def _build_header(self, parent):
+        """The banner: who made the spectra, what this is, and the language."""
+        ttk = self.ttk
         frame = ttk.Frame(parent)
-        frame.pack(fill="x", padx=14, pady=(12, 8))
+        frame.pack(fill="x", padx=14, pady=(10, 4))
         # APERO's own logo, then the name: every spectrum this window reads was
         # reduced by APERO, so the pipeline signs the top left corner. The file
         # is in the package, never fetched at run time.
-        head = ttk.Frame(frame)
-        head.grid(row=0, column=0, sticky="w")
         logo = self._logo("apero_logo.png", height=22)
         if logo is not None:
-            self.logo_label = ttk.Label(head, image=logo, background=BG)
+            self.logo_label = ttk.Label(frame, image=logo, background=BG)
             self.logo_label.image = logo      # or the garbage collector eats it
             self.logo_label.pack(side="left", padx=(0, 8))
             self._tip(self.logo_label, "help_apero")
-        ttk.Label(head, text="pca2d", style="Head.TLabel").pack(side="left")
-        self._register(ttk.Label(frame, style="Hint.TLabel", wraplength=640,
-                                 justify="left",
-                                 text=self.t("subtitle")), "subtitle").grid(
-            row=0, column=1, columnspan=2, sticky="w", padx=10)
+        ttk.Label(frame, text="pca2d", style="Head.TLabel").pack(side="left")
         button = ttk.Button(frame, text=self.t("lang"),
                             command=self.switch_language, width=10)
-        button.grid(row=0, column=3, sticky="e")
+        button.pack(side="right")
         self._register(button, "lang")
         self._tip(button, "help_lang")
+        self._register(ttk.Label(frame, style="Hint.TLabel", wraplength=780,
+                                 justify="left", text=self.t("subtitle")),
+                       "subtitle").pack(side="left", padx=10)
+
+    def _build_paths(self, parent):
+        """The two roots and the configuration, each shown in full."""
+        ttk, tk = self.ttk, self.tk
+        frame = ttk.Frame(parent)
+        frame.pack(fill="x", pady=(0, 6))
         # shown in full, since a relative path means a different folder from a
         # different working directory and these data are reached through a link
         opening = opening_paths(self.saved)
@@ -1523,12 +1565,12 @@ class App:
                 ("config", opening["config"]),
                 ("out_dir", opening["out_dir"]))):
             label = ttk.Label(frame, text=self.t(key))
-            label.grid(row=i + 1, column=0, sticky="w", pady=2)
+            label.grid(row=i, column=0, sticky="w", pady=2)
             self._register(label, key)
             var = tk.StringVar(value=default)
             self.vars[key] = var
             entry = ttk.Entry(frame, textvariable=var, width=70)
-            entry.grid(row=i + 1, column=1, sticky="we", padx=6)
+            entry.grid(row=i, column=1, sticky="we", padx=6)
             self._tip(entry, "help_" + key)
             self._tip(label, "help_" + key)
             var.trace_add("write", lambda *_: self._sync())
@@ -1538,26 +1580,39 @@ class App:
                 entry.bind("<Return>", lambda _e: self._propose_out())
             browse = ttk.Button(frame, text=self.t("browse"),
                                 command=lambda k=key: self._browse(k))
-            browse.grid(row=i + 1, column=2)
+            browse.grid(row=i, column=2)
             self._register(browse, "browse")
-        # the run's name, proposed and editable, with what it would overwrite
-        row = ttk.Frame(frame)
-        row.grid(row=4, column=0, columnspan=4, sticky="we", pady=(6, 0))
+        rescan = ttk.Button(frame, text=self.t("rescan"),
+                            command=self.refresh_objects)
+        rescan.grid(row=0, column=3, padx=4)
+        self._register(rescan, "rescan")
+        self._tip(rescan, "help_rescan")
+        frame.columnconfigure(1, weight=1)
+        # the date window's two bounds live with the timeline that sets them
+        for key in ("min_rjd", "max_rjd"):
+            self.vars[key] = tk.StringVar(value=self.saved.get(key, ""))
+            self.vars[key].trace_add("write", lambda *_: self._sync())
+
+    def _build_name(self, parent):
+        """What this reduction is called, which is what its folder is called."""
+        ttk, tk = self.ttk, self.tk
+        row = ttk.Frame(parent)
+        row.pack(fill="x", pady=(2, 6))
         label = ttk.Label(row, text=self.t("run_name"))
         label.pack(side="left")
         self._register(label, "run_name")
         self._tip(label, "help_run_name")
         # A name is PROPOSED rather than left empty: a window that opens with
-        # an empty field says a run needs no name, and then two runs of the same
-        # targets land in one folder. Only when none was kept: an empty field
-        # that somebody emptied stays empty.
+        # an empty field says a reduction needs no name, and then two of them
+        # land in one folder. Only when none was kept: a field somebody emptied
+        # stays empty.
         kept = self.saved.get("run_name")
         if not str(kept or "").strip():
             proposed = dict(self.saved)
             proposed["objects"] = self.saved.get("checked") or []
             kept = suggested_run_name(proposed)
         self.vars["run_name"] = tk.StringVar(value=kept)
-        entry = ttk.Entry(row, textvariable=self.vars["run_name"], width=26)
+        entry = ttk.Entry(row, textvariable=self.vars["run_name"], width=34)
         entry.pack(side="left", padx=(6, 4))
         self._tip(entry, "help_run_name")
         auto = ttk.Button(row, text=self.t("auto"), width=6,
@@ -1566,17 +1621,8 @@ class App:
         self._register(auto, "auto")
         self._tip(auto, "help_auto_button")
         self.vars["run_name"].trace_add("write", lambda *_: self._sync())
-        for key in ("min_rjd", "max_rjd"):
-            self.vars[key] = tk.StringVar(value=self.saved.get(key, ""))
-            self.vars[key].trace_add("write", lambda *_: self._sync())
         self.exists = ttk.Label(row, style="Hint.TLabel", text="")
         self.exists.pack(side="left", padx=(6, 0))
-        rescan = ttk.Button(frame, text=self.t("rescan"),
-                            command=self.refresh_objects)
-        rescan.grid(row=1, column=3, padx=4)
-        self._register(rescan, "rescan")
-        self._tip(rescan, "help_rescan")
-        frame.columnconfigure(1, weight=1)
 
     def _build_objects(self, parent):
         ttk = self.ttk
@@ -2015,10 +2061,10 @@ class App:
     def _build_options(self, parent):
         ttk, tk = self.ttk, self.tk
         box = ttk.Labelframe(parent, text=self.t("settings"))
-        box.pack(fill="both", expand=True, pady=4)
+        box.pack(fill="x", pady=4)
         self._register(box, "settings")
         grid = ttk.Frame(box)
-        grid.pack(fill="both", expand=True, padx=8, pady=6)
+        grid.pack(fill="x", padx=8, pady=6)
         # three columns, as evenly as the list divides: four rows each was
         # written when there were eleven settings, and left the ninth alone in
         # a column of its own when two of them were settled
@@ -2079,10 +2125,54 @@ class App:
         # Export YAML still writes one, which is how the runs in
         # variants/README.md stay reproducible.
 
+    #: which buttons belong to which tab: what changes a setting is with the
+    #: settings, what starts or ends a run is with the run
+    BUTTONS = {
+        "settings": (("lblwin", "open_lbl", None, "help_lblwin_button"),
+                     ("export", "export", None, "help_export_button"),
+                     ("savedefaults", "save_defaults", None,
+                      "help_savedefaults_button")),
+        "run": (("run", "start", "run_button", "help_run_button"),
+                ("stop", "stop", "stop_button", "help_stop_button"),
+                ("dry", "dry_run", None, "help_dry_button"),
+                ("savelog", "save_log", None, "help_savelog_button"),
+                ("openout", "open_outputs", None, "help_openout_button")),
+    }
+
+    def dry_run(self):
+        """Resolve everything and touch nothing."""
+        self.start(dry=True)
+
+    def _build_buttons(self, parent, which, quit_too=False):
+        """One row of buttons, the ones that belong on this tab."""
+        ttk = self.ttk
+        bar = ttk.Frame(parent)
+        bar.pack(fill="x", pady=(2, 6))
+        for key, method, attr, tip in self.BUTTONS[which]:
+            button = ttk.Button(bar, text=self.t(key),
+                                command=getattr(self, method),
+                                style="Run.TButton" if key == "run"
+                                else "TButton")
+            button.pack(side="left", padx=(0 if key == "run" else 5, 0))
+            self._register(button, key)
+            self._tip(button, tip)
+            if attr:
+                setattr(self, attr, button)
+        if quit_too:
+            # at the other end of the bar, away from Run: the button that ends
+            # everything should not be a neighbour of the one that starts it
+            quit_button = ttk.Button(bar, text=self.t("quit"),
+                                     command=self.quit_window)
+            quit_button.pack(side="right")
+            self._register(quit_button, "quit")
+            self._tip(quit_button, "help_quit_button")
+        return bar
+
     def _build_command(self, parent):
+        """The command this would run, in full, before it runs."""
         ttk, tk = self.ttk, self.tk
         box = ttk.Labelframe(parent, text=self.t("command"))
-        box.pack(fill="x", padx=14, pady=8)
+        box.pack(fill="x", pady=(2, 4))
         self._register(box, "command")
         self.command = tk.Text(box, height=2, wrap="word",
                                font=self.fonts["mono"], background=SURFACE,
@@ -2091,43 +2181,16 @@ class App:
                                highlightbackground=LINE, highlightcolor=LINE)
         self.command.pack(fill="x", padx=6, pady=6)
         self._tip(self.command, "help_command")
-        bar = ttk.Frame(parent)
-        bar.pack(fill="x", padx=14, pady=(2, 6))
-        for key, command, attr, tip in (
-                ("run", self.start, "run_button", "help_run_button"),
-                ("stop", self.stop, "stop_button", "help_stop_button"),
-                ("dry", lambda: self.start(dry=True), None, "help_dry_button"),
-                ("lblwin", self.open_lbl, None, "help_lblwin_button"),
-                ("export", self.export, None, "help_export_button"),
-                ("savedefaults", self.save_defaults, None,
-                 "help_savedefaults_button"),
-                ("savelog", self.save_log, None, "help_savelog_button"),
-                ("openout", self.open_outputs, None, "help_openout_button")):
-            button = ttk.Button(bar, text=self.t(key), command=command,
-                                style="Run.TButton" if key == "run"
-                                else "TButton")
-            button.pack(side="left", padx=(0 if key == "run" else 5, 0))
-            self._register(button, key)
-            self._tip(button, tip)
-            if attr:
-                setattr(self, attr, button)
-        # at the other end of the bar, away from Run: the two buttons that end
-        # what is happening should not be neighbours of the one that starts it
-        quit_button = ttk.Button(bar, text=self.t("quit"),
-                                 command=self.quit_window)
-        quit_button.pack(side="right")
-        self._register(quit_button, "quit")
-        self._tip(quit_button, "help_quit_button")
-        self.stop_button.configure(state="disabled")
 
     def _build_log(self, parent):
         ttk, tk = self.ttk, self.tk
         # What the window is doing, over the box that shows what it says rather
         # than beside the buttons: a target and a count that change every ten
         # spectra, in small grey text at the right edge, is where nobody looks.
-        self.status.pack(anchor="w", padx=18, pady=(2, 0))
+        self.status = ttk.Label(parent, text=self.t("idle"), style="Hint.TLabel")
+        self.status.pack(anchor="w", padx=4, pady=(2, 0))
         box = ttk.Labelframe(parent, text=self.t("output"))
-        box.pack(fill="both", expand=True, padx=14, pady=(4, 12))
+        box.pack(fill="both", expand=True, pady=(2, 4))
         self._register(box, "output")
         self.log = tk.Text(box, wrap="word", height=3, font=self.fonts["mono"],
                            background=LOG_BG, foreground=LOG_INK,

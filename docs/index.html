@@ -118,14 +118,23 @@
         </figcaption>
       </figure>
 
-      <h3>Two roots, and nothing written in the first</h3>
+      <h3>Three pages</h3>
+      <p>
+        Everything at once was a wall. The window is three pages, and each has
+        room to be read: <strong>targets</strong>, what is being reduced;
+        <strong>settings</strong>, how; and <strong>run</strong>, the command,
+        the buttons that start and end it, and everything it says. The banner
+        and the language button stay above them.
+      </p>
+
+      <h3>Two roots, and one file written in the first</h3>
       <p>
         A data root, shown in full, since <code>data</code> means different
         folders from different working directories and a campaign usually lives
         behind a link onto a shared disk. The only thing ever written there is
-        <code>pca2d_index.csv</code>, the shared log of what has been read of
-        it; the spectra are never touched, and a root that refuses the file
-        stays exactly as it was. An output root, proposed as
+        one <code>pca2d_index.csv</code> per campaign folder, the log of what
+        has been read of that campaign; the spectra are never touched, and a
+        folder that refuses the file stays exactly as it was. An output root, proposed as
         <code>corrected</code> beside the data root when the field is left
         empty: the corrected spectra are a copy of the campaign, tens of
         gigabytes, and belong on the disk the campaign is already on. A
@@ -177,12 +186,15 @@
         <code>science</code> cannot share one index.
       </p>
       <p>
-        The same answers are written <strong>beside the data</strong>, as
-        <code>pca2d_index.csv</code> at the top of the data root: one line per
-        spectrum with the keywords read from it, appended every ten files and
-        rewritten when a scan ends. That is what a second window reads, on this
-        machine or another one mounting the same disk, so a campaign is read
-        once by whoever gets there first. The header row is the schema, so a log
+        The same answers are written <strong>beside the data</strong>, as a
+        <code>pca2d_index.csv</code> inside each campaign's own folder: one line
+        per spectrum with the keywords read from it, appended every ten files
+        and rewritten when that campaign is finished. Inside the folder rather
+        than at the top of the root because campaigns are copied one at a time,
+        and a log that stays behind is a campaign read again at the other end.
+        That is what a second window reads, on this machine or another one
+        mounting the same disk, so a campaign is read once by whoever gets there
+        first. The header row is the schema, so a log
         written by a version with other columns is ignored rather than half
         believed, and every line is still checked against its file's size and
         modification time before it is used.

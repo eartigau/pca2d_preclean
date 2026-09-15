@@ -72,7 +72,9 @@ def test_the_only_thing_written_in_a_data_root_is_the_shared_log(tmp_path):
     assert scan.save(index, root, home).startswith(home)
     assert sorted(p.name for p in (tmp_path / "data").rglob("*")) == \
         ["0000t.fits", "0001t.fits", "PROXIMA", "pca2d_index.csv"]
-    assert scan.csv_path(root) == os.path.join(root, "pca2d_index.csv")
+    assert scan.csv_path(root, "PROXIMA") == \
+        os.path.join(root, "PROXIMA", "pca2d_index.csv"), \
+        "inside the campaign, so it travels with the campaign"
     # two roots whose last folder has the same name do not share one index
     other = scan.index_path(str(tmp_path / "elsewhere" / "data"), home)
     assert other != scan.index_path(root, home)
@@ -280,7 +282,7 @@ def test_an_index_from_another_version_is_rebuilt_rather_than_believed(tmp_path)
     index, _tally = scan.update(root, home=home)
     index["version"] = scan.VERSION + 1
     scan.save(index, root, home)
-    os.remove(scan.csv_path(root))       # the shared log has its own schema
+    os.remove(scan.csv_path(root, "PROXIMA"))    # the log has its own schema
     assert scan.load(root, home)["objects"] == {}
 
 
@@ -496,7 +498,7 @@ def test_a_second_window_starts_from_what_the_first_read(tmp_path):
     # another home, so nothing local is shared: only the log in the data root
     second = str(tmp_path / "home2")
     fresh = scan.load(root, second)
-    assert sorted(fresh["objects"]) == ["GJ1", "PROXIMA"], "the log was read"
+    assert sorted(fresh["objects"]) == ["GJ1", "PROXIMA"], "both logs were read"
     _index, tally = scan.update(root, index=fresh, home=second)
     assert tally["read"] == 0, "not one header opened again"
     assert tally["kept"] == 20
@@ -513,13 +515,13 @@ def test_the_log_is_written_as_the_scan_goes_not_only_at_its_end(tmp_path):
 
     def on_object(_name, _known, _total):
         # what the log holds at each of the scan's own checkpoints
-        seen.append(sum(len(f) for f in scan.read_csv(root).values()))
+        seen.append(len(scan.read_csv(root, "PROXIMA")))
 
     scan.update(root, index=scan.load(root, home), home=home,
                 on_object=on_object, every=10)
     assert seen and max(seen) >= 10, "written before the end, in batches"
     assert seen != [0] * len(seen)
-    assert sum(len(f) for f in scan.read_csv(root).values()) == 25
+    assert len(scan.read_csv(root, "PROXIMA")) == 25
 
 
 def test_a_read_only_root_is_left_exactly_as_it_was(tmp_path):
@@ -528,14 +530,16 @@ def test_a_read_only_root_is_left_exactly_as_it_was(tmp_path):
     data = tmp_path / "data"
     root = root_with(data, PROXIMA=4)
     home = str(tmp_path / "home")
+    os.chmod(data / "PROXIMA", 0o555)    # the campaign is where the log goes
     os.chmod(data, 0o555)
     try:
         index, tally = scan.update(root, index=scan.load(root, home), home=home)
         assert tally["read"] == 4, "the scan itself is untouched by it"
-        assert not os.path.exists(scan.csv_path(root))
+        assert not os.path.exists(scan.csv_path(root, "PROXIMA"))
         assert scan.save(index, root, home).startswith(home)
     finally:
         os.chmod(data, 0o755)
+        os.chmod(data / "PROXIMA", 0o755)
 
 
 def test_a_log_whose_columns_are_not_these_columns_is_ignored(tmp_path):
@@ -544,14 +548,14 @@ def test_a_log_whose_columns_are_not_these_columns_is_ignored(tmp_path):
     root = root_with(tmp_path / "data", PROXIMA=2)
     home = str(tmp_path / "home")
     scan.update(root, index=scan.load(root, home), home=home)
-    assert scan.read_csv(root), "written and read back"
+    assert scan.read_csv(root, "PROXIMA"), "written and read back"
 
-    with open(scan.csv_path(root)) as handle:
+    with open(scan.csv_path(root, "PROXIMA")) as handle:
         lines = handle.readlines()
-    lines[0] = "object,file,size,mtime,what_is_this\n"
-    with open(scan.csv_path(root), "w") as handle:
+    lines[0] = "file,size,mtime,what_is_this\n"
+    with open(scan.csv_path(root, "PROXIMA"), "w") as handle:
         handle.writelines(lines)
-    assert scan.read_csv(root) == {}, "not these columns, not read"
+    assert scan.read_csv(root, "PROXIMA") == {}, "not these columns, not read"
 
 
 def test_a_root_this_machine_knows_by_heart_still_leaves_its_log(tmp_path):
@@ -563,9 +567,9 @@ def test_a_root_this_machine_knows_by_heart_still_leaves_its_log(tmp_path):
     home = str(tmp_path / "home")
     index, _tally = scan.update(root, index=scan.load(root, home), home=home)
     scan.save(index, root, home)                # what a window does after a scan
-    os.remove(scan.csv_path(root))              # as if the root predated the log
+    os.remove(scan.csv_path(root, "PROXIMA"))   # as if it predated the log
 
     index, tally = scan.update(root, index=scan.load(root, home), home=home)
     assert tally["read"] == 0, "nothing was read again"
-    assert os.path.exists(scan.csv_path(root)), "and the log is there anyway"
-    assert sum(len(f) for f in scan.read_csv(root).values()) == 6
+    assert os.path.exists(scan.csv_path(root, "PROXIMA")), "there anyway"
+    assert len(scan.read_csv(root, "PROXIMA")) == 6

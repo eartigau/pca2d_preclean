@@ -7,14 +7,21 @@ It does nothing the command line cannot: every setting is one key of
 `config.yaml` or one flag of `pca2d-preclean`, and the command it is about to
 run is written out so that it can be copied into a terminal.
 
+## Three pages
+
+Everything at once was a wall. The window is three pages, and each has room to
+be read: **targets**, what is being reduced; **settings**, how; and **run**, the
+command, the buttons that start and end it, and everything it says. The banner
+and the language button stay above them. What follows is where each thing is.
+
 ## What is on it
 
 - **A data root**, shown in full: `data` and `config.yaml` mean different
   folders from different working directories, and here `data` is a folder of
-  links onto a shared disk. The only thing ever written in a data root is
-  `pca2d_index.csv`, the shared log below; the spectra are never touched, and a
-  root that refuses the file, an archive mounted read-only, stays exactly as it
-  was.
+  links onto a shared disk. The only thing ever written in a data root is one
+  `pca2d_index.csv` per campaign folder, the log below; the spectra are never
+  touched, and a campaign whose folder refuses the file, an archive mounted
+  read-only, stays exactly as it was.
 - **An output root**, proposed as `corrected` beside the data root when the
   field is empty: the corrected spectra are a copy of the campaign, tens of
   gigabytes, and belong on the disk the campaign is already on.
@@ -105,11 +112,13 @@ date and the first ten of a campaign are one night's weather: on GJ 1 they gave
 a signal-to-noise of 134 against the campaign's 163.
 
 **The log beside the data.** The same answers are written to
-`pca2d_index.csv` at the top of the data root, one line per spectrum with the
-keywords read from it, appended every ten files and rewritten when a scan ends.
-That is what a second window reads: open the same root anywhere else, on this
-machine or another one mounting the same disk, and it starts from what has
-already been read instead of reading the campaign again. The header row is the
+`pca2d_index.csv` **inside each campaign's own folder**, one line per spectrum
+with the keywords read from it, appended every ten files and rewritten when that
+campaign is finished. Inside the folder rather than at the top of the root
+because campaigns are copied and rsynced one at a time: a log that stays behind
+is a campaign read again at the other end. That is what a second window reads:
+open the same root anywhere else, on this machine or another one mounting the
+same disk, and it starts from what has already been read. The header row is the
 schema, so a log written by a version with other columns is ignored rather than
 half believed, and every line is still checked against its file's size and
 modification time before it is used.
