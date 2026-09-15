@@ -724,8 +724,42 @@ def gap_guard(w, delta, a, verbose=True, live=None):
     return w
 
 
+#: Where the sweep's own (rows, columns) array goes when it will not fit in
+#: memory. A file, mapped: the kernel then pages it instead of killing the
+#: process, and the arithmetic is the same arithmetic on the same numbers.
+SPILL_NAME = "pca2d-spill"
+
+
+def workspace(shape, dtype, spill=None, tag="tmp"):
+    """An array of that shape: in memory, or mapped onto a file under `spill`.
+
+    The fit holds three arrays of (rows, columns): the data, the weights, and
+    one temporary per sweep. On a machine that cannot hold them, holding them
+    anyway is how a run dies with exit -9 and nothing said. Mapped onto a file
+    they page instead, which is slower and finishes.
+    """
+    if not spill:
+        return np.zeros(shape, dtype=dtype)
+    os.makedirs(spill, exist_ok=True)
+    path = os.path.join(spill, "%s-%s-%d.dat" % (SPILL_NAME, tag, os.getpid()))
+    out = np.memmap(path, dtype=dtype, mode="w+", shape=tuple(shape))
+    out[:] = 0
+    return out
+
+
+def drop_workspace(array):
+    """Let a mapped workspace go, and take its file with it."""
+    path = getattr(array, "filename", None)
+    del array
+    if path and SPILL_NAME in os.path.basename(path):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
 def star_model(P, a, shifter, delta, n_spectra, n_pixels, chunk=64, desc=None,
-               alpha=None, velocity_mask=None, star_mean=None):
+               alpha=None, velocity_mask=None, star_mean=None, out=None):
     """sum_k a_nk (S_n P_k), never materialising S_n P^T for all n at once.
 
     With `alpha` given, each row also gets alpha_n times its own derivative:
@@ -736,7 +770,10 @@ def star_model(P, a, shifter, delta, n_spectra, n_pixels, chunk=64, desc=None,
     per-parity mean included; the mean itself is not in what comes back, which
     is the components' model.
     """
-    out = np.zeros((n_spectra, n_pixels))
+    # `out` lets the caller say where this goes: on a big cube it is a mapped
+    # workspace rather than another (rows, columns) float64 array in memory
+    if out is None:
+        out = np.zeros((n_spectra, n_pixels))
     Pf = shifter.prepare(P)
     Tf = (shifter.prepare(star_mean[0])
           if alpha is not None and star_mean is not None else None)
@@ -758,6 +795,44 @@ def star_model(P, a, shifter, delta, n_spectra, n_pixels, chunk=64, desc=None,
                                                                   velocity_mask)
         out[start:stop] = block
     return out
+
+
+def model_residual(data, P, Q, a, b, shifter, delta, chunk, alpha=None,
+                  velocity_mask=None, star_mean=None, w=None, out=None):
+    """data - (star model + b Q), a chunk of ROWS at a time, and its chi2.
+
+    Returns (chi2, residual): the chi2 against `w` when weights are given, and
+    the residual itself only when `out` is given to hold it. Spelled the
+    obvious way,
+
+        model = star_model(...) + b @ Q
+        chi2 = np.sum(w * (data - model) ** 2)
+
+    allocates five arrays of (rows, columns) for one number, and on the cube
+    that the kernel killed on 2026-09-15 that is five times 19 GB. A chunk of
+    rows at a time it is five times a chunk, and the sum is float64 either way.
+    """
+    rows, cols = data.shape
+    step = max(1, int(chunk))
+    Pf = shifter.prepare(P)
+    chi2 = 0.0
+    for start in range(0, rows, step):
+        stop = min(start + step, rows)
+        block = star_model(P, a[start:stop], shifter, delta[start:stop],
+                           stop - start, cols, chunk,
+                           alpha=None if alpha is None else alpha[start:stop],
+                           velocity_mask=velocity_mask,
+                           star_mean=None if star_mean is None else
+                           (star_mean[0], star_mean[1][start:stop]))
+        block += b[start:stop] @ Q
+        block *= -1.0
+        block += data[start:stop]             # in place: data - model
+        if w is not None:
+            chi2 += float(np.sum(w[start:stop] * block ** 2, dtype=np.float64))
+        if out is not None:
+            out[start:stop] = block
+    del Pf
+    return chi2, out
 
 
 def deflate_velocity(resid, P, a, alpha, shifter, delta, chunk=64, desc=None,
@@ -790,7 +865,7 @@ def deflate_velocity(resid, P, a, alpha, shifter, delta, chunk=64, desc=None,
     return resid
 
 
-def mstep(residual, weights, coeffs, basis, floor_frac=1e-2):
+def mstep(residual, weights, coeffs, basis, floor_frac=1e-2, chunk=64):
     """One EMPCA eigenvector sweep, in whatever frame the residual lives in.
 
     `denominator > 0` is not a sufficient guard. With an honest banded operator
@@ -823,10 +898,23 @@ def mstep(residual, weights, coeffs, basis, floor_frac=1e-2):
     basis = basis.copy()
     # NOTE: `residual` is consumed in place. Every caller passes a freshly built
     # temporary, and copying it costs an N x M float64 array we cannot spare.
+    #
+    # IN ROW CHUNKS, both sums. Spelled `(weights * residual).T @ ck` they are
+    # one BLAS call and one more (rows, columns) array per component, which on
+    # a cube that barely fits is the allocation that ends it. The chunk sums
+    # are float64 whatever the arrays are, and they differ from the single call
+    # only by the order of the additions, which is last-bit.
+    rows = residual.shape[0]
+    step = max(1, int(chunk))
     for k in range(basis.shape[0]):
         ck = coeffs[:, k]
-        numerator = (weights * residual).T @ ck
-        denominator = weights.T @ (ck ** 2)
+        numerator = np.zeros(residual.shape[1], dtype=np.float64)
+        denominator = np.zeros(residual.shape[1], dtype=np.float64)
+        for start in range(0, rows, step):
+            stop = min(start + step, rows)
+            wb = weights[start:stop]
+            numerator += (wb * residual[start:stop]).T @ ck[start:stop]
+            denominator += wb.T @ (ck[start:stop] ** 2)
         positive = denominator[denominator > 0]
         scale = float(np.median(positive)) if positive.size else 0.0
         floor = floor_frac * scale
@@ -836,7 +924,9 @@ def mstep(residual, weights, coeffs, basis, floor_frac=1e-2):
         norm = np.linalg.norm(vec)
         if norm > 1e-12:
             basis[k] = vec / norm
-        residual -= np.outer(ck, basis[k])
+        for start in range(0, rows, step):          # the deflation, in chunks too
+            stop = min(start + step, rows)
+            residual[start:stop] -= np.outer(ck[start:stop], basis[k])
     for i in range(basis.shape[0]):          # modified Gram-Schmidt
         for j in range(i):
             basis[i] -= np.dot(basis[i], basis[j]) * basis[j]
@@ -845,7 +935,7 @@ def mstep(residual, weights, coeffs, basis, floor_frac=1e-2):
 
 
 def update_star(data, w, P, Q, a, b, shifter, delta, chunk, alpha=None,
-                velocity_mask=None, star_mean=None, star_fwhm=None):
+                velocity_mask=None, star_mean=None, star_fwhm=None, work=None):
     """Step 3: deflate the Earth model, carry the weighted residual home.
 
     The normal equation wants sum_n c^2 S_n^T W_n S_n; we use its diagonal. With
@@ -860,8 +950,11 @@ def update_star(data, w, P, Q, a, b, shifter, delta, chunk, alpha=None,
     observer component may carry pixel-level detector structure.
     """
     # built in place: `data - b @ Q`, then `w * that`, then the adjoint. Spelled
-    # the obvious way this holds four N x M float64 arrays at once.
-    resid = b @ Q
+    # the obvious way this holds four N x M float64 arrays at once. `work` is
+    # the fit's one scratch array of that shape, in memory or mapped onto a
+    # file: without it, every sweep allocates another one.
+    resid = np.empty_like(data, dtype=np.float64) if work is None else work
+    np.matmul(b, Q, out=resid)
     resid *= -1.0
     resid += data
     deflate_velocity(resid, P, a, alpha, shifter, delta, chunk,
@@ -887,7 +980,7 @@ def update_star(data, w, P, Q, a, b, shifter, delta, chunk, alpha=None,
     with np.errstate(invalid="ignore", divide="ignore"):
         resid_star /= np.where(w_star > 1e-12, w_star, 1.0)
     resid_star[w_star <= 1e-12] = 0.0
-    P_new = mstep(resid_star, w_star, a, P)
+    P_new = mstep(resid_star, w_star, a, P, chunk=chunk)
     if star_fwhm:
         from .resolution import smooth_rows
         P_new = smooth_rows(P_new, star_fwhm)
@@ -895,7 +988,7 @@ def update_star(data, w, P, Q, a, b, shifter, delta, chunk, alpha=None,
 
 
 def update_earth(data, w, P, Q, a, b, shifter, delta, chunk, alpha=None,
-                 velocity_mask=None, star_mean=None):
+                 velocity_mask=None, star_mean=None, work=None):
     """Step 2: deflate the star model, shift included. No shifting of weights.
 
     `alpha` is what keeps the velocity out of Q: the residual this hands to the
@@ -904,10 +997,11 @@ def update_earth(data, w, P, Q, a, b, shifter, delta, chunk, alpha=None,
     """
     model = star_model(P, a, shifter, delta, data.shape[0], data.shape[1], chunk,
                        desc="observer basis, carrying the star out", alpha=alpha,
-                       velocity_mask=velocity_mask, star_mean=star_mean)
+                       velocity_mask=velocity_mask, star_mean=star_mean,
+                       out=work)
     model *= -1.0
     model += data                       # in place: data - model
-    return mstep(model, w, b, Q)
+    return mstep(model, w, b, Q, chunk=chunk)
 
 
 # --------------------------------------------------------------------------
@@ -1351,26 +1445,59 @@ def cube_shape(path):
     return int(shape[0]), int(shape[1])
 
 
-def memory_needed(rows, columns, dtype, arrays=2, margin=1.1):
-    """GB a fit peaks at, which is while the cube is read.
+def memory_needed(rows, columns, dtype, margin=1.05):
+    """GB a fit peaks at, and WHERE that peak is.
 
-    What survives the read is two arrays of (rows, columns) at the storage
-    dtype, the data and the weights, and load_cube builds them one column block
-    at a time so that nothing else is ever resident: the sigmas and the
-    transmission stay on disk. The margin is for that block and the small
-    temporaries beside it.
+    Two arrays of (rows, columns) live from the read to the end: the data and
+    the weights, at the storage dtype. On top of them, each sweep allocates ONE
+    full float64 array of the same shape and frees it again: `b @ Q` in
+    update_star, the carried star model in update_earth. The bases are
+    float64, so those temporaries are float64 whatever the cube is stored as,
+    and they are the reason a float32 cube still costs 16 bytes a sample.
 
-    MEASURED, not argued. On the TOI-2120 cube of 2026-09-15, 642 x 577002
-    float32, this says 3.3 GB and the process peaked at 3.2. Before the read
-    was blocked it was four arrays, and the ten-object joint cube of that
-    morning asked 38 GB of a 17 GB machine and was killed by the kernel.
+    Measured: the read alone peaks at 3.2 GB on the TOI-2120 cube (642 x 577002
+    float32) and this says 3.0 for it; the sweeps take it to 5.8, which is why
+    that run fits in half of a 17 GB machine and the ten-object joint cube,
+    37.9 GB by the same count, was killed by the kernel on 2026-09-15.
 
-    NOT counted, because they are not (rows, columns): the model is carried in
-    chunks of rows (the `chunk` option, hundreds of MB) and the bases are
-    (K, columns), tens of MB.
+    NOT counted: the model is carried in chunks of rows (`chunk`, hundreds of
+    MB) and the bases are (K, columns), tens of MB.
     """
-    return (rows * columns * np.dtype(dtype).itemsize * int(arrays)
-            * float(margin) / 1e9)
+    item = np.dtype(dtype).itemsize
+    return rows * columns * (2 * item + 8) * float(margin) / 1e9
+
+
+def spill_dir(rows, columns, dtype, cube, outdir, fraction=None):
+    """Where the fit's big arrays go: None for memory, a folder for a file.
+
+    Half of the machine, never more, and the arithmetic does not change either
+    way: the same numbers in the same order, either in memory or on a mapped
+    file the kernel pages. A run that does not fit used to be killed with exit
+    -9 and nothing said; it now runs, more slowly, and says why.
+    """
+    from .machine import DEFAULT_FRACTION, describe
+
+    need = memory_needed(rows, columns, dtype)
+    total, budget = describe(DEFAULT_FRACTION if fraction is None else fraction)
+    if total is None:
+        log("this fit needs about %.1f GB; the machine's memory could not be"
+            " read, so it is kept in memory and nothing is checked" % need,
+            "warn")
+        return None
+    if need <= budget:
+        log("memory: this fit needs about %.1f GB of the %.1f GB allowed (half"
+            " of this machine's %.1f GB), so it is held in memory"
+            % (need, budget, total), "value")
+        return None
+    where = os.path.join(os.path.dirname(os.path.abspath(cube)), "spill")
+    log("memory: this fit needs about %.1f GB and may use %.1f, half of this"
+        " machine's %.1f GB. Its arrays go to a mapped file in %s instead, and"
+        " the kernel pages them: the same arithmetic, slower, and it finishes."
+        % (need, budget, total, where), "warn")
+    log("  (the ways to make it FIT in memory, cheapest first: coadd nights"
+        " (input.nightly_stack: true), narrow the domain, fit fewer objects at"
+        " once, or store the cube as float32)", "info")
+    return where
 
 
 def check_memory(rows, columns, dtype, fraction=None):
@@ -1405,7 +1532,7 @@ def check_memory(rows, columns, dtype, fraction=None):
 
 
 def load_cube(path, ln_clip_low=-0.5, ramp_zero=0.5, min_snr_frac=0.5,
-              dtype=np.float64, columns=None):
+              dtype=np.float64, columns=None, spill=None):
     """The observer-frame cube plus the weights, condensed from cube.py.
 
     `min_snr_frac` drops spectra whose band SNR is below that fraction of the
@@ -1458,8 +1585,9 @@ def load_cube(path, ln_clip_low=-0.5, ramp_zero=0.5, min_snr_frac=0.5,
     # (tests/test_blocked_load.py holds the two side by side).
     n_rows = len(rows) if rows is not None else data.shape[0]
     n_cols = data.shape[1]
-    out = np.empty((n_rows, n_cols), dtype=dtype)
-    w = np.empty((n_rows, n_cols), dtype=dtype)
+    # in memory, or mapped onto a file under `spill` when they will not fit
+    out = workspace((n_rows, n_cols), dtype, spill, tag="data")
+    w = workspace((n_rows, n_cols), dtype, spill, tag="weights")
     step = max(1, int(_LOAD_BLOCK_BYTES // max(1, n_rows * np.dtype(dtype).itemsize)))
     grid_size = cube_grid_size(path) if columns is not None else n_cols
     cols = np.asarray(columns) if columns is not None else None
@@ -2311,9 +2439,9 @@ def main(argv=None):
     # sum still accumulates in float64: a float32 accumulator over 3.7e8 terms
     # loses the low bits of the very totals the fit is judged by.
     rows, columns = cube_shape(args.cube)
-    check_memory(rows, columns, args.dtype)
+    spill = spill_dir(rows, columns, args.dtype, args.cube, args.outdir)
     grid, data, w, meta = load_cube(args.cube, min_snr_frac=args.min_snr_frac,
-                                    dtype=np.dtype(args.dtype))
+                                    dtype=np.dtype(args.dtype), spill=spill)
     log("fit arrays in %s: %.1f GB for the data and the weights together"
           % (data.dtype.name, 2 * data.nbytes / 1e9))
     n_spectra, n_pixels = data.shape
@@ -2529,7 +2657,16 @@ def main(argv=None):
               " %.4g rms over the %d columns both cover"
               % (float(np.std((means[0] - means[1])[both])) if both.any() else np.nan,
                  int(both.sum())))
-    chi2_null = float(np.sum(w * data ** 2, dtype=np.float64))
+    # ONE scratch array of (rows, columns), made here and reused by every step
+    # that needs one: the two basis updates, the re-weighting and the scoring.
+    # Each of them used to allocate its own, and each of those is the size of
+    # the data itself.
+    work = workspace((n_spectra, n_pixels), np.float64, spill, tag="work")
+    chi2_null = 0.0
+    for _start in range(0, n_spectra, max(1, chunk)):
+        _stop = min(_start + max(1, chunk), n_spectra)
+        chi2_null += float(np.sum(w[_start:_stop] * data[_start:_stop] ** 2,
+                                  dtype=np.float64))
     log("after the %s as well: %.4f of the raw weighted variance left"
         % ("per-parity means of both frames" if iterate
            else "star's spectrum per parity" if args.mean == "star"
@@ -2642,13 +2779,14 @@ def main(argv=None):
                         exposure=tie, velocity_from=a_lin,
                         velocity_mask=velocity_mask, star_mean=star_mean,
                         desc="re-weighting, coefficients")
-                model_prev = star_model(P, a_prev, shifter, delta, n_spectra,
-                                        n_pixels, chunk, alpha=alpha_prev,
-                                        velocity_mask=velocity_mask,
-                                        star_mean=star_mean,
-                                        desc="re-weighting, model") \
-                    + b_prev @ Q
-                w, hit = clip_weights(w0, data - model_prev, clip=args.clip)
+                # the residual straight into the workspace: `star_model(...)
+                # + b @ Q` and then `data - model` is three arrays of this
+                # shape for one that is used once
+                _chi2, resid_prev = model_residual(
+                    data, P, Q, a_prev, b_prev, shifter, delta, chunk,
+                    alpha=alpha_prev, velocity_mask=velocity_mask,
+                    star_mean=star_mean, out=work)
+                w, hit = clip_weights(w0, resid_prev, clip=args.clip)
 
             # ---- E-step: coefficients for both blocks at fixed bases --------
             # Solved JOINTLY, never one block then the other. The off-diagonal
@@ -2673,6 +2811,7 @@ def main(argv=None):
             tick = time.time()
             if args.order == "star_first":
                 P = update_star(data, w, P, Q, a, b, shifter, delta, chunk,
+                                work=work,
                                 alpha=alpha, velocity_mask=velocity_mask,
                                 star_mean=star_mean, star_fwhm=star_fwhm)
                 a, b, alpha, _ = joint_coeffs(data, w, P, Q, shifter, delta,
@@ -2682,10 +2821,12 @@ def main(argv=None):
                                              desc="coefficients")
                 a_lin = a if velocity_term else None
                 Q = update_earth(data, w, P, Q, a, b, shifter, delta, chunk,
+                                 work=work,
                                  alpha=alpha, velocity_mask=velocity_mask,
                                 star_mean=star_mean)
             else:
                 Q = update_earth(data, w, P, Q, a, b, shifter, delta, chunk,
+                                 work=work,
                                  alpha=alpha, velocity_mask=velocity_mask,
                                 star_mean=star_mean)
                 a, b, alpha, _ = joint_coeffs(data, w, P, Q, shifter, delta,
@@ -2695,6 +2836,7 @@ def main(argv=None):
                                              desc="coefficients")
                 a_lin = a if velocity_term else None
                 P = update_star(data, w, P, Q, a, b, shifter, delta, chunk,
+                                work=work,
                                 alpha=alpha, velocity_mask=velocity_mask,
                                 star_mean=star_mean, star_fwhm=star_fwhm)
             t_basis = time.time() - tick
@@ -2707,19 +2849,21 @@ def main(argv=None):
             a_lin = a if velocity_term else None
             # these are what the next iteration's clip step would recompute
             a_prev, b_prev = a, b
-            model = star_model(P, a, shifter, delta, n_spectra, n_pixels, chunk,
-                               alpha=alpha, velocity_mask=velocity_mask,
-                               star_mean=star_mean, desc="scoring") + b @ Q
             # scored on w0: the clip weights change every iteration, so scoring on
-            # them would be a moving target and the monotonicity check meaningless
-            chi2 = float(np.sum(w0 * (data - model) ** 2, dtype=np.float64))
+            # them would be a moving target and the monotonicity check meaningless.
+            # A chunk of rows at a time, and the residual kept only when the
+            # means step below is going to want it: spelled as one expression
+            # this is five arrays of (rows, columns) for one number.
+            chi2, model = model_residual(
+                data, P, Q, a, b, shifter, delta, chunk, alpha=alpha,
+                velocity_mask=velocity_mask, star_mean=star_mean, w=w0,
+                out=work if iterate else None)
             if iterate:
                 # the components' residual, which centring leaves as it is;
                 # centred before the state is kept, so that the kept state has
                 # its static content in the means, where the next step of the
-                # means has to find it
-                model *= -1.0
-                model += data
+                # means has to find it. model_residual already handed back
+                # data - model, so `model` here IS that residual.
                 good_rows = (~rejected) & (w0.sum(axis=1) > 0)
                 a, b = center_blocks(data, a, b, P, Q, templates, means, group,
                                      shifter, delta, chunk, good_rows, w=w0)
@@ -2980,6 +3124,16 @@ def main(argv=None):
                           weights=w0, parity=parity,
                           templates=templates if star_mean is not None else None,
                           mean_mode=str(args.mean))
+    # the mapped arrays go with the run that made them: they are scratch, they
+    # are the size of the cube, and a folder of them left behind fills a disk
+    if spill:
+        for array in (work, data, w):
+            try:
+                drop_workspace(array)
+            except Exception:                                 # noqa: BLE001
+                pass
+        log("removed the mapped workspace in %s" % spill)
+
     # Nothing, on purpose. This is a console_script entry point, so whatever it
     # returns is handed to sys.exit: returning the two bases printed a pair of
     # arrays and exited 1 on a successful fit, which is why nothing could be
