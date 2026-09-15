@@ -131,7 +131,7 @@ def test_relative_paths_hang_off_the_config_not_the_working_directory(tmp_path):
     assert items["cube cache"]["bytes"] == 3000
 
 
-def test_the_report_adds_up_and_names_what_is_kept(tmp_path):
+def test_the_report_adds_up_and_says_how_the_rest_is_asked_for(tmp_path):
     fill(str(tmp_path / "cache"), 1, 2_000_000)
     fill(str(tmp_path / "out"), 1, 1_000_000)
     items = survey({"output": {"cache_directory": str(tmp_path / "cache"),
@@ -139,7 +139,8 @@ def test_the_report_adds_up_and_names_what_is_kept(tmp_path):
                    str(tmp_path / "config.yaml"))
     text = report(items)
     assert "in all" in text and "can be freed" in text
-    assert "(kept)" in text
+    # a results folder is not refused, it is only not in the default purge
+    assert "--kinds results" in text
     assert "3.0 MB" in text and "2.0 MB" in text
 
 
@@ -174,3 +175,31 @@ def test_every_lbl_folder_is_classified(tmp_path):
     assert items["LBL lblrv"]["kind"] == EXPENSIVE
     assert items["LBL log"]["kind"] == REBUILDABLE
     assert items["fit spill files"]["kind"] == SCRATCH
+
+
+def test_the_expensive_and_the_results_go_when_they_are_asked_for(tmp_path):
+    """Nothing is undeletable: a full disk is a full disk, and somebody who
+    knows an afternoon of LBL is on it can decide to spend it again. The
+    default still leaves both alone, so a caller who asks for nothing in
+    particular cannot empty a results folder by passing a whole survey."""
+    from pca2d.housekeeping import REMOVABLE, RESULTS, purge
+
+    fill(str(tmp_path / "cache"), 1, 2_000_000)
+    fill(str(tmp_path / "out"), 1, 1_000_000)
+    config = {"output": {"cache_directory": str(tmp_path / "cache"),
+                         "directory": str(tmp_path / "out")}}
+    items = survey(config, str(tmp_path / "config.yaml"))
+    results = [it for it in items if it["kind"] == RESULTS]
+    assert results, "the output root is on the list"
+
+    freed, _gone = purge(results, dry_run=True)
+    assert freed == 0, "the default kinds leave a result alone"
+    freed, gone = purge(results, dry_run=True, kinds=(RESULTS,))
+    assert freed == 1_000_000 and gone, "asked for by name, it goes"
+    assert os.listdir(str(tmp_path / "out")), "dry run deleted nothing"
+
+    purge(results, kinds=(RESULTS,))
+    assert os.listdir(str(tmp_path / "out")) == [], "emptied, the folder kept"
+    assert os.path.isdir(str(tmp_path / "out"))
+    assert os.listdir(str(tmp_path / "cache")), "and nothing else touched"
+    assert REMOVABLE == ("scratch", "rebuildable")

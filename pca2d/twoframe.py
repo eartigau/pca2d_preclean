@@ -2926,7 +2926,7 @@ def main(argv=None):
             # 800 x 421782) four decimals held left/raw at 0.0423 for five
             # sweeps in a row, which says "stopped" for something still moving
             log("  iter %d  R2=%.7f  left/raw=%.5f  clipped=%.3f%%"
-                  "  cond(A) med/max %.1f/%.1f%s%s  [%.1fs coeff, %.1fs bases]%s"
+                  "  cond(A) med/max %.3f/%.3f%s%s  [%.1fs coeff, %.1fs bases]%s"
                   % (iteration, 1 - chi2 / chi2_null, chi2 / chi2_raw, 100 * hit,
                      np.median(cond), cond.max(), shift, step, t_coeff, t_basis,
                      flag))

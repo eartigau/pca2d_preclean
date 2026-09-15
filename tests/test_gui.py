@@ -917,8 +917,53 @@ def test_nothing_to_free_says_so_rather_than_asking(monkeypatch, tmp_path):
     w._say = lambda key, *a, **k: said.append(key)
     monkeypatch.setattr(messagebox, "askyesno",
                         lambda *_a: pytest.fail("it should not ask"))
-    App.purge_disks(w)
-    assert said == ["clean_nothing"]
+    App.purge_disks(w)                       # nothing measured yet
+    w.clean_items = [{"name": "results", "kind": "results", "bytes": 10,
+                      "removable": False, "path": None}]
+    App.purge_disks(w)                       # measured, nothing free in it
+    assert said == ["clean_none", "clean_nothing"]
+
+
+def test_every_row_can_be_deleted_by_picking_it_and_the_question_is_priced():
+    """The button is not greyed and the results are not refused: what separates
+    them from the cache is what it costs to have them back, so that is what the
+    question says, in the terms of the most expensive kind picked."""
+    from pca2d.gui import App
+
+    w = App.__new__(App)
+    w.lang = "en"
+    w.clean_items = [
+        {"name": "cube cache", "kind": "rebuildable", "bytes": 3_000_000,
+         "removable": True, "path": "cache"},
+        {"name": "LBL templates", "kind": "expensive", "bytes": 2_000_000,
+         "removable": False, "path": "lbl/templates"},
+        {"name": "reports", "kind": "results", "bytes": 1_000_000,
+         "removable": False, "path": "out"},
+    ]
+    asked, deleted, said = [], [], []
+    w._say = lambda key, *a, **k: said.append(key)
+    w._ask_delete = lambda title, question: asked.append(question) or True
+    w._delete = lambda going: deleted.append([it["name"] for it in going])
+    w.clean_tree = type("T", (), {"selection": staticmethod(lambda: ())})()
+
+    App.purge_selected(w)
+    assert said == ["clean_pick"] and not asked, "nothing picked, nothing asked"
+
+    w.clean_tree.selection = staticmethod(lambda: ("0",))
+    App.purge_selected(w)
+    assert "made again from what stays here" in asked[-1]
+    assert deleted[-1] == ["cube cache"]
+
+    w.clean_tree.selection = staticmethod(lambda: ("0", "1"))
+    App.purge_selected(w)
+    assert "Hours, not minutes" in asked[-1], "the dearest kind sets the price"
+
+    w.clean_tree.selection = staticmethod(lambda: ("1", "2"))
+    App.purge_selected(w)
+    assert "IS A RESULT" in asked[-1]
+    assert deleted[-1] == ["LBL templates", "reports"]
+    # biggest first, whatever order they were picked in
+    assert asked[-1].index("LBL templates") < asked[-1].index("reports")
 
 
 def test_every_line_of_the_cleanup_list_explains_itself_in_both_languages():
@@ -961,3 +1006,55 @@ def test_the_window_knows_which_pdf_is_this_run_s(tmp_path):
                       str(tmp_path)) == str(tmp_path / "joint" / "PROXIMA+GJ1"
                                             / "0-3")
     assert run_folder({"objects": []}, str(tmp_path)) is None
+
+
+def test_the_proposed_name_follows_the_targets_and_a_typed_one_does_not():
+    """The name is the folder, and a folder still reading GJ1 over a run of
+    TOI2120 is worse than no name. So the proposal follows the ticks; a name
+    somebody typed is a decision and stays."""
+    from pca2d.gui import App, suggested_run_name
+
+    class Var:
+        def __init__(self, value=""):
+            self.value = value
+
+        def get(self):
+            return self.value
+
+        def set(self, value):
+            self.value = value
+
+    w = App.__new__(App)
+    picked = ["GJ1"]
+    w.vars = {"run_name": Var()}
+    w.state = lambda: {"objects": list(picked), "n_star": 0, "n_earth": 3}
+    first = suggested_run_name(w.state())
+    w._proposed = first
+    w.vars["run_name"].set(first)
+
+    picked[:] = ["TOI2120"]
+    w._follow_name()
+    assert w.vars["run_name"].get() == suggested_run_name(w.state()) != first
+
+    # the settings are in the name's hash, so they move it too
+    w.state = lambda: {"objects": list(picked), "n_star": 2, "n_earth": 3}
+    w._follow_name()
+    assert w.vars["run_name"].get() == suggested_run_name(w.state())
+
+    # typed by hand: left alone from then on, whatever is ticked
+    w.vars["run_name"].set("la bonne")
+    picked[:] = ["PROXIMA"]
+    w._follow_name()
+    assert w.vars["run_name"].get() == "la bonne"
+
+    # emptied on purpose: still a decision
+    w.vars["run_name"].set("")
+    w._follow_name()
+    assert w.vars["run_name"].get() == ""
+
+    # Auto puts it back under the window's care
+    App._auto_name(w)
+    assert w.vars["run_name"].get() == suggested_run_name(w.state())
+    picked[:] = ["GJ1", "PROXIMA"]
+    w._follow_name()
+    assert w.vars["run_name"].get() == suggested_run_name(w.state())

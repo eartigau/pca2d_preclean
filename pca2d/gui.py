@@ -210,22 +210,34 @@ EN = {
     "help_clean":
         "Every place this program puts bytes, measured. The cube cache, the"
         " scratch of a fit too big for memory and LBL's own logs can go at any"
-        " time: they are made again from what is still here. Fits, templates,"
-        " masks and per-line tables can be made again too, but only by running"
-        " the hours that made them, so they are counted and not offered. The"
-        " corrected spectra, the reports and the velocities are never offered."
-        " A folder moved to another disk is counted where it really is; a link"
-        " to somebody else's spectra weighs nothing, because deleting it frees"
-        " nothing.",
+        " time: they are made again from what is still here, and one button"
+        " empties all of them. Everything else can go too, row by row: pick it"
+        " in the list and Delete the selected. Fits, templates, masks and"
+        " per-line tables come back only by running the hours that made them,"
+        " and the corrected spectra, the reports and the velocities only by"
+        " running again from the spectra; the window says which of those you"
+        " are about to spend before it deletes anything. A folder moved to"
+        " another disk is counted where it really is; a link to somebody"
+        " else's spectra weighs nothing, because deleting it frees nothing.",
     "clean_measure": "Measure", "clean_purge": "Delete what can go",
+    "clean_selected": "Delete the selected",
     "help_clean_measure":
         "Walks each folder and adds up what is in it. On a network disk this"
         " takes a few seconds and it runs off to one side, so the window stays"
         " usable while it counts.",
     "help_clean_purge":
         "Empties the folders marked as scratch or rebuildable, and nothing"
-        " else. It asks first, and names the total it is about to free. The"
-        " folders themselves stay: the next run expects to find them.",
+        " else: the ones that cost time and only time to have back. It asks"
+        " first, and names the total it is about to free. The folders"
+        " themselves stay: the next run expects to find them. For anything"
+        " else, pick the rows and use Delete the selected.",
+    "help_clean_selected":
+        "Deletes the rows picked in the list, whatever kind they are: a cube"
+        " cache, the templates that took an afternoon, the velocities"
+        " themselves. Shift or command picks several. It names every folder"
+        " and says what having them back would cost before it deletes"
+        " anything, and that is the only thing between you and a disk with"
+        " room on it.",
     "clean_measuring": "measuring…",
     "clean_totals": "%s in all, of which %s can be freed",
     "clean_none": "nothing measured yet: press Measure",
@@ -236,6 +248,22 @@ EN = {
         " written again by LBL. Go ahead?",
     "clean_freed": "freed %s from %d places",
     "clean_nothing": "nothing to free: there is no scratch or cache here",
+    "clean_pick": "pick one row or several in the list first: the button"
+                  " deletes what is picked",
+    "clean_confirm_pick_title": "delete what is selected",
+    "clean_confirm_pick":
+        "About to delete %s from %d places:\n\n%s\n\n%s\n\nGo ahead?",
+    "clean_cost_rebuildable":
+        "All of it is made again from what stays here: minutes, and a run that"
+        " reads the spectra once more.",
+    "clean_cost_expensive":
+        "Some of it comes back only by running what made it: a fit, or an LBL"
+        " pass over every exposure. Hours, not minutes.",
+    "clean_cost_results":
+        "SOME OF IT IS A RESULT: corrected spectra, a report, or the"
+        " velocities an rdb holds. Nothing here remakes those. Only running"
+        " the whole thing again does, from the spectra, and that is the hours"
+        " it took the first time.",
     "col_size": "size", "col_nfiles": "files", "col_kind": "kind",
     "kind_scratch": "scratch", "kind_rebuildable": "rebuildable",
     "kind_expensive": "expensive", "kind_results": "results",
@@ -260,7 +288,7 @@ EN = {
     "clean_lbl_lblrv":
         "LBL's per-line velocity tables, one file per exposure, and the"
         " largest thing LBL writes. Remade only by running LBL again, which is"
-        " hours: counted here, not offered.",
+        " hours.",
     "clean_lbl_templates":
         "The templates LBL built, one per object and run. Remade only by"
         " running LBL's template step again.",
@@ -270,7 +298,8 @@ EN = {
     "clean_lbl_lblreftable": "LBL's reference tables, one per object and run.",
     "clean_lbl_lblrdb":
         "The velocities: the rdb every RV page of every report is drawn from."
-        " Never offered for deletion.",
+        " A result, and the smallest thing on this list; deleting it frees"
+        " almost nothing and throws away the measurement.",
     "clean_pycache":
         "Compiled Python, remade the next time the package is imported.",
     "quit": "Quit", "quit_title": "quit pca2d-preclean",
@@ -702,23 +731,35 @@ FR = {
         "Chaque endroit où ce programme met des octets, mesuré. Le cache des"
         " cubes, le brouillon d'un ajustement trop gros pour la mémoire et les"
         " journaux de LBL peuvent partir à tout moment : ils se refont à partir"
-        " de ce qui reste ici. Les ajustements, les templates, les masques et"
-        " les tables raie par raie se refont aussi, mais seulement en relançant"
-        " les heures qui les ont faits : ils sont comptés et pas proposés. Les"
-        " spectres corrigés, les rapports et les vitesses ne sont jamais"
-        " proposés. Un dossier déplacé sur un autre disque est compté là où il"
-        " est vraiment ; un lien vers les spectres de quelqu'un d'autre ne pèse"
+        " de ce qui reste ici, et un bouton les vide tous. Le reste peut partir"
+        " aussi, ligne par ligne : choisissez-la dans la liste et Effacer la"
+        " sélection. Les ajustements, les templates, les masques et les tables"
+        " raie par raie ne reviennent qu'en relançant les heures qui les ont"
+        " faits ; les spectres corrigés, les rapports et les vitesses qu'en"
+        " relançant tout depuis les spectres. La fenêtre dit lesquelles de ces"
+        " heures vous êtes sur le point de dépenser avant d'effacer quoi que ce"
+        " soit. Un dossier déplacé sur un autre disque est compté là où il est"
+        " vraiment ; un lien vers les spectres de quelqu'un d'autre ne pèse"
         " rien, puisque l'effacer ne libère rien.",
     "clean_measure": "Mesurer", "clean_purge": "Effacer ce qui peut partir",
+    "clean_selected": "Effacer la sélection",
     "help_clean_measure":
         "Parcourt chaque dossier et additionne ce qu'il contient. Sur un disque"
         " réseau cela prend quelques secondes, et cela tourne à côté : la"
         " fenêtre reste utilisable pendant le compte.",
     "help_clean_purge":
-        "Vide les dossiers marqués brouillon ou refaisable, et rien d'autre."
-        " La fenêtre demande d'abord, et annonce le total qu'elle va libérer."
-        " Les dossiers eux-mêmes restent : le prochain passage s'attend à les"
-        " trouver.",
+        "Vide les dossiers marqués brouillon ou refaisable, et rien d'autre :"
+        " ceux dont le retour ne coûte que du temps. La fenêtre demande"
+        " d'abord, et annonce le total qu'elle va libérer. Les dossiers"
+        " eux-mêmes restent : le prochain passage s'attend à les trouver. Pour"
+        " tout le reste, choisissez les lignes et Effacer la sélection.",
+    "help_clean_selected":
+        "Efface les lignes choisies dans la liste, quelle que soit leur nature :"
+        " un cache de cubes, les templates d'un après-midi, les vitesses"
+        " elles-mêmes. Majuscule ou commande en choisit plusieurs. La fenêtre"
+        " nomme chaque dossier et dit ce que les récupérer coûterait avant"
+        " d'effacer, et c'est tout ce qu'il y a entre vous et un disque qui"
+        " respire.",
     "clean_measuring": "mesure en cours…",
     "clean_totals": "%s en tout, dont %s peuvent être libérés",
     "clean_none": "rien de mesuré encore : appuyez sur Mesurer",
@@ -729,6 +770,23 @@ FR = {
         " journaux de LBL sont réécrits par LBL. On y va ?",
     "clean_freed": "%s libérés à %d endroits",
     "clean_nothing": "rien à libérer : ni brouillon ni cache ici",
+    "clean_pick": "choisissez d'abord une ligne ou plusieurs dans la liste :"
+                  " le bouton efface ce qui est choisi",
+    "clean_confirm_pick_title": "effacer la sélection",
+    "clean_confirm_pick":
+        "Sur le point d'effacer %s à %d endroits :\n\n%s\n\n%s\n\nOn y va ?",
+    "clean_cost_rebuildable":
+        "Tout cela se refait à partir de ce qui reste ici : des minutes, et un"
+        " passage qui relit les spectres une fois de plus.",
+    "clean_cost_expensive":
+        "Une partie ne revient qu'en relançant ce qui l'a faite : un"
+        " ajustement, ou un passage de LBL sur chaque exposition. Des heures,"
+        " pas des minutes.",
+    "clean_cost_results":
+        "UNE PARTIE EST UN RÉSULTAT : des spectres corrigés, un rapport, ou"
+        " les vitesses d'un rdb. Rien ici ne les refait. Seul un passage"
+        " complet, depuis les spectres, les refait, et ce sont les heures que"
+        " cela a pris la première fois.",
     "col_size": "taille", "col_nfiles": "fichiers", "col_kind": "nature",
     "kind_scratch": "brouillon", "kind_rebuildable": "refaisable",
     "kind_expensive": "coûteux", "kind_results": "résultats",
@@ -754,9 +812,9 @@ FR = {
     "clean_lbl_log": "Les journaux de LBL. Personne d'autre qu'un humain ne"
                      " les lit.",
     "clean_lbl_lblrv":
-        "Les tables de vitesses raie par raie de LBL, un fichier par pose, et"
-        " ce que LBL écrit de plus gros. Ne se refait qu'en relançant LBL,"
-        " c'est-à-dire des heures : compté ici, pas proposé.",
+        "Les tables de vitesses raie par raie de LBL, un fichier par"
+        " exposition, et ce que LBL écrit de plus gros. Cela ne se refait qu'en"
+        " relançant LBL, ce qui prend des heures.",
     "clean_lbl_templates":
         "Les templates construits par LBL, un par objet et par passage. Ne se"
         " refont qu'en relançant l'étape template de LBL.",
@@ -767,8 +825,9 @@ FR = {
     "clean_lbl_lblreftable":
         "Les tables de référence de LBL, une par objet et par passage.",
     "clean_lbl_lblrdb":
-        "Les vitesses : le rdb dont est tirée chaque page RV de chaque"
-        " rapport. Jamais proposé à l'effacement.",
+        "Les vitesses : le rdb dont chaque page RV de chaque rapport est tirée."
+        " Un résultat, et la plus petite chose de cette liste : l'effacer ne"
+        " libère presque rien et jette la mesure.",
     "clean_pycache":
         "Du Python compilé, refait au prochain import du paquet.",
     "quit": "Quitter", "quit_title": "quitter pca2d-preclean",
@@ -2196,10 +2255,15 @@ class App:
         # land in one folder. Only when none was kept: a field somebody emptied
         # stays empty.
         kept = self.saved.get("run_name")
+        opening = dict(self.saved)
+        opening["objects"] = self.saved.get("checked") or []
+        proposal = suggested_run_name(opening)
         if not str(kept or "").strip():
-            proposed = dict(self.saved)
-            proposed["objects"] = self.saved.get("checked") or []
-            kept = suggested_run_name(proposed)
+            kept = proposal
+        # It goes on following the targets for as long as it IS the proposal,
+        # which a name restored from the last session still can be: see
+        # _follow_name, which stops the moment somebody types their own.
+        self._proposed = kept if kept == proposal else None
         self.vars["run_name"] = tk.StringVar(value=kept)
         entry = ttk.Entry(row, textvariable=self.vars["run_name"], width=34)
         entry.pack(side="left", padx=(6, 4))
@@ -2925,6 +2989,7 @@ class App:
         return out
 
     def _sync(self, *_args):
+        self._follow_name()
         state = self.state()
         self.command.delete("1.0", "end")
         self.command.insert("1.0", command_line(state, self.t("command_pending")))
@@ -3730,7 +3795,7 @@ class App:
 
         self.clean_tree = ttk.Treeview(
             box, columns=("size", "files", "kind"), show="tree headings",
-            selectmode="browse", height=12)
+            selectmode="extended", height=12)
         self.clean_headings = (("#0", "col_object"), ("size", "col_size"),
                                ("files", "col_nfiles"), ("kind", "col_kind"))
         self.clean_tree.column("#0", width=240)
@@ -3759,12 +3824,22 @@ class App:
         self.clean_button.pack(side="left", padx=(0, 6))
         self._register(self.clean_button, "clean_measure")
         self._tip(self.clean_button, "help_clean_measure")
+        # NOT disabled when there is nothing to free: a greyed button says
+        # "you cannot", and what was meant was "there is nothing here yet".
+        # It says that itself, in the log, when it is pressed
         self.purge_button = ttk.Button(bar, text=self.t("clean_purge"),
-                                       command=self.purge_disks,
-                                       state="disabled")
+                                       command=self.purge_disks)
         self.purge_button.pack(side="left")
         self._register(self.purge_button, "clean_purge")
         self._tip(self.purge_button, "help_clean_purge")
+        # and the other half: whatever is picked in the list goes, of whatever
+        # kind. An afternoon of LBL on a disk with no room left is still a
+        # choice somebody is entitled to make, so it is offered and priced
+        self.select_button = ttk.Button(bar, text=self.t("clean_selected"),
+                                        command=self.purge_selected)
+        self.select_button.pack(side="left", padx=(6, 0))
+        self._register(self.select_button, "clean_selected")
+        self._tip(self.select_button, "help_clean_selected")
         self.clean_items = []
         self._measuring = False
 
@@ -3788,6 +3863,7 @@ class App:
         self._measuring = True
         self.clean_button.configure(state="disabled")
         self.purge_button.configure(state="disabled")
+        self.select_button.configure(state="disabled")
         self.clean_totals.configure(text=self.t("clean_measuring"))
         config_path, out_root = self._clean_state()
 
@@ -3816,9 +3892,9 @@ class App:
         self._measuring = False
         self.clean_items = items
         self.clean_button.configure(state="normal")
+        self.purge_button.configure(state="normal")
+        self.select_button.configure(state="normal")
         self._clean_rows()
-        self.purge_button.configure(
-            state="normal" if totals(items)[1] else "disabled")
 
     def _clean_rows(self):
         """The survey in the list, in the window's language.
@@ -3862,22 +3938,69 @@ class App:
 
     def purge_disks(self):
         """Delete the scratch and the rebuildable, after saying what and how
-        much. Never the results: housekeeping.purge checks the flag itself."""
-        from .housekeeping import human, purge
+        much. The one press that needs no choosing: everything it touches comes
+        back by itself, at a cost in minutes."""
+        if not self.clean_items:
+            self._say("clean_none", level="warn")
+            return
         going = [it for it in self.clean_items if it.get("removable")
                  and it["bytes"]]
         if not going:
             self._say("clean_nothing", level="warn")
             return
+        from .housekeeping import human
         freed = sum(it["bytes"] for it in going)
-        listed = "\n".join("  %s   %s" % (human(it["bytes"]), it["name"])
-                            for it in going)
-        from tkinter import messagebox
-        if not messagebox.askyesno(
-                self.t("clean_confirm_title"),
-                self.t("clean_confirm") % (human(freed), len(going), listed)):
+        if not self._ask_delete(self.t("clean_confirm_title"),
+                                self.t("clean_confirm")
+                                % (human(freed), len(going),
+                                   self._listed(going))):
             return
-        gained, gone = purge(self.clean_items)
+        self._delete(going)
+
+    def purge_selected(self):
+        """Delete whatever is picked in the list, of whatever kind.
+
+        The expensive and the results are on the list too, and a row that can
+        be read but never chosen is a row that lies about what the disk holds.
+        What separates them from the cache is not whether they may be deleted,
+        it is what it costs to have them back, so that is what the question
+        says, in the terms of the most expensive kind in the selection.
+        """
+        from .housekeeping import EXPENSIVE, RESULTS, human
+        rows = self.clean_tree.selection()
+        going = [self.clean_items[int(r)] for r in rows if r.isdigit()]
+        going = [it for it in going if it["bytes"]]
+        if not rows or not going:
+            self._say("clean_pick" if not rows else "clean_nothing",
+                      level="warn")
+            return
+        kinds = {it["kind"] for it in going}
+        cost = ("clean_cost_results" if RESULTS in kinds else
+                "clean_cost_expensive" if EXPENSIVE in kinds else
+                "clean_cost_rebuildable")
+        if not self._ask_delete(
+                self.t("clean_confirm_pick_title"),
+                self.t("clean_confirm_pick")
+                % (human(sum(it["bytes"] for it in going)), len(going),
+                   self._listed(going), self.t(cost))):
+            return
+        self._delete(going)
+
+    @staticmethod
+    def _listed(items):
+        """What is about to go, one line each, biggest first."""
+        from .housekeeping import human
+        return "\n".join("  %s   %s" % (human(it["bytes"]), it["name"])
+                          for it in sorted(items, key=lambda it: -it["bytes"]))
+
+    def _ask_delete(self, title, question):
+        from tkinter import messagebox
+        return bool(messagebox.askyesno(title, question))
+
+    def _delete(self, going):
+        """Remove exactly these items, and measure again so the list is true."""
+        from .housekeeping import human, purge
+        gained, gone = purge(going, kinds={it["kind"] for it in going})
         self._say("clean_freed", human(gained), len(gone), level="info")
         self.measure_disks()
 
@@ -3891,8 +4014,43 @@ class App:
         self._sync()
 
     def _auto_name(self):
-        """Propose a name again, from the targets and settings as they stand."""
-        self.vars["run_name"].set(suggested_run_name(self.state()))
+        """Propose a name again, from the targets and settings as they stand.
+
+        And put the name back under the window's care: Auto is how one asks
+        for the proposal after having typed something else.
+        """
+        self._proposed = suggested_run_name(self.state())
+        self.vars["run_name"].set(self._proposed)
+
+    def _follow_name(self):
+        """Keep the proposed name in step with what it names.
+
+        The name IS the folder, and the folder is what says, months later,
+        which targets were reduced and whether the settings were these ones. A
+        name still reading GJ1+PROXIMA over a run of TOI-2120 is worse than no
+        name at all, so it follows the ticks and the settings that go into it.
+
+        It follows only while it is still the window's own proposal. A name
+        somebody typed is a decision and is left alone, and so is a field
+        somebody emptied; Auto is how the proposal is asked for back.
+        """
+        var = self.vars.get("run_name")
+        if var is None or getattr(self, "_naming", False):
+            return
+        current = str(var.get() or "").strip()
+        if not current or current != getattr(self, "_proposed", None):
+            return
+        fresh = suggested_run_name(self.state())
+        if fresh == current:
+            return
+        # the write fires this trace again; the flag is what stops it being a
+        # loop, and the second pass would in any case find nothing to change
+        self._naming = True
+        try:
+            self._proposed = fresh
+            var.set(fresh)
+        finally:
+            self._naming = False
 
     def _propose_out(self):
         """Offer a place for the run's products, beside the data it reads.

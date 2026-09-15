@@ -16,10 +16,14 @@ A run leaves four kinds of thing, and only the reader knows which is which:
     RESULTS      the corrected spectra, the reports, the rdb. What the whole
                  thing was for.
 
-Only the first two are offered for deletion, and each item says what deleting
-it would cost. Nothing here follows a symlink: lbl/science is a tree of links
-to the spectra, and a cleanup that walked into it would count the raw data as
-its own and then delete it.
+The first two are what `--purge` empties on its own. The other two are offered
+as well, to `--kinds` here and to the selection in the window: a full disk is a
+full disk, and somebody who knows an afternoon of LBL is on that disk can
+decide to spend it again. What each kind costs to have back is said before
+anything is deleted, which is the difference between offering it and doing it
+quietly. Nothing here follows a symlink: lbl/science is a tree of links to the
+spectra, and a cleanup that walked into it would count the raw data as its own
+and then delete it.
 """
 
 from __future__ import annotations
@@ -30,10 +34,20 @@ import shutil
 
 from .logger import log
 
-#: what is offered for deletion, and what is only counted
+#: every kind, cheapest to have back first
 SCRATCH, REBUILDABLE, EXPENSIVE, RESULTS = "scratch", "rebuildable", "expensive", "results"
-#: the kinds the purge button touches, in the order it would remove them
+#: what one press of "delete what can go" empties: the two that cost nothing
+#: but the time to make them again. The other two are deleted only by naming
+#: them, row by row in the window or with --kinds here
 REMOVABLE = (SCRATCH, REBUILDABLE)
+KINDS = (SCRATCH, REBUILDABLE, EXPENSIVE, RESULTS)
+#: what deleting one of them costs, which is the only thing that separates them
+COST = {
+    SCRATCH: "nothing: no stage reads it",
+    REBUILDABLE: "the minutes of making it again from what stays here",
+    EXPENSIVE: "the hours that made it: a fit, or an LBL pass",
+    RESULTS: "the whole run: nothing here remakes a result, only running again",
+}
 
 
 def human(n):
@@ -153,8 +167,8 @@ def survey(config=None, config_path=None, out_root=None, package=None):
     root = out_root or out.get("directory")
     if root:
         items.append(Item("reports and corrected spectra", root, RESULTS,
-                          "what the runs produced. Not offered for deletion",
-                          key="results"))
+                          "what the runs produced: deleting this is deleting"
+                          " the run, not its scratch", key="results"))
 
     tree = under(base, lbl.get("directory") or "lbl")
     if tree and os.path.isdir(tree):
@@ -172,7 +186,8 @@ def survey(config=None, config_path=None, out_root=None, package=None):
                 ("models", EXPENSIVE, "LBL's models"),
                 ("calib", EXPENSIVE, "LBL's calibrations"),
                 ("lblreftable", EXPENSIVE, "LBL's reference tables"),
-                ("lblrdb", RESULTS, "the velocities. Not offered for deletion")):
+                ("lblrdb", RESULTS, "the velocities: every RV page of every"
+                 " report is drawn from these")):
             items.append(Item("LBL " + folder, os.path.join(tree, folder),
                               kind, what, key="lbl_" + folder))
 
@@ -226,15 +241,21 @@ def empty(path):
             log("could not remove %s (%s)" % (full, exc), "warn")
 
 
-def purge(items, dry_run=False):
-    """Delete the removable items of a survey. Returns (bytes freed, paths).
+def purge(items, dry_run=False, kinds=REMOVABLE):
+    """Delete the items of a survey whose kind is in `kinds`.
 
-    Only items the survey itself marked removable are touched, so a caller
-    cannot turn a results folder into a purge by passing it here.
+    The default is the two kinds that cost nothing but time, so a caller that
+    passes a whole survey and asks for nothing in particular cannot empty a
+    results folder by accident. Naming the kinds is how the window's selection
+    and --kinds delete the expensive and the results: deleting those is a
+    decision, and this function's job is to make it one rather than to refuse
+    it. `items` is already the choice, so an item passed in with a kind that
+    was asked for goes, whatever the survey marked it.
     """
+    kinds = tuple(kinds)
     freed, gone = 0, []
     for it in items:
-        if not it.get("removable"):
+        if it.get("kind") not in kinds:
             continue
         paths = it["path"] if isinstance(it["path"], list) else [it["path"]]
         for path in paths:
@@ -262,7 +283,9 @@ def report(items):
     for it in items:
         out.append("%-*s  %9s  %7s files  %-12s %s"
                    % (width, it["name"], human(it["bytes"]), it["files"],
-                      it["kind"], "" if it["removable"] else "(kept)"))
+                      it["kind"],
+                      "" if it["removable"] else "(only with --kinds %s)"
+                      % it["kind"]))
     total, free = totals(items)
     out.append("%-*s  %9s" % (width, "in all", human(total)))
     out.append("%-*s  %9s" % (width, "can be freed", human(free)))
@@ -278,6 +301,13 @@ def parse_args(argv=None):
                    help="override output.directory")
     p.add_argument("--purge", action="store_true",
                    help="delete the scratch and rebuildable items")
+    p.add_argument("--kinds", nargs="+", default=None, metavar="KIND",
+                   choices=KINDS,
+                   help="with --purge: which kinds go, out of %s. The default"
+                        " is scratch and rebuildable; naming `expensive` or"
+                        " `results` deletes hours of work or a run's own"
+                        " products, and says what that costs first"
+                        % ", ".join(KINDS))
     p.add_argument("--dry-run", action="store_true",
                    help="with --purge: say what would go, delete nothing")
     return p.parse_args(argv)
@@ -294,10 +324,14 @@ def main(argv=None):
         log("  " + line, "value")
     if not args.purge:
         return 0
-    freed, gone = purge(items, dry_run=args.dry_run)
-    log("%s %s from %d places"
-        % ("would free" if args.dry_run else "freed", human(freed), len(gone)),
-        "info")
+    kinds = tuple(args.kinds or REMOVABLE)
+    for kind in kinds:
+        if kind not in REMOVABLE:
+            log("%s is included: %s" % (kind, COST[kind]), "warn")
+    freed, gone = purge(items, dry_run=args.dry_run, kinds=kinds)
+    log("%s %s from %d places (%s)"
+        % ("would free" if args.dry_run else "freed", human(freed), len(gone),
+           ", ".join(kinds)), "info")
     return 0
 
 
