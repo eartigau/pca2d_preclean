@@ -209,7 +209,10 @@ def test_the_figure_runs_as_the_bundle_runs_it(fitted, tmp_path):
                         "--fit", str(out / "fit.npz"),
                         "--windows", "%.3f:1" % grid[1000], "--out", str(pdf),
                         "--shrink", "--shrink-smooth", "--smooth-components", "1",
-                        "--resolution", "70000"],
+                        "--resolution", "70000",
+                        # the correction's own options, as cli.shrink_args hands
+                        # them over: a page has to come out of them all
+                        "--weight", "velocity", "--velocity-floor", "0.05"],
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stderr[-800:]
     assert pdf.exists()
@@ -265,3 +268,22 @@ def test_a_figure_draws_the_rows_its_fit_used(fitted):
     with pytest.raises(SystemExit) as caught:
         rows_of(meta, alien)
     assert "another cube" in str(caught.value)
+
+
+def test_the_figure_takes_the_correction_options_it_is_handed():
+    """cli.shrink_args builds ONE list for the correct stage and for this
+    figure, so that panel 3 is what a corrected file holds. Every option in it
+    therefore has to parse here too: --weight arrived on 2026-09-15 and did not,
+    the figure died on `unrecognized arguments`, and a whole report came out
+    with no river plot in it at all."""
+    from pca2d.cli import shrink_args
+    from pca2d.figures.sequence import parse_args
+
+    config = {"correct": {"mask": "common", "shrink": True,
+                          "weight": "velocity", "velocity_floor": 0.05},
+              "twoframe": {"resolution": 80000.0}}
+    shared = shrink_args(config)
+    args = parse_args(["--cube", "c", "--fit", "f", "--out", "o",
+                       "--windows", "1600:2", *shared])
+    assert args.weight == "velocity" and args.velocity_floor == 0.05
+    assert args.mask == "common" and args.shrink is True

@@ -74,6 +74,15 @@ def parse_args(argv=None):
     p.add_argument("--shrink-smooth", action="store_true")
     p.add_argument("--smooth-components", default=None)
     p.add_argument("--resolution", type=float, default=None)
+    # The correction's options are shared with this figure ON PURPOSE, so that
+    # panel 3 is what a corrected file holds (cli.shrink_args). Two of them are
+    # about how the amplitudes were MEASURED rather than about what is divided
+    # out, and this figure draws the fit's own amplitudes: it takes them so that
+    # the shared list parses, and says on the page which ones it drew. Without
+    # this, the whole figure died on "unrecognized arguments" and a report came
+    # out with no river plot at all (SMETHELLS_20, 2026-09-15).
+    p.add_argument("--weight", choices=("flux", "velocity"), default="flux")
+    p.add_argument("--velocity-floor", type=float, default=None)
     p.add_argument("--mask", default=None,
                    choices=("exposure", "common", "none"),
                    help="which samples the corrected files blank, so the panels"
@@ -474,6 +483,18 @@ def main(argv=None):
                 fig = draw_window(ctx, centre, width, args.n_overplot, only, label)
                 if fig is None:
                     continue
+                if args.weight != "flux":
+                    # Said on the page, because it is the one thing here that
+                    # panel 3 does NOT show: with correct.weight: velocity the
+                    # files are corrected with amplitudes refitted per exposure
+                    # in that metric, and these panels are drawn with the fit's
+                    # own. The blocks are the same; the amplitudes in front of
+                    # them are measured differently.
+                    fig.text(0.01, 0.003,
+                             "panels drawn with the FIT's amplitudes; the files"
+                             " were corrected with amplitudes refitted on"
+                             " (dF/dv)\u00b2 (correct.weight: %s)" % args.weight,
+                             fontsize=7, color="#b26a00", ha="left")
                 pdf.savefig(fig)
                 plt.close(fig)
     log("wrote %s" % args.out)
