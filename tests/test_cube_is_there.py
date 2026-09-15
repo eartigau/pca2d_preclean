@@ -209,3 +209,21 @@ def test_a_complete_cube_is_still_reused(tmp_path, monkeypatch):
                                   "dv": 0.5}}}
     cli.run_cube(plan)
     assert built == [], "the whole point of the cache"
+
+
+def test_the_fit_stage_itself_says_a_missing_cube_in_words(tmp_path):
+    """The other half of the same trap: twoframe is also run on its own with
+    --cube, and then check_cubes has not looked at anything. What used to come
+    out of np.load was a bare FileNotFoundError, three frames in."""
+    from pca2d.twoframe import cube_shape
+
+    with pytest.raises(SystemExit) as gone:
+        cube_shape(str(tmp_path / "cube_tfits_4e793f8df25f"))
+    assert "cube_tfits_4e793f8df25f" in str(gone.value)
+    assert "--stages cube,fit" in str(gone.value)
+
+    half = tmp_path / "cube_tfits_part"
+    half.mkdir()
+    with pytest.raises(SystemExit) as empty:
+        cube_shape(str(half))
+    assert "data.npy" in str(empty.value)

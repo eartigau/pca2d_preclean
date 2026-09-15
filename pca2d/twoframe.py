@@ -1436,10 +1436,31 @@ def exposures_label(names, keep, per_row=None):
 
 
 def cube_shape(path):
-    """(rows, columns) of a cached cube, read from the array header alone."""
+    """(rows, columns) of a cached cube, read from the array header alone.
+
+    The first thing the fit opens, so it is where a cube that is not there is
+    said in words. cli.check_cubes looks for one before any stage announces
+    itself and puts the cube stage back when it is gone, but this module is
+    also run on its own with --cube, and then nothing has looked: a cache
+    emptied between two runs used to arrive here as a bare FileNotFoundError
+    out of np.load, three frames deep, after the fit had already timed itself.
+    """
+    missing = None
     if os.path.isdir(path):
-        shape = np.load(os.path.join(path, "data.npy"), mmap_mode="r").shape
-        return int(shape[0]), int(shape[1])
+        data = os.path.join(path, "data.npy")
+        if not os.path.exists(data):
+            missing = "the cube directory %s holds no data.npy" % path
+        else:
+            shape = np.load(data, mmap_mode="r").shape
+            return int(shape[0]), int(shape[1])
+    elif not os.path.exists(path):
+        missing = "there is no cube at %s" % path
+    if missing:
+        raise SystemExit(
+            "%s. That is the cube stage's output, and it is gone or was never"
+            " built: run this configuration with the cube stage as well"
+            " (--stages cube,fit), which reads every spectrum once and takes a"
+            " few minutes." % missing)
     with np.load(path, allow_pickle=True) as handle:
         shape = handle["data"].shape
     return int(shape[0]), int(shape[1])
