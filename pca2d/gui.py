@@ -74,7 +74,9 @@ OPTIONS = [
     ("velocity_term", "twoframe.velocity_term", "bool"),
     ("iters", "twoframe.iters", "int"),
     ("shrink", "correct.shrink", "bool"),
-    ("weight", "correct.weight", ("flux", "velocity")),
+    # a toggle, not a menu: two values, and a tick box says which one you are in
+    # at a glance. The kind carries them, ticked first (pca2d.gui._build_options)
+    ("weight", "correct.weight", ("toggle", "velocity", "flux")),
     # no correct.mask here either: one line set for the whole campaign
     # ("common"), decided in the code
     ("width_kms", "highpass.width_kms", "float"),
@@ -273,7 +275,8 @@ EN = {
     "opt_velocity_term": "fit a velocity per exposure",
     "opt_iters": "sweeps at most",
     "opt_shrink": "divide only what is significant",
-    "opt_weight": "amplitudes measured on",
+    "opt_weight": "correction fit metric",
+    "opt_weight_on": "on dF/dv",
     "help_weight":
         "The metric the correction's amplitudes are measured in. `flux`, the"
         " nominal: every sample as the fit saw it. `velocity`: each sample"
@@ -687,7 +690,8 @@ FR = {
     "opt_velocity_term": "ajuster une vitesse par pose",
     "opt_iters": "itérations au plus",
     "opt_shrink": "ne diviser que le significatif",
-    "opt_weight": "amplitudes mesurées sur",
+    "opt_weight": "métrique d'ajustement de la correction",
+    "opt_weight_on": "sur dF/dv",
     "help_weight":
         "La métrique dans laquelle les amplitudes de la correction sont"
         " mesurées. `flux`, le nominal : chaque échantillon tel que"
@@ -2533,6 +2537,16 @@ class App:
             if kind == "bool":
                 var = tk.BooleanVar(value=bool(default))
                 widget = ttk.Checkbutton(grid, variable=var)
+            elif isinstance(kind, tuple) and kind and kind[0] == "toggle":
+                # a tick box holding a STRING: ttk gives a Checkbutton onvalue
+                # and offvalue, so the variable carries the config's own words
+                # and nothing downstream has to translate a boolean back
+                _, ticked, unticked = kind
+                var = tk.StringVar(value=str(default))
+                widget = ttk.Checkbutton(grid, variable=var, onvalue=ticked,
+                                         offvalue=unticked,
+                                         text=self.t("opt_%s_on" % key))
+                self._register(widget, "opt_%s_on" % key)
             elif isinstance(kind, tuple):
                 var = tk.StringVar(value=str(default))
                 widget = ttk.Combobox(grid, textvariable=var, values=list(kind),

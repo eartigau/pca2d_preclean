@@ -347,7 +347,7 @@ general:
                             # row's own weight, the weights scaled by the fit's
                             # reduced chi2 (pca2d.shrink). Where it goes to
                             # zero the file keeps its delivered flux. PCA2SHRK
-    weight: flux            # THE METRIC THE AMPLITUDES ARE MEASURED IN when
+    weight: velocity        # THE METRIC THE AMPLITUDES ARE MEASURED IN when
                             # they are refitted for a file. `flux`: every sample
                             # as the fit saw it, the nominal. `velocity`: every
                             # sample weighted by the star's own derivative
@@ -357,8 +357,18 @@ general:
                             # has structure moves no line. It implies a refit,
                             # and it changes only how b is MEASURED: what is
                             # divided out, which samples are blanked and the
-                            # shrinkage below are untouched. Under test since
-                            # 2026-09-15 (variants/velweight.yaml)
+                            # shrinkage below are untouched.
+                            #
+                            # NOMINAL since 2026-09-15, on the principle rather
+                            # than on a measured gain: what a contaminant does
+                            # to a velocity IS its overlap with the star's
+                            # derivative, so that is the metric to measure it
+                            # in. Measured, the two are indistinguishable on
+                            # both targets tried: TOI-2120 (where the correction
+                            # gains a factor three) 15.4 +- 1.2 against 15.0 +-
+                            # 1.2 m/s, paired t = 0.90; TOI-4552 (where it
+                            # costs) 12.33/10.82 against 12.07/11.60, t = 0.44.
+                            # `flux` is the older behaviour and still runs.
     velocity_floor: 0.05    # with weight: velocity, what a sample carrying no
                             # velocity information keeps, as a fraction of the
                             # mean. Zero would leave a component that lives only

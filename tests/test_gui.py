@@ -784,3 +784,16 @@ def test_a_setting_a_run_was_asked_for_lands_in_its_configuration():
     apply_setting_flags(untouched, parse_args(["--object", "X"]))
     assert untouched == {"correct": {"weight": "flux"}}, \
         "a flag nobody passed changes nothing"
+
+
+def test_a_two_valued_setting_is_a_tick_box_holding_its_own_words():
+    """A menu of two words is a menu too many. The kind says `toggle` and the
+    two values it switches between, ticked first, and the variable carries the
+    config's own word so that nothing downstream translates a boolean back."""
+    from pca2d.gui import OPTIONS
+
+    kinds = {key: kind for key, _path, kind in OPTIONS}
+    assert kinds["weight"] == ("toggle", "velocity", "flux")
+    for key, kind in kinds.items():
+        if isinstance(kind, tuple) and kind and kind[0] == "toggle":
+            assert len(kind) == 3, "%s: ticked and unticked, and nothing else" % key
