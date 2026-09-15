@@ -322,6 +322,22 @@ general:
                             # row's own weight, the weights scaled by the fit's
                             # reduced chi2 (pca2d.shrink). Where it goes to
                             # zero the file keeps its delivered flux. PCA2SHRK
+    weight: flux            # THE METRIC THE AMPLITUDES ARE MEASURED IN when
+                            # they are refitted for a file. `flux`: every sample
+                            # as the fit saw it, the nominal. `velocity`: every
+                            # sample weighted by the star's own derivative
+                            # there, (dT/dv)^2, since what a contaminant does to
+                            # a radial velocity is its overlap with that
+                            # derivative and a contaminant flat where the star
+                            # has structure moves no line. It implies a refit,
+                            # and it changes only how b is MEASURED: what is
+                            # divided out, which samples are blanked and the
+                            # shrinkage below are untouched. Under test since
+                            # 2026-09-15 (variants/velweight.yaml)
+    velocity_floor: 0.05    # with weight: velocity, what a sample carrying no
+                            # velocity information keeps, as a fraction of the
+                            # mean. Zero would leave a component that lives only
+                            # where the star is flat with no amplitude at all
     mask: common            # which samples a corrected file blanks. `exposure`
                             # blanks the ones that exposure's own fit gave no
                             # weight, so every epoch carries a different set of

@@ -552,6 +552,11 @@ def run_correct(plan):
         " exactly panel 3 of the sequence figure"
         % (n_earth, " with %d star components" % n_star if n_star else ""), "info")
     mode = correct_mode(plan)
+    if str((cfg.get("correct") or {}).get("weight") or "flux") == "velocity" \
+            and "--refit" not in mode:
+        # measuring the amplitudes in another metric means measuring them again,
+        # whatever the cube's rows are
+        mode = list(mode) + ["--refit", "--config", plan["written_config"]]
     if "--refit" in mode:
         log("the fit's rows are nights: every exposure of every fitted night is"
             " corrected with its own coefficients, solved for that file against"
@@ -640,6 +645,15 @@ def shrink_args(cfg):
     which = corr.get("smooth_components") or []
     if which:
         out += ["--smooth-components", ",".join(str(int(j)) for j in which)]
+    # the metric the refitted amplitudes are measured in (pca2d.reconstruct)
+    weight = str(corr.get("weight") or "flux")
+    if weight == "velocity":
+        out += ["--weight", "velocity",
+                "--velocity-floor", str(float(corr.get("velocity_floor") or 0))]
+        log("the amplitudes are measured on (dT/dv)^2 weights rather than on"
+            " the flux: a contaminant moves a line only through its overlap"
+            " with the star's derivative. The correction itself is unchanged",
+            "info")
     tf = cfg.get("twoframe") or {}
     resolution = tf.get("resolution") or tf.get("star_resolution")
     if out and resolution:

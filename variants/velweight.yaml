@@ -1,0 +1,20 @@
+# The nominal, with the correction's amplitudes measured in the metric that
+# decides velocities rather than on the flux: every sample weighted by the
+# star's own derivative there, (dT/dv)^2. A contaminant that is flat where the
+# star has structure moves no line, and this is the fit believing that.
+#
+# Correction only: it reuses the nominal's fit, so the basis Q is the same and
+# what changes is the amplitude b each exposure is corrected with. What is
+# divided out, which samples are blanked and the shrinkage are all untouched.
+#
+#     pca2d-preclean --object TOI2120 --variant velweight
+reuse_fit: nominal
+
+correct:
+  weight: velocity
+  velocity_floor: 0.05
+
+note: |
+  Option (a) of 2026-09-15. To be measured against the nominal by LBL on
+  TOI2120 (where the correction gains), Proxima and TOI4552 (where it loses),
+  with the RV compilation plot.

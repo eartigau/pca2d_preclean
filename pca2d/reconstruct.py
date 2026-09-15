@@ -145,6 +145,22 @@ def parse_args(argv=None):
     p.add_argument("--resolution", type=float, default=None,
                    help="the instrument's resolving power, the unit of the two"
                         " smoothings above")
+    p.add_argument("--weight", choices=("flux", "velocity"), default="flux",
+                   help="the metric the REFITTED amplitudes are measured in."
+                        " 'flux', every sample as the fit saw it. 'velocity',"
+                        " every sample weighted by the star's own derivative"
+                        " there, (dT/dv)^2: what a contaminant does to a radial"
+                        " velocity is set by its overlap with that derivative,"
+                        " and a contaminant that is flat where the star has"
+                        " structure moves no line. What is divided out of the"
+                        " flux does not change, nor does which samples are"
+                        " blanked; only how b is measured. Implies --refit, and"
+                        " needs --resolution for the derivative's width")
+    p.add_argument("--velocity-floor", type=float, default=VELOCITY_FLOOR,
+                   help="with --weight velocity, the weight a sample with no"
+                        " velocity information keeps, as a fraction of the"
+                        " median. Zero would leave a component that lives only"
+                        " where the star is flat with no amplitude at all")
     p.add_argument("--star-group", type=int, default=0,
                    help="the first star-spectrum group of this object in a joint"
                         " fit, 2 x its index among the objects (pca2d.joint);"
@@ -586,7 +602,7 @@ def weighted_on_pixels(alive, wave, grid):
 
 def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
                  halfwidth=8, overwrite=False, max_sky=None, alive=None,
-                 clipped=None, clip_nsig=None, refit=False):
+                 clipped=None, clip_nsig=None, refit=False, weight="flux"):
     """Write a t.fits with the model divided out. Returns the new path.
 
     The model lives in `ln f - savgol(ln f)`, so removing it from the flux is a
@@ -674,6 +690,7 @@ def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
         head["PCA2RNAN"] = (n_clipped, "samples beyond it in panel 5, set to NaN")
     head["PCA2REJ"] = (bool(row["rejected"]), "exposure was MAD-rejected")
     head["PCA2RFIT"] = (bool(refit), "coefficients solved for this file, basis fixed")
+    head["PCA2WGHT"] = (str(weight), "metric the amplitudes were measured in")
     head["PCA2SHRK"] = (model.get("shrink") is not None,
                         "observer comps kept only where significant")
     head["PCA2SSIG"] = (bool(model.get("shrink_smooth")),
@@ -784,7 +801,64 @@ def rows_by_night(model, args):
     return out, missing
 
 
-def refit_row(model, path, config, shifter, base_row):
+#: The weight a sample keeps in the amplitude fit when it carries no velocity
+#: information at all, as a fraction of the median velocity weight. Not zero: a
+#: component living only where the star is flat would have no amplitude at all,
+#: and an unconstrained amplitude is divided out of the flux like any other.
+VELOCITY_FLOOR = 0.05
+
+
+def velocity_weights(w, derivative, floor=VELOCITY_FLOOR):
+    """`w` weighted by (dT/dv)^2: where the measurement of velocity lives.
+
+    What a contaminant does to a radial velocity is set by its overlap with the
+    DERIVATIVE of the star, since that is what LBL projects a residual on: a
+    contaminant that is flat where the star has structure moves no line. So the
+    amplitudes of the observer components are measured in that metric rather
+    than on the flux, where a broad residual with no velocity content weighs as
+    much as a line wing.
+
+    The weights are normalised by the WEIGHTED MEAN of (dT/dv)^2, so their
+    total is the total they had and the covariance stays the size it was, and
+    floored, so that a column the star says nothing about still constrains a
+    component a little. The mean and not the median: most of a spectrum is
+    between lines, so the median derivative is nearly zero and dividing by it
+    turns the handful of samples that carry the information into infinities.
+    Samples with no weight keep none: this changes what the fit BELIEVES, never
+    which samples exist.
+    """
+    w = np.asarray(w, dtype=float)
+    g = np.asarray(derivative, dtype=float) ** 2
+    live = w > 0
+    if not live.any():
+        return w
+    total = float(w[live].sum())
+    scale = float((w[live] * g[live]).sum()) / total if total > 0 else 0.0
+    if not np.isfinite(scale) or scale <= 0:
+        return w                       # a star with no structure: nothing to say
+    out = w * (g / scale + float(floor))
+    out[~live] = 0.0
+    return out
+
+
+def star_derivative(carried, fwhm):
+    """d/d(sample) of the star as this exposure sees it, row by row.
+
+    The Savitzky-Golay derivative of the template-making filter, never
+    np.gradient: on noisy data the difference is not cosmetic.
+    """
+    from .resolution import smooth
+
+    out = np.zeros_like(np.asarray(carried, dtype=float))
+    for row in range(out.shape[0]):
+        if np.any(carried[row]):
+            out[row] = smooth(np.asarray(carried[row], dtype=float),
+                              float(fwhm), deriv=1)
+    return out
+
+
+def refit_row(model, path, config, shifter, base_row, weight="flux",
+              floor=VELOCITY_FLOOR, fwhm=None):
     """This exposure's own coefficients, against the campaign's fixed basis.
 
     The alternative, which this replaces, was to hand every exposure of a night
@@ -840,20 +914,31 @@ def refit_row(model, path, config, shifter, base_row):
         data[parity] -= model["means"][names[group_of(model, parity, len(names))]]
     berv = float(payload["meta"]["berv"])
     delta = np.full(2, -float(pixel_shift(berv, model["dv"])))
+    carried = np.zeros_like(data)
     for parity in (0, 1):
         template = template_for(model, parity)
         if template is not None and np.any(template):
-            data[parity] -= _bcd.carry_template(template, shifter,
-                                                delta[parity:parity + 1])[0]
+            carried[parity] = _bcd.carry_template(template, shifter,
+                                                  delta[parity:parity + 1])[0]
+    data -= carried
     data[w <= 0] = 0.0
+
+    # The metric the amplitudes are measured in. `flux` is every sample as the
+    # fit saw it; `velocity` weighs each sample by the star's own derivative
+    # there, which is what decides whether a contaminant moves a line at all.
+    # The correction itself is unchanged: this is how b is MEASURED, not what
+    # is divided out, and the mask below is still the flux weights'.
+    solve_w = w
+    if str(weight) == "velocity" and fwhm:
+        solve_w = velocity_weights(w, star_derivative(carried, fwhm), floor)
 
     tie = np.zeros(2, dtype=int)          # the two parities are one exposure
     # No velocity column here on purpose: this path re-solves ONE exposure
     # against a basis the fit already fixed, and the shift it would find has
     # nowhere to go. What the fit found is in the COEFFS row, and that is what
     # the header reports.
-    a, b, _, _ = _bcd.joint_coeffs(data, w, model["P"], model["Q"], shifter,
-                                   delta, exposure=tie)
+    a, b, _, _ = _bcd.joint_coeffs(data, solve_w, model["P"], model["Q"],
+                                   shifter, delta, exposure=tie)
     if base_row is None:
         return None, None
     # this exposure's own no-weight mask, by the rule fit_weights_mask applies
@@ -931,6 +1016,9 @@ def correct_many(model, args):
         pairs = [(args.file, None)]
     covered = []
     shifter = config = None
+    if getattr(args, "weight", "flux") == "velocity":
+        # measuring b in another metric means measuring it again
+        args.refit = True
     if args.refit:
         if not args.config:
             raise SystemExit("--refit needs --config, the YAML the cube was"
@@ -1023,6 +1111,21 @@ def correct_many(model, args):
                 % (j + 1, " (smoothed)" if j in smooth_which else "",
                    100 * np.mean(kept > 0.9), 100 * np.mean(kept == 0),
                    float(kept.mean())), "value")
+    # the derivative's width, one resolution element of this instrument on this
+    # grid, exactly as every other Savitzky-Golay here is measured
+    velocity_fwhm = None
+    if getattr(args, "weight", "flux") == "velocity":
+        from .resolution import fwhm_samples
+        if not args.resolution:
+            raise SystemExit("--weight velocity needs --resolution: the"
+                             " derivative is taken over one resolution element,"
+                             " and c/R is what says how many samples that is")
+        velocity_fwhm = fwhm_samples(float(args.resolution), float(model["dv"]))
+        log("amplitudes measured on (dT/dv)^2 weights, the derivative over %d"
+            " samples of %.2f km/s, with a floor of %.2f: what a contaminant"
+            " does to a velocity is its overlap with the star's derivative"
+            % (velocity_fwhm, float(model["dv"]),
+               float(getattr(args, "velocity_floor", VELOCITY_FLOOR))), "info")
     written = skipped = refitted = 0
     progress = _bar(pairs, desc="correcting", unit="file")
     for path, preset in progress:
@@ -1033,7 +1136,11 @@ def correct_many(model, args):
         row = preset if preset is not None else exposure_row(model["coeffs"], path)
         own_alive = None
         if args.refit:
-            fresh, own_alive = refit_row(model, path, config, shifter, row)
+            fresh, own_alive = refit_row(
+                model, path, config, shifter, row,
+                weight=getattr(args, "weight", "flux"),
+                floor=getattr(args, "velocity_floor", VELOCITY_FLOOR),
+                fwhm=velocity_fwhm)
             if fresh is None:
                 log("  could not resample, skipped: %s" % os.path.basename(path))
                 skipped += 1
@@ -1050,7 +1157,7 @@ def correct_many(model, args):
             model, row, path, args.corrected_dir, args.n_star, args.n_earth,
             args.kernel_halfwidth, args.overwrite, max_sky=args.max_sky_ratio,
             alive=alive, clipped=clipped, clip_nsig=getattr(args, "nsig_cut", None),
-            refit=bool(args.refit))
+            refit=bool(args.refit), weight=getattr(args, "weight", "flux"))
         written += 1
         # onto the bar, not onto its own line: three hundred of these scroll
         # the narration off the screen and say nothing a total cannot

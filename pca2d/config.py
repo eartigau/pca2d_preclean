@@ -374,6 +374,16 @@ DEFAULTS = {
         "n_star": 0,
         "n_earth": None,             # None = every observer component the fit has
         "nsig_cut": None,            # NaN beyond this many running robust sigmas
+        # The metric the amplitudes are measured in when they are refitted at
+        # correction time. "flux": every sample as the fit saw it, which is the
+        # nominal. "velocity": each sample weighted by (dT/dv)^2, the star's own
+        # derivative there, since what a contaminant does to a radial velocity
+        # is its overlap with that derivative and a contaminant flat where the
+        # star has structure moves no line. It implies a refit, and it changes
+        # only how b is MEASURED: what is divided out and which samples are
+        # blanked are untouched, and so is the shrinkage below.
+        "weight": "flux",
+        "velocity_floor": 0.05,      # what a sample with no velocity info keeps
         "shrink": True,              # each component only where it is significant
         "shrink_smooth": False,      # its significance averaged over an element
         "smooth_components": [],     # observer components smoothed before division

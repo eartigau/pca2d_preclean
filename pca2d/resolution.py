@@ -37,8 +37,14 @@ def noise_factor(fwhm, polyorder=3):
     return float(np.sum(taps ** 2))
 
 
-def smooth(vec, fwhm, polyorder=3):
-    """LBL's gaussian_weighted_savgol, derivative 0, on one star-frame vector.
+def smooth(vec, fwhm, polyorder=3, deriv=0):
+    """LBL's gaussian_weighted_savgol on one vector, value or derivative.
+
+    `deriv=1` returns d(vec)/d(sample), which on a log-uniform grid is the
+    velocity sensitivity: the local polynomial is fitted exactly as for the
+    value, and its linear coefficient is kept instead of its constant one. That
+    is LBL's flux_savgol_d1, and it is what a derivative of a spectrum must be
+    here: np.gradient of noisy data is significantly worse.
 
     At every sample, a polynomial of `polyorder` fitted by weighted least
     squares over 3 x fwhm samples, the weights a Gaussian of that FWHM, and its
@@ -83,7 +89,15 @@ def smooth(vec, fwhm, polyorder=3):
         b[:, p, 0] = corr(my, g * u ** p)[idx]
         for q in range(n):
             A[:, p, q] = moment[p + q][idx]
-    out[idx] = np.linalg.solve(A, b)[:, 0, 0]
+    # u is k/half, so the polynomial's coefficient p is d^p/du^p / p!, and the
+    # derivative per SAMPLE needs the chain rule back through that scaling
+    solved = np.linalg.solve(A, b)[:, :, 0]
+    if deriv >= solved.shape[1]:
+        return out
+    scale = 1.0
+    for order in range(1, deriv + 1):
+        scale *= order / float(half)
+    out[idx] = solved[:, deriv] * scale
     return out
 
 

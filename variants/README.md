@@ -16,6 +16,21 @@ Every run writes `resolved_config.yaml` beside its outputs, with the commit of
 the code that ran it under `provenance`. The corrected spectra carry that
 commit as `PCA2GIT`, the LBL template too, and `fit.npz` as `pca2d_code`.
 
+## velweight, 2026-09-15: the amplitudes measured in the velocity metric
+
+`variants/velweight.yaml`, correction only, reuses the nominal's fit. Every
+sample is weighted by the star's own derivative there, `(dT/dv)^2`, when the
+amplitude of each observer component is measured for a file, because what a
+contaminant does to a radial velocity is its overlap with that derivative: one
+that is flat where the star has structure moves no line, whatever its amplitude
+in flux. What is divided out, which samples are blanked and the shrinkage are
+unchanged.
+
+On a synthetic exposure with two components, one that can move a line and one
+that cannot, it leaves 32% less velocity behind (0.040 against 0.059 samples of
+rms shift over 400 noise realisations). **Not yet measured on real spectra**:
+that needs TOI2120, Proxima and TOI4552, and the disks they live on.
+
 ## TOI-2120 series of 2026-09-11
 
 Every run of the series used cube a92a1b985cdd, with the high pass of that
