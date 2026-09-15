@@ -911,7 +911,13 @@ def update_earth(data, w, P, Q, a, b, shifter, delta, chunk, alpha=None,
 
 
 # --------------------------------------------------------------------------
-def read_cube_files(path, dtype=np.float64, columns=None):
+#: how much of one column block to hold while the weights are built. 256 MB is
+#: small beside any cube this reads and large enough that the loop is not the
+#: cost: the whole point is that sigma and trans are never resident.
+_LOAD_BLOCK_BYTES = 256 * 1024 * 1024
+
+
+def read_cube_files(path, dtype=np.float64, columns=None, lazy=False):
     """Read a cached cube, in either of the two formats `cube.py` has written.
 
     Until 2026-08-26 the cache was a single compressed `.npz`. It is now a
@@ -924,7 +930,9 @@ def read_cube_files(path, dtype=np.float64, columns=None):
     # With `columns`, only those grid columns are read, through a memory map:
     # a figure of one window then reads its few thousand columns rather than
     # the whole cube, 79 MB for the eight windows of a campaign against 4.4 GB.
-    mmap = "r" if columns is not None else None
+    # `lazy` keeps sigma and trans as memory maps for a caller that reads them
+    # in blocks; the data is materialised either way, since the fit works in it
+    mmap = "r" if (columns is not None or lazy) else None
     if os.path.isdir(path):
         def _load(name, required=True):
             full = os.path.join(path, name)
@@ -953,9 +961,10 @@ def read_cube_files(path, dtype=np.float64, columns=None):
             trans = trans[:, columns]
     grid = np.asarray(grid)
     data = np.asarray(data, dtype=dtype)
-    sigma = np.asarray(sigma, dtype=dtype)
-    if trans is not None:
-        trans = np.asarray(trans, dtype=dtype)
+    if not lazy:
+        sigma = np.asarray(sigma, dtype=dtype)
+        if trans is not None:
+            trans = np.asarray(trans, dtype=dtype)
     return grid, data, sigma, trans, meta
 
 
@@ -1332,6 +1341,69 @@ def exposures_label(names, keep, per_row=None):
     return "%d nights of %d spectra" % (count, int(round(spectra)))
 
 
+def cube_shape(path):
+    """(rows, columns) of a cached cube, read from the array header alone."""
+    if os.path.isdir(path):
+        shape = np.load(os.path.join(path, "data.npy"), mmap_mode="r").shape
+        return int(shape[0]), int(shape[1])
+    with np.load(path, allow_pickle=True) as handle:
+        shape = handle["data"].shape
+    return int(shape[0]), int(shape[1])
+
+
+def memory_needed(rows, columns, dtype, arrays=2, margin=1.1):
+    """GB a fit peaks at, which is while the cube is read.
+
+    What survives the read is two arrays of (rows, columns) at the storage
+    dtype, the data and the weights, and load_cube builds them one column block
+    at a time so that nothing else is ever resident: the sigmas and the
+    transmission stay on disk. The margin is for that block and the small
+    temporaries beside it.
+
+    MEASURED, not argued. On the TOI-2120 cube of 2026-09-15, 642 x 577002
+    float32, this says 3.3 GB and the process peaked at 3.2. Before the read
+    was blocked it was four arrays, and the ten-object joint cube of that
+    morning asked 38 GB of a 17 GB machine and was killed by the kernel.
+
+    NOT counted, because they are not (rows, columns): the model is carried in
+    chunks of rows (the `chunk` option, hundreds of MB) and the bases are
+    (K, columns), tens of MB.
+    """
+    return (rows * columns * np.dtype(dtype).itemsize * int(arrays)
+            * float(margin) / 1e9)
+
+
+def check_memory(rows, columns, dtype, fraction=None):
+    """Refuse a fit that cannot fit, BEFORE it has read anything.
+
+    The alternative is what happened on 2026-09-15: a joint cube of ten
+    objects, 19 GB of arrays on a machine with 17, twenty-six minutes of cube
+    and eleven of preparation, and then exit -9 from the kernel with nothing
+    said. A number and a list of ways out cost a second.
+    """
+    from .machine import DEFAULT_FRACTION, describe
+
+    need = memory_needed(rows, columns, dtype)
+    total, budget = describe(DEFAULT_FRACTION if fraction is None else fraction)
+    if total is None:
+        log("this fit needs about %.1f GB; the machine's memory could not be"
+            " read, so nothing is checked against it" % need, "warn")
+        return need
+    log("memory: this fit peaks at about %.1f GB while the cube is read, of"
+        " %.1f GB allowed (half of the machine's %.1f GB)"
+        % (need, budget, total), "value")
+    if need > budget:
+        raise MemoryError(
+            "this fit peaks at about %.1f GB and may use %.1f, half of this"
+            " machine's %.1f GB. Its arrays are %d rows x %d columns.\n"
+            "Ways out, cheapest first: coadd nights (input.nightly_stack:"
+            " true), narrow the domain (domain.wave_min/wave_max), fit fewer"
+            " objects at once, or drop the storage to float32"
+            " (twoframe.dtype) if it is not already."
+            % (need, budget, total, rows, columns))
+    return need
+
+
 def load_cube(path, ln_clip_low=-0.5, ramp_zero=0.5, min_snr_frac=0.5,
               dtype=np.float64, columns=None):
     """The observer-frame cube plus the weights, condensed from cube.py.
@@ -1344,7 +1416,9 @@ def load_cube(path, ln_clip_low=-0.5, ramp_zero=0.5, min_snr_frac=0.5,
     vote in the median template and contributes a row of mostly-noise
     coefficients, so it is cheaper to drop it than to carry it.
     """
-    grid, data, sigma, trans, meta = read_cube_files(path, dtype, columns)
+    grid, data, sigma, trans, meta = read_cube_files(path, dtype, columns,
+                                                    lazy=True)
+    rows = None                         # which rows survive the relative cut
 
     if min_snr_frac:
         snr = np.asarray(meta["snr_band"], dtype=float)
@@ -1371,27 +1445,52 @@ def load_cube(path, ln_clip_low=-0.5, ramp_zero=0.5, min_snr_frac=0.5,
                 % (count_exposures(meta, ~keep), int((~keep).sum()),
                    100 * min_snr_frac, shown,
                    count_exposures(meta, keep), count_exposures(meta)))
-            data, sigma, meta = data[keep], sigma[keep], meta[keep]
-            if trans is not None:
-                trans = trans[keep]
+            rows = np.flatnonzero(keep)
+            meta = meta[keep]
 
-    with np.errstate(invalid="ignore", divide="ignore"):
-        w = np.where(np.isfinite(sigma) & (sigma > 0), 1.0 / sigma ** 2, 0.0)
-    w[~np.isfinite(data)] = 0.0
-    w[data < ln_clip_low] = 0.0
-    if trans is not None:
-        w *= np.clip((trans - ramp_zero) / (1.0 - ramp_zero), 0.0, 1.0)
-    # the EDGE columns of the GRID, not of whatever slice of it was read: a
-    # window in the middle of the domain must not lose its own first and last
-    # 64 columns because they happen to be the ends of the array it came in
-    if columns is None:
-        w[:, :EDGE] = 0.0
-        w[:, -EDGE:] = 0.0
-    else:
-        cols = np.asarray(columns)
-        w[:, (cols < EDGE) | (cols >= cube_grid_size(path) - EDGE)] = 0.0
-    data = np.where(w > 0, data, 0.0)
-    return grid, data, w, meta
+    # ONE PASS, IN COLUMN BLOCKS, and neither sigma nor the transmission ever
+    # resident. Read whole, a cube costs four arrays of its own size at the
+    # peak (data, sigma, transmission, weights), and that peak is what a kernel
+    # kills on: a ten-object joint cube asked 38 GB of a 17 GB machine on
+    # 2026-09-15 and died with nothing said. Block by block the peak is the two
+    # arrays that survive the read, plus one block of each of the others. The
+    # arithmetic per column is untouched, so the answer is the same to the bit
+    # (tests/test_blocked_load.py holds the two side by side).
+    n_rows = len(rows) if rows is not None else data.shape[0]
+    n_cols = data.shape[1]
+    out = np.empty((n_rows, n_cols), dtype=dtype)
+    w = np.empty((n_rows, n_cols), dtype=dtype)
+    step = max(1, int(_LOAD_BLOCK_BYTES // max(1, n_rows * np.dtype(dtype).itemsize)))
+    grid_size = cube_grid_size(path) if columns is not None else n_cols
+    cols = np.asarray(columns) if columns is not None else None
+    for first in range(0, n_cols, step):
+        last = min(first + step, n_cols)
+        sl = slice(first, last)
+        # np.array and not np.asarray: a slice of a memory map of the same
+        # dtype is a READ-ONLY view of it, and this block is written into
+        take = (lambda arr: np.array(arr[np.ix_(rows, np.arange(first, last))],
+                                     dtype=dtype)) if rows is not None else \
+               (lambda arr: np.array(arr[:, sl], dtype=dtype))
+        d_blk = take(data)
+        s_blk = take(sigma)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            wb = np.where(np.isfinite(s_blk) & (s_blk > 0), 1.0 / s_blk ** 2, 0.0)
+        wb[~np.isfinite(d_blk)] = 0.0
+        wb[d_blk < ln_clip_low] = 0.0
+        if trans is not None:
+            t_blk = take(trans)
+            wb *= np.clip((t_blk - ramp_zero) / (1.0 - ramp_zero), 0.0, 1.0)
+        # the EDGE columns of the GRID, not of whatever slice of it was read: a
+        # window in the middle of the domain must not lose its own first and
+        # last 64 columns because they happen to be the ends of the array it
+        # came in
+        here = np.arange(first, last) if cols is None else cols[first:last]
+        wb[:, (here < EDGE) | (here >= grid_size - EDGE)] = 0.0
+        d_blk[wb <= 0] = 0.0
+        w[:, sl] = wb
+        out[:, sl] = d_blk
+    del sigma, trans, data
+    return grid, out, w, meta
 
 
 def leakage(data, w, P, Q, shifter, delta, chunk=64):
@@ -2211,6 +2310,8 @@ def main(argv=None):
     # difference between fitting every file and coadding nights. Every weighted
     # sum still accumulates in float64: a float32 accumulator over 3.7e8 terms
     # loses the low bits of the very totals the fit is judged by.
+    rows, columns = cube_shape(args.cube)
+    check_memory(rows, columns, args.dtype)
     grid, data, w, meta = load_cube(args.cube, min_snr_frac=args.min_snr_frac,
                                     dtype=np.dtype(args.dtype))
     log("fit arrays in %s: %.1f GB for the data and the weights together"
