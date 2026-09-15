@@ -273,7 +273,14 @@ DEFAULTS = {
         # the star block falls from 0.086 to 0.0116. Five star components were
         # enough rope for the star block to help describe an observer-frame
         # line, through the (feature, its derivative x shift) pair; two are not.
-        "n_star": 2,
+        # ZERO: the star is the per-parity spectrum `mean: star` takes out
+        # with a coefficient of exactly 1, and a component in front of it would
+        # be an exponent on the flux. Measured better on every target it was
+        # measured on (config.yaml has the numbers). The paragraph above is why
+        # 2 was chosen over 5 back when there were star components at all, and
+        # is kept because raising this to look at variability still has to
+        # choose a number.
+        "n_star": 0,
         "n_earth": 7,
         "iters": 16,
         # sweeps in a row worse than the best before the fit stops, and which

@@ -23,7 +23,7 @@ Proposition du 2026-09-11, à confirmer ligne par ligne (☐ → ☑, ou corrige
 
 | Choix | Valeur adoptée | Autres valeurs disponibles | Mesuré sur | OK |
 |---|---|---|---|---|
-| composantes étoile / observateur | 1 / 3 | tout nombre | TOI-2120 (2 étoile dégénère : 67 m/s) | ☐ |
+| composantes étoile / observateur | **0 / 3** | tout nombre | 0 mesuré meilleur partout : TOI-2120 17,40/14,07 contre 18,34/14,37 ; GJ 1 2,61/2,38 contre 2,85/2,78 ; TOI-4552 14,24/11,20 contre 15,86/15,86. (2 étoile dégénère : 67 m/s) | ☑ |
 | partie statique (`mean`) | `star` : un spectre stellaire par parité | offset, full, iterate | TOI-2120 : 20,36 contre 31,74 (offset). Proxima : offset injecte ~47 m/s ; star en cours | ☐ |
 | représentation de l'étoile | spline cubique exacte | grille Lanczos | TOI-2120 : égalité en LBL, plus rapide. Proxima en cours | ☐ |
 | Savitzky-Golay sur le gabarit stellaire (`star_smooth`) | **aucun pour l'instant** | fraction d'élément de résolution ; propagé au gabarit LBL | TOI-2120 : ¼ et ½ élément en cours. Proxima : à faire | ☐ |
@@ -173,11 +173,12 @@ entre objets. **Elles ne décident de rien**, le passage est à refaire. ☐
 
 ## 3. À décider par vous
 
-0. **Le nominal de `config.yaml` : `twoframe.n_star` à 0 ?** Le fichier dit encore
-   `1`, et tous les passages k0 passent par le drapeau ou la variante. Le mettre à
-   `0` ferait du nominal ce qui est mesuré comme meilleur partout, et ne périme
-   aucun cube (`twoframe` n'est pas dans la clé). Je ne l'ai pas fait : c'est votre
-   nominal. ☐
+0. **Le nominal de `config.yaml` : `twoframe.n_star` à 0.** ☑ **Fait le
+   2026-09-15**, dans `config.yaml` et dans les défauts du code, qui disent
+   maintenant la même chose. Aucun cube n'est périmé (`twoframe` n'est pas dans
+   la clé) ; les passages nominaux s'appellent désormais `0-3`. Une composante
+   stellaire reste accessible pour REGARDER la variabilité, et la table de
+   corrélations reste à lire avant d'y croire.
 
 
 1. **Règle d'arrêt.** Sur TOI-2120 (spline), le χ² baisse à chaque itération. Sur l'ancien passage Proxima, R² plafonne à l'itération 2 (0,9861) puis redescend (0,983 à l'itération 11). Je propose **16 itérations au plus, arrêt après 2 itérations moins bonnes, garder la meilleure**. Cela vaut « la dernière » quand le χ² baisse toujours, et protège quand il remonte ; c'est aussi ce que le passage Proxima en cours utilise. ☐

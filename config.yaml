@@ -155,7 +155,24 @@ general:
     min_good_fraction: 0.2
 
   twoframe:
-    n_star: 1               # components anchored in the STELLAR rest frame
+    n_star: 0               # components anchored in the STELLAR rest frame.
+                            # ZERO since 2026-09-15, and it is the measured
+                            # choice everywhere it has been measured (LBL rms /
+                            # robust, corrected against 1 star component):
+                            # TOI-2120 17.40/14.07 against 18.34/14.37, GJ 1
+                            # 2.61/2.38 against 2.85/2.78 and below its own
+                            # delivered series, TOI-4552 14.24/11.20 against
+                            # 15.86/15.86. The reason it is not a tuning knob:
+                            # an amplitude in front of a term in a logarithm is
+                            # an EXPONENT on the flux, and an exponent on a
+                            # star's mean spectrum describes no star. The star
+                            # is the per-parity spectrum below (mean: star),
+                            # taken out with a coefficient of exactly 1; a
+                            # component beside it only adds a second static
+                            # template with an arbitrary normalisation. Raise it
+                            # to 2 or more only to LOOK at variability, and read
+                            # the correlation table before believing it
+                            # (docs/options.md, twoframe-nstar2-degeneracy)
     n_earth: 3              # components anchored in the OBSERVER frame
     mean: star              # nominal since 2026-09-11: one star-frame spectrum
                             # per parity and no observer-frame mean (below).
