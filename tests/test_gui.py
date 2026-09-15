@@ -675,3 +675,40 @@ def test_there_is_no_lbl_without_the_correction_it_measures():
              "lbl": False}
     assert follow_stages(state, "correct") == state, \
         "correcting again with the fit that is there is a thing to want"
+
+
+def test_a_disk_that_is_not_there_is_not_offered(tmp_path):
+    """output.fits_directory is a path on ONE machine. A configuration that
+    carries one hands every fresh install a disk it has never heard of, and a
+    run that finds it missing stops. The window empties the field instead, and
+    says so."""
+    from pca2d.gui import opening_paths
+
+    here = str(tmp_path)
+    gone = str(tmp_path / "not-mounted")
+
+    assert opening_paths({}, gone)["fits_dir"] == "", "blanked, whatever named it"
+    assert opening_paths({"fits_dir": gone}, here)["fits_dir"] == "", \
+        "including one this window itself remembered"
+    assert opening_paths({}, here)["fits_dir"] == here, "a real one stands"
+    assert opening_paths({"fits_dir": here}, gone)["fits_dir"] == here, \
+        "and what the window kept beats what the configuration says"
+    assert opening_paths({})["fits_dir"] == "", "nothing anywhere, nothing shown"
+
+
+def test_an_empty_products_field_is_a_decision_the_command_carries():
+    """`--fits-dir ""` is not a command anybody can paste: a shell drops the
+    empty word and argparse then asks for the argument it was promised."""
+    from pca2d.gui import build_command
+
+    empty = build_command({"objects": ["X"], "fits_dir": ""})
+    assert "--no-fits-dir" in empty and "--fits-dir" not in empty
+    assert "" not in empty, "no empty word in a command meant to be pasted"
+
+    named = build_command({"objects": ["X"], "fits_dir": "/mnt/disk"})
+    assert named[named.index("--fits-dir") + 1] == "/mnt/disk"
+    assert "--no-fits-dir" not in named
+
+    silent = build_command({"objects": ["X"]})
+    assert "--fits-dir" not in silent and "--no-fits-dir" not in silent, \
+        "a window that never had the field says nothing about it"

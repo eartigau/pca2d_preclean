@@ -35,6 +35,14 @@ Without PIL none of it happens and the window is the square one it was.
 - **An output root**, proposed as `corrected` beside the data root when the
   field is empty: the corrected spectra are a copy of the campaign, tens of
   gigabytes, and belong on the disk the campaign is already on.
+- **A products disk**, optional (`output.fits_directory`): each run folder
+  becomes one link to it, so the corrected spectra, the fit and the figures land
+  there rather than on the internal disk. It is a path on ONE machine, so
+  `config.yaml` no longer carries one and the window **empties the field
+  whenever what it names is not there**, whether that came from the
+  configuration or from what the window itself remembered. Empty is a decision
+  and the command says it, `--no-fits-dir`: everything stays under the output
+  root, which works.
 - **On a first run** the two roots are EMPTY and the configuration is the
   `config.yaml` that came with the installation, found beside the package
   rather than resolved against whatever folder the window was started from.

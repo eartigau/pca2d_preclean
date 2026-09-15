@@ -110,6 +110,18 @@ EN = {
     "subtitle": "two-frame precleaning, then LBL. Pick a data root, pick"
                 " objects, look at the command, run it.",
     "data_dir": "data root", "config": "config",
+    "fits_dir": "products disk (optional)",
+    "help_fits_dir":
+        "Where a run's products are KEPT: each run folder becomes one link to"
+        " this disk, so the corrected spectra, the fit and the figures land"
+        " there and not on the internal disk. Empty keeps everything under the"
+        " output root, which works. A path is a thing on ONE machine, so this"
+        " field is emptied whenever what it names is not there, and a run whose"
+        " disk is missing stops rather than quietly fill the internal one.",
+    "log_no_disk":
+        "the configuration names %s as the disk to keep products on, and it is"
+        " not there: the field is empty, so this run would keep everything"
+        " under the output root. Fill it in if the disk should be mounted.",
     "out_dir": "output root (optional)",
     "browse": "Browse", "rescan": "Rescan",
     "objects": "objects", "settings": "settings", "stages": "stages",
@@ -474,6 +486,20 @@ FR = {
     "subtitle": "prénettoyage à deux référentiels, puis LBL. Choisir un dossier"
                 " de données, des objets, regarder la commande, la lancer.",
     "data_dir": "dossier de données", "config": "configuration",
+    "fits_dir": "disque des produits (optionnel)",
+    "help_fits_dir":
+        "Où les produits d'un passage sont CONSERVÉS : chaque dossier de"
+        " passage devient un lien vers ce disque, donc les spectres corrigés,"
+        " l'ajustement et les figures y vont et non sur le disque interne."
+        " Vide, tout reste sous le dossier de sortie, ce qui fonctionne. Un"
+        " chemin est une chose propre à UNE machine, donc ce champ est vidé dès"
+        " que ce qu'il nomme n'est pas là, et un passage dont le disque manque"
+        " s'arrête plutôt que de remplir le disque interne sans le dire.",
+    "log_no_disk":
+        "la configuration nomme %s comme disque où conserver les produits, et"
+        " il n'est pas là : le champ est vide, donc ce passage garderait tout"
+        " sous le dossier de sortie. Remplissez-le si le disque doit être"
+        " monté.",
     "out_dir": "dossier de sortie (optionnel)",
     "browse": "Parcourir", "rescan": "Relire",
     "objects": "objets", "settings": "réglages", "stages": "étapes",
@@ -1020,6 +1046,15 @@ def build_command(state):
         argv += ["--out-dir", state["out_dir"]]
     if str(state.get("run_name") or "").strip():
         argv += ["--name", str(state["run_name"]).strip()]
+    # An empty field is a DECISION, keep the products under the output root,
+    # and it has its own flag: `--fits-dir ""` is not a command anybody can
+    # paste, since a shell drops the empty word and argparse then asks for the
+    # argument it was promised.
+    disk = str(state.get("fits_dir") or "").strip()
+    if disk:
+        argv += ["--fits-dir", disk]
+    elif "fits_dir" in state:
+        argv += ["--no-fits-dir"]
     for flag, key in (("--min-rjd", "min_rjd"), ("--max-rjd", "max_rjd")):
         value = str(state.get(key) or "").strip()
         if value:
@@ -1263,18 +1298,33 @@ def installed_config():
     return ""
 
 
-def opening_paths(saved):
-    """The three paths a window opens on: what was kept, else a fresh start.
+def opening_paths(saved, config_value=None):
+    """The paths a window opens on: what was kept, else a fresh start.
 
     A fresh start is the installation's own config.yaml and NO roots. The data
     root and the output root are a choice about somebody's disks, and a window
     that opens with a plausible-looking path in them invites a run against a
     folder nobody picked. Empty, and said in the status line, is the honest
     opening state.
+
+    The products disk (`output.fits_directory`) is the same thing one step
+    further: it is a path on ONE machine, so a configuration that carries one
+    hands every fresh install a disk it has never heard of, and a run that
+    finds it missing stops. It is taken from what this window kept, else from
+    the configuration, and **blanked when it is not there**, whichever it came
+    from: an empty field is a run that keeps its products under the output
+    root, which is a thing that works.
     """
+    disk = saved.get("fits_dir")
+    if disk is None:
+        disk = config_value or ""
+    disk = absolute(disk)
+    if disk and not os.path.isdir(disk):
+        disk = ""
     return {"data_dir": absolute(saved.get("data_dir") or ""),
             "config": absolute(saved.get("config") or installed_config()),
-            "out_dir": saved.get("out_dir") or ""}
+            "out_dir": saved.get("out_dir") or "",
+            "fits_dir": disk}
 
 
 def _read_state():
@@ -1725,11 +1775,12 @@ class App:
         frame.pack(fill="x", pady=(0, 6))
         # shown in full, since a relative path means a different folder from a
         # different working directory and these data are reached through a link
-        opening = opening_paths(self.saved)
+        opening = opening_paths(self.saved, self._config_fits_dir())
         for i, (key, default) in enumerate((
                 ("data_dir", opening["data_dir"]),
                 ("config", opening["config"]),
-                ("out_dir", opening["out_dir"]))):
+                ("out_dir", opening["out_dir"]),
+                ("fits_dir", opening["fits_dir"]))):
             label = ttk.Label(frame, text=self.t(key))
             label.grid(row=i, column=0, sticky="w", pady=2)
             self._register(label, key)
@@ -1748,6 +1799,9 @@ class App:
                                 command=lambda k=key: self._browse(k))
             browse.grid(row=i, column=2)
             self._register(browse, "browse")
+        # said once, on opening, when a disk a configuration names is not there
+        if self._lost_disk:
+            self._say("log_no_disk", self._lost_disk, level="warn")
         rescan = ttk.Button(frame, text=self.t("rescan"),
                             command=self.refresh_objects)
         rescan.grid(row=0, column=3, padx=4)
@@ -1758,6 +1812,17 @@ class App:
         for key in ("min_rjd", "max_rjd"):
             self.vars[key] = tk.StringVar(value=self.saved.get(key, ""))
             self.vars[key].trace_add("write", lambda *_: self._sync())
+
+    def _config_fits_dir(self):
+        """What the configuration says the products disk is, if it says one."""
+        try:
+            config = self._config()
+        except Exception:                                       # noqa: BLE001
+            return ""
+        value = ((config or {}).get("output") or {}).get("fits_directory") or ""
+        self._lost_disk = (str(value) if value and not os.path.isdir(str(value))
+                           else "")
+        return str(value)
 
     def _build_name(self, parent):
         """What this reduction is called, which is what its folder is called."""

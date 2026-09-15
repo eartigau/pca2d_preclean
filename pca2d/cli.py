@@ -60,6 +60,17 @@ def parse_args(argv=None):
                    help="override output.directory from the config. It is the"
                         " output ROOT: everything a run writes lands in"
                         " <DIR>/<object>/<M>-<N>/")
+    p.add_argument("--fits-dir", default=None, metavar="DIR",
+                   help="override output.fits_directory: the disk a run's"
+                        " products are KEPT on, each run folder being one link"
+                        " to it. Empty keeps everything under the output root."
+                        " A path that is not there stops the run rather than"
+                        " quietly filling the internal disk")
+    p.add_argument("--no-fits-dir", action="store_true",
+                   help="keep everything under the output root, whatever the"
+                        " config says: the window sends this when its products"
+                        " field is empty, so that an empty field is a decision"
+                        " and not a silence")
     p.add_argument("--stages", default=",".join(STAGES),
                    help="comma-separated subset of %s, in this order"
                         % ",".join(STAGES))
@@ -235,6 +246,10 @@ def joint_members(args, variant):
         cfg = load_config(args.config, object_name=name, data_dir=args.data_dir,
                           out_dir=args.out_dir, instrument=args.instrument,
                           variant=variant)
+        if getattr(args, "no_fits_dir", False):
+            cfg["output"]["fits_directory"] = None
+        elif getattr(args, "fits_dir", None):
+            cfg["output"]["fits_directory"] = args.fits_dir
         # the date window decides which exposures are IN THE CUBE, so it has to
         # be on every member's own configuration, not only on the joint copy
         # made from the first of them: set there alone, the member cubes would
@@ -346,6 +361,10 @@ def resolve(args):
     config = load_config(args.config, object_name=args.object,
                          data_dir=args.data_dir, out_dir=args.out_dir,
                          instrument=args.instrument, variant=variant)
+    if getattr(args, "no_fits_dir", False):
+        config["output"]["fits_directory"] = None
+    elif getattr(args, "fits_dir", None):
+        config["output"]["fits_directory"] = args.fits_dir
     root = name_variant(config, name, variant, args.out_dir)
     directory = spectra_dir(config)
     if not os.path.isdir(directory):

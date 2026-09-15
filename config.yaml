@@ -38,8 +38,16 @@ general:
                             # resolved config, the bases, the PDF, and the
                             # corrected spectra under `corrected/`.
                             # --out-dir overrides it for one run.
-    fits_directory: /Volumes/irrisor/pca2d_preclean
-                            # where a run's products are KEPT. Each run folder
+    fits_directory: null    # EMPTY ON PURPOSE: this is a path on ONE machine,
+                            # and a path on one machine has no business in a
+                            # configuration everybody clones. It was
+                            # /Volumes/irrisor/pca2d_preclean here until
+                            # 2026-09-15, which meant every fresh install asked
+                            # for a disk it had never heard of. Set it in the
+                            # window, which remembers it per machine and blanks
+                            # it when the disk is not there.
+                            #
+                            # What it does: where a run's products are KEPT. Each run folder
                             # (outputs/<object>/<tag>) is ONE link to the same
                             # path under this one, made before the run writes
                             # anything, so the corrected spectra, the fit's
