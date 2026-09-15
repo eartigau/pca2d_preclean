@@ -832,3 +832,108 @@ def test_a_setting_the_config_does_not_carry_is_said_out_loud():
     assert setting_value(config, "twoframe.n_star") == 0
     assert setting_value(config, "lbl.run") == "(not set)"
     assert setting_value(config, "correct.weight.deeper") == "(not set)"
+
+
+# ---- the cleanup page ---------------------------------------------------
+def test_the_window_has_a_cleanup_page():
+    """The disks fill with cubes and nothing in the window ever said so."""
+    import inspect
+    import re
+
+    import pca2d.gui as gui
+    from pca2d.gui import EN, FR
+    source = inspect.getsource(gui.App.__init__)
+    tabs = re.search(r'for key in \(([^)]*)\)', source).group(1)
+    assert '"tab_clean"' in tabs, "the page is in the notebook"
+    assert EN["tab_clean"].strip() == "cleanup"
+    assert FR["tab_clean"].strip() == "nettoyage"
+
+
+def test_the_purge_button_asks_first_and_takes_no_for_an_answer(monkeypatch,
+                                                                tmp_path):
+    from tkinter import messagebox
+
+    from pca2d.gui import App
+    from pca2d.housekeeping import survey
+
+    (tmp_path / "cache").mkdir()
+    (tmp_path / "cache" / "big.npy").write_bytes(b"\0" * 5000)
+    items = survey({"output": {"cache_directory": str(tmp_path / "cache")}},
+                   str(tmp_path / "config.yaml"))
+
+    w = App.__new__(App)
+    w.lang, w.clean_items = "en", items
+    said = []
+    w._say = lambda key, *a, **k: said.append(key)
+    w.measure_disks = lambda: said.append("measured")
+    asked = []
+    monkeypatch.setattr(messagebox, "askyesno",
+                        lambda title, body: asked.append(body) and False)
+
+    App.purge_disks(w)
+    assert asked and "5.0 kB" in asked[0], "it says how much before it asks"
+    assert "cube cache" in asked[0], "and what it is about to empty"
+    assert (tmp_path / "cache" / "big.npy").exists(), "no means no"
+    assert "measured" not in said
+
+
+def test_the_purge_button_empties_only_what_can_go(monkeypatch, tmp_path):
+    from tkinter import messagebox
+
+    from pca2d.gui import App
+    from pca2d.housekeeping import survey
+
+    for name, size in (("cache", 4000), ("out", 9000)):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "f.bin").write_bytes(b"\0" * size)
+    items = survey({"output": {"cache_directory": str(tmp_path / "cache"),
+                               "directory": str(tmp_path / "out")}},
+                   str(tmp_path / "config.yaml"))
+
+    w = App.__new__(App)
+    w.lang, w.clean_items = "fr", items
+    said = []
+    w._say = lambda key, *a, **k: said.append((key, a))
+    w.measure_disks = lambda: said.append(("remeasured", ()))
+    monkeypatch.setattr(messagebox, "askyesno", lambda *_a: True)
+
+    App.purge_disks(w)
+    assert not (tmp_path / "cache" / "f.bin").exists()
+    assert (tmp_path / "out" / "f.bin").exists(), "the results are results"
+    assert (tmp_path / "cache").is_dir(), "the folder the next run expects"
+    assert said[0][0] == "clean_freed" and said[0][1][0] == "4.0 kB"
+    assert ("remeasured", ()) in said, "the numbers are read again after"
+
+
+def test_nothing_to_free_says_so_rather_than_asking(monkeypatch, tmp_path):
+    from tkinter import messagebox
+
+    from pca2d.gui import App
+
+    w = App.__new__(App)
+    w.lang, w.clean_items = "en", []
+    said = []
+    w._say = lambda key, *a, **k: said.append(key)
+    monkeypatch.setattr(messagebox, "askyesno",
+                        lambda *_a: pytest.fail("it should not ask"))
+    App.purge_disks(w)
+    assert said == ["clean_nothing"]
+
+
+def test_every_line_of_the_cleanup_list_explains_itself_in_both_languages():
+    """The list is 14 folders and the window is bilingual; the explanation is
+    the only part that says what deleting one would cost."""
+    import os
+
+    from pca2d.gui import EN, FR
+    from pca2d.housekeeping import survey
+
+    items = survey({"lbl": {"directory": "lbl"}}, "config.yaml",
+                   out_root="out",
+                   package=os.path.dirname(os.path.abspath(
+                       __import__("pca2d").__file__)))
+    assert len(items) >= 13
+    for item in items:
+        key = "clean_" + item["key"]
+        assert key in EN and key in FR, "%s says nothing" % item["name"]
+        assert len(EN[key]) > 10 and len(FR[key]) > 10

@@ -199,6 +199,74 @@ EN = {
         " well than the coverage promises.",
     "tab_targets": "  targets  ", "tab_settings": "  settings  ",
     "tab_lbl": "  LBL  ", "tab_run": "  analysis  ",
+    "tab_clean": "  cleanup  ",
+    "clean_title": "what pca2d has left on these disks",
+    "help_clean":
+        "Every place this program puts bytes, measured. The cube cache, the"
+        " scratch of a fit too big for memory and LBL's own logs can go at any"
+        " time: they are made again from what is still here. Fits, templates,"
+        " masks and per-line tables can be made again too, but only by running"
+        " the hours that made them, so they are counted and not offered. The"
+        " corrected spectra, the reports and the velocities are never offered."
+        " A folder moved to another disk is counted where it really is; a link"
+        " to somebody else's spectra weighs nothing, because deleting it frees"
+        " nothing.",
+    "clean_measure": "Measure", "clean_purge": "Delete what can go",
+    "help_clean_measure":
+        "Walks each folder and adds up what is in it. On a network disk this"
+        " takes a few seconds and it runs off to one side, so the window stays"
+        " usable while it counts.",
+    "help_clean_purge":
+        "Empties the folders marked as scratch or rebuildable, and nothing"
+        " else. It asks first, and names the total it is about to free. The"
+        " folders themselves stay: the next run expects to find them.",
+    "clean_measuring": "measuring…",
+    "clean_totals": "%s in all, of which %s can be freed",
+    "clean_none": "nothing measured yet: press Measure",
+    "clean_confirm_title": "delete the rebuildable files",
+    "clean_confirm":
+        "About to free %s from %d places:\n\n%s\n\nNothing here is a result:"
+        " the cubes are read again from the spectra, and LBL's logs are"
+        " written again by LBL. Go ahead?",
+    "clean_freed": "freed %s from %d places",
+    "clean_nothing": "nothing to free: there is no scratch or cache here",
+    "col_size": "size", "col_nfiles": "files", "col_kind": "kind",
+    "kind_scratch": "scratch", "kind_rebuildable": "rebuildable",
+    "kind_expensive": "expensive", "kind_results": "results",
+    # what each line of the cleanup list is, said when the row is picked
+    "clean_cache":
+        "The cubes: every spectrum of a campaign on one wavelength grid, so a"
+        " second run does not read them all again. Usually the biggest thing"
+        " here, and never a result. Rebuilt in minutes per campaign.",
+    "clean_spill":
+        "The mapped scratch of a fit too big to hold in memory. Nothing reads"
+        " it once the fit has ended, so anything still here belongs to a run"
+        " that was interrupted.",
+    "clean_results":
+        "The corrected spectra, the reports and the fits. What the whole thing"
+        " was for; never offered for deletion.",
+    "clean_lbl_science":
+        "The links LBL measures through, one per exposure. Remade by the lbl"
+        " stage. They are symlinks, so this frees almost nothing and the"
+        " spectra they point at are not touched.",
+    "clean_lbl_plots": "LBL's own figures. Drawn again whenever LBL runs.",
+    "clean_lbl_log": "LBL's logs. Nothing reads them but a person.",
+    "clean_lbl_lblrv":
+        "LBL's per-line velocity tables, one file per exposure, and the"
+        " largest thing LBL writes. Remade only by running LBL again, which is"
+        " hours: counted here, not offered.",
+    "clean_lbl_templates":
+        "The templates LBL built, one per object and run. Remade only by"
+        " running LBL's template step again.",
+    "clean_lbl_masks": "The line masks LBL built, one per object and run.",
+    "clean_lbl_models": "LBL's models.",
+    "clean_lbl_calib": "LBL's calibrations.",
+    "clean_lbl_lblreftable": "LBL's reference tables, one per object and run.",
+    "clean_lbl_lblrdb":
+        "The velocities: the rdb every RV page of every report is drawn from."
+        " Never offered for deletion.",
+    "clean_pycache":
+        "Compiled Python, remade the next time the package is imported.",
     "quit": "Quit", "quit_title": "quit pca2d-preclean",
     "quit_running":
         "A run is going, and it is a subprocess of this window: quitting stops"
@@ -610,6 +678,81 @@ FR = {
         " référentiels se séparent moins bien que la couverture ne le promet.",
     "tab_targets": "  cibles  ", "tab_settings": "  réglages  ",
     "tab_lbl": "  LBL  ", "tab_run": "  analyse  ",
+    "tab_clean": "  nettoyage  ",
+    "clean_title": "ce que pca2d a laissé sur ces disques",
+    "help_clean":
+        "Chaque endroit où ce programme met des octets, mesuré. Le cache des"
+        " cubes, le brouillon d'un ajustement trop gros pour la mémoire et les"
+        " journaux de LBL peuvent partir à tout moment : ils se refont à partir"
+        " de ce qui reste ici. Les ajustements, les templates, les masques et"
+        " les tables raie par raie se refont aussi, mais seulement en relançant"
+        " les heures qui les ont faits : ils sont comptés et pas proposés. Les"
+        " spectres corrigés, les rapports et les vitesses ne sont jamais"
+        " proposés. Un dossier déplacé sur un autre disque est compté là où il"
+        " est vraiment ; un lien vers les spectres de quelqu'un d'autre ne pèse"
+        " rien, puisque l'effacer ne libère rien.",
+    "clean_measure": "Mesurer", "clean_purge": "Effacer ce qui peut partir",
+    "help_clean_measure":
+        "Parcourt chaque dossier et additionne ce qu'il contient. Sur un disque"
+        " réseau cela prend quelques secondes, et cela tourne à côté : la"
+        " fenêtre reste utilisable pendant le compte.",
+    "help_clean_purge":
+        "Vide les dossiers marqués brouillon ou refaisable, et rien d'autre."
+        " La fenêtre demande d'abord, et annonce le total qu'elle va libérer."
+        " Les dossiers eux-mêmes restent : le prochain passage s'attend à les"
+        " trouver.",
+    "clean_measuring": "mesure en cours…",
+    "clean_totals": "%s en tout, dont %s peuvent être libérés",
+    "clean_none": "rien de mesuré encore : appuyez sur Mesurer",
+    "clean_confirm_title": "effacer les fichiers refaisables",
+    "clean_confirm":
+        "Sur le point de libérer %s à %d endroits :\n\n%s\n\nRien ici n'est"
+        " un résultat : les cubes se relisent depuis les spectres, et les"
+        " journaux de LBL sont réécrits par LBL. On y va ?",
+    "clean_freed": "%s libérés à %d endroits",
+    "clean_nothing": "rien à libérer : ni brouillon ni cache ici",
+    "col_size": "taille", "col_nfiles": "fichiers", "col_kind": "nature",
+    "kind_scratch": "brouillon", "kind_rebuildable": "refaisable",
+    "kind_expensive": "coûteux", "kind_results": "résultats",
+    # ce qu'est chaque ligne de la liste, dit quand la ligne est choisie
+    "clean_cache":
+        "Les cubes : tous les spectres d'une campagne sur une même grille de"
+        " longueurs d'onde, pour qu'un second passage ne les relise pas tous."
+        " D'habitude le plus gros poste ici, et jamais un résultat. Se refait"
+        " en quelques minutes par campagne.",
+    "clean_spill":
+        "Le brouillon mappé d'un ajustement trop gros pour la mémoire. Plus"
+        " rien ne le lit une fois l'ajustement fini : ce qui reste ici"
+        " appartient à un passage interrompu.",
+    "clean_results":
+        "Les spectres corrigés, les rapports et les ajustements. Ce pour quoi"
+        " tout cela existe ; jamais proposé à l'effacement.",
+    "clean_lbl_science":
+        "Les liens que LBL suit pour mesurer, un par pose. Refaits par l'étape"
+        " lbl. Ce sont des liens symboliques : les effacer ne libère presque"
+        " rien et ne touche pas aux spectres visés.",
+    "clean_lbl_plots":
+        "Les figures de LBL. Redessinées à chaque passage de LBL.",
+    "clean_lbl_log": "Les journaux de LBL. Personne d'autre qu'un humain ne"
+                     " les lit.",
+    "clean_lbl_lblrv":
+        "Les tables de vitesses raie par raie de LBL, un fichier par pose, et"
+        " ce que LBL écrit de plus gros. Ne se refait qu'en relançant LBL,"
+        " c'est-à-dire des heures : compté ici, pas proposé.",
+    "clean_lbl_templates":
+        "Les templates construits par LBL, un par objet et par passage. Ne se"
+        " refont qu'en relançant l'étape template de LBL.",
+    "clean_lbl_masks":
+        "Les masques de raies construits par LBL, un par objet et par passage.",
+    "clean_lbl_models": "Les modèles de LBL.",
+    "clean_lbl_calib": "Les calibrations de LBL.",
+    "clean_lbl_lblreftable":
+        "Les tables de référence de LBL, une par objet et par passage.",
+    "clean_lbl_lblrdb":
+        "Les vitesses : le rdb dont est tirée chaque page RV de chaque"
+        " rapport. Jamais proposé à l'effacement.",
+    "clean_pycache":
+        "Du Python compilé, refait au prochain import du paquet.",
     "quit": "Quitter", "quit_title": "quitter pca2d-preclean",
     "quit_running":
         "Un passage est en cours, et c'est un processus fils de cette fenêtre :"
@@ -1572,7 +1715,8 @@ class App:
         book.pack(fill="both", expand=True, padx=12, pady=(2, 8))
         self.tabs = []
         pages = {}
-        for key in ("tab_targets", "tab_settings", "tab_lbl", "tab_run"):
+        for key in ("tab_targets", "tab_settings", "tab_lbl", "tab_run",
+                    "tab_clean"):
             page = ttk.Frame(book, padding=8)
             book.add(page, text=self.t(key))
             self.tabs.append((book, page, key))
@@ -1608,6 +1752,10 @@ class App:
         self._build_command(pages["tab_run"])
         self._build_buttons(pages["tab_run"], "run")
         self._build_log(pages["tab_run"])
+
+        # and what all of it has left on the disks, with the one button that
+        # takes any of it away
+        self._build_clean(pages["tab_clean"])
         self.stop_button.configure(state="disabled")
         self._propose_out()      # on opening, not only when the data root moves
         if not self.vars["config"].get().strip():
@@ -1860,6 +2008,9 @@ class App:
             except Exception:                                 # noqa: BLE001
                 pass
         self._draw_headings()
+        if hasattr(self, "clean_tree"):
+            self._draw_clean_headings()
+            self._clean_rows()
         self._state()
         self._sync()
 
@@ -3307,6 +3458,8 @@ class App:
                 self._watched(*item[1:])
             elif item[0] == "scanned":
                 self._scanned(*item[1:])
+            elif item[0] == "measured":
+                self._measured(item[1])
             elif item[0] == "finished":
                 self._finished()
         self._drain_id = self.root.after(80, self._drain)
@@ -3473,6 +3626,177 @@ class App:
             self.vars[key] = var
             self._tip(widget, "help_" + key)
             self._tip(label, "help_" + key)
+
+    # ---- the disks ----------------------------------------------------
+    def _build_clean(self, parent):
+        """What pca2d has left on the disks, and the one button that removes it.
+
+        The disks fill with cubes: a campaign's cache is a few GB and there is
+        one per configuration, so the cache is usually the biggest thing here
+        and none of it is a result. It was invisible until this page, and the
+        way to find it was to know that `cache/` existed.
+        """
+        ttk = self.ttk
+        note = ttk.Label(parent, style="Hint.TLabel", wraplength=900,
+                         justify="left", text=self.t("help_clean"))
+        note.pack(anchor="w", pady=(0, 8))
+        self._register(note, "help_clean")
+        box = ttk.Labelframe(parent, text=self.t("clean_title"))
+        box.pack(fill="both", expand=True, pady=4)
+        self._register(box, "clean_title")
+
+        self.clean_tree = ttk.Treeview(
+            box, columns=("size", "files", "kind"), show="tree headings",
+            selectmode="browse", height=12)
+        self.clean_headings = (("#0", "col_object"), ("size", "col_size"),
+                               ("files", "col_nfiles"), ("kind", "col_kind"))
+        self.clean_tree.column("#0", width=240)
+        self.clean_tree.column("size", width=90, anchor="e")
+        self.clean_tree.column("files", width=80, anchor="e")
+        self.clean_tree.column("kind", width=110)
+        self._draw_clean_headings()
+        self.clean_tree.pack(fill="both", expand=True, padx=6, pady=(6, 2))
+        # one line per item is not room for what deleting it would cost, so the
+        # selected row says it underneath, in full
+        self.clean_tree.bind("<<TreeviewSelect>>", self._clean_selected)
+
+        self.clean_what = ttk.Label(box, style="Hint.TLabel", wraplength=880,
+                                    justify="left", text="")
+        self.clean_what.pack(anchor="w", padx=8, pady=(0, 4))
+        self.clean_totals = ttk.Label(box, text=self.t("clean_none"))
+        self.clean_totals.pack(anchor="w", padx=8, pady=(0, 4))
+        # not _register'ed: it says a MEASUREMENT, and a registered label is
+        # overwritten with its own translation the next time the language
+        # changes, which would put "nothing measured yet" over a survey
+
+        bar = ttk.Frame(box)
+        bar.pack(fill="x", padx=6, pady=(0, 8))
+        self.clean_button = ttk.Button(bar, text=self.t("clean_measure"),
+                                       command=self.measure_disks)
+        self.clean_button.pack(side="left", padx=(0, 6))
+        self._register(self.clean_button, "clean_measure")
+        self._tip(self.clean_button, "help_clean_measure")
+        self.purge_button = ttk.Button(bar, text=self.t("clean_purge"),
+                                       command=self.purge_disks,
+                                       state="disabled")
+        self.purge_button.pack(side="left")
+        self._register(self.purge_button, "clean_purge")
+        self._tip(self.purge_button, "help_clean_purge")
+        self.clean_items = []
+        self._measuring = False
+
+    def _draw_clean_headings(self):
+        for column, key in self.clean_headings:
+            self.clean_tree.heading(column, text=self.t(key))
+
+    def _clean_state(self):
+        """(config path, output root) as the window has them right now.
+
+        The fields, not the file: the window's own out directory is where this
+        run's products would go, and it is the one the reader is looking at.
+        """
+        return (self.vars["config"].get().strip() or None,
+                self.vars["out_dir"].get().strip() or None)
+
+    def measure_disks(self):
+        """Walk the folders off the main thread and fill the list."""
+        if self._measuring:
+            return
+        self._measuring = True
+        self.clean_button.configure(state="disabled")
+        self.purge_button.configure(state="disabled")
+        self.clean_totals.configure(text=self.t("clean_measuring"))
+        config_path, out_root = self._clean_state()
+
+        def look():
+            from . import housekeeping
+            from .config import load_config
+            try:
+                config = load_config(config_path) if config_path else {}
+            except (Exception, SystemExit):                   # noqa: BLE001
+                # a config that will not load is not a reason to refuse to
+                # count: the cache and the LBL tree are then the defaults
+                config = {}
+            try:
+                items = housekeeping.survey(
+                    config, config_path, out_root,
+                    package=os.path.dirname(os.path.abspath(__file__)))
+            except OSError:
+                items = []
+            self.lines.put(("measured", items))
+
+        threading.Thread(target=look, daemon=True).start()
+
+    def _measured(self, items):
+        """One survey, applied on the main thread."""
+        from .housekeeping import totals
+        self._measuring = False
+        self.clean_items = items
+        self.clean_button.configure(state="normal")
+        self._clean_rows()
+        self.purge_button.configure(
+            state="normal" if totals(items)[1] else "disabled")
+
+    def _clean_rows(self):
+        """The survey in the list, in the window's language.
+
+        Apart from _measured because the language button redraws it and a
+        survey may be going at that moment: switching language must not tell
+        the window that the measurement it is waiting for has arrived.
+        """
+        from .housekeeping import human
+        for row in self.clean_tree.get_children():
+            self.clean_tree.delete(row)
+        for i, item in enumerate(self.clean_items):
+            self.clean_tree.insert(
+                "", "end", iid=str(i), text=item["name"],
+                values=(human(item["bytes"]), item["files"],
+                        self.t("kind_" + item["kind"])))
+        self._clean_totals()
+
+    def _clean_totals(self, items=None):
+        """The two numbers under the list, in the window's language."""
+        from .housekeeping import human, totals
+        items = self.clean_items if items is None else items
+        if not items:
+            self.clean_totals.configure(text=self.t("clean_none"))
+            return
+        total, free = totals(items)
+        self.clean_totals.configure(
+            text=self.t("clean_totals") % (human(total), human(free)))
+
+    def _clean_selected(self, _event=None):
+        rows = self.clean_tree.selection()
+        if not rows:
+            return
+        item = self.clean_items[int(rows[0])]
+        path = item["path"]
+        where = ", ".join(path) if isinstance(path, list) else (path or "")
+        key = "clean_" + str(item.get("key") or "")
+        what = self.t(key) if key in EN else item["what"]
+        self.clean_what.configure(
+            text="%s\n%s" % (where, what) if what else where)
+
+    def purge_disks(self):
+        """Delete the scratch and the rebuildable, after saying what and how
+        much. Never the results: housekeeping.purge checks the flag itself."""
+        from .housekeeping import human, purge
+        going = [it for it in self.clean_items if it.get("removable")
+                 and it["bytes"]]
+        if not going:
+            self._say("clean_nothing", level="warn")
+            return
+        freed = sum(it["bytes"] for it in going)
+        listed = "\n".join("  %s   %s" % (human(it["bytes"]), it["name"])
+                            for it in going)
+        from tkinter import messagebox
+        if not messagebox.askyesno(
+                self.t("clean_confirm_title"),
+                self.t("clean_confirm") % (human(freed), len(going), listed)):
+            return
+        gained, gone = purge(self.clean_items)
+        self._say("clean_freed", human(gained), len(gone), level="info")
+        self.measure_disks()
 
     def _stage(self, changed):
         """A stage box moved: the ones that depend on it follow."""
