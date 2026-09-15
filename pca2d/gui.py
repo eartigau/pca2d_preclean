@@ -1639,6 +1639,19 @@ class App:
         style.configure("TEntry", padding=(8, 5))
         style.configure("TCombobox", padding=(8, 4))
         style.configure("TCheckbutton", padding=(0, 2))
+        # What a rounded corner leaves transparent shows the widget's OWN
+        # background, and these were white: every corner had a white notch
+        # sitting outside it, on a page that is not white. The fill now comes
+        # from the picture and the background is the window's ground, so the
+        # corner has the page behind it and disappears into it. Only once the
+        # images are really in use: without them the background IS the fill.
+        for name in ("TButton", "Run.TButton", "TEntry", "TCombobox"):
+            style.configure(name, background=BG, lightcolor=BG, darkcolor=BG,
+                            bordercolor=BG)
+        style.map("TButton", background=[("active", BG), ("pressed", BG),
+                                         ("disabled", BG)])
+        style.map("Run.TButton", background=[("active", BG), ("pressed", BG),
+                                             ("disabled", BG)])
 
     def _register(self, widget, key, how="text"):
         self.labels.append((widget, key, how))
