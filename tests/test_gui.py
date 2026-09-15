@@ -786,14 +786,21 @@ def test_a_setting_a_run_was_asked_for_lands_in_its_configuration():
         "a flag nobody passed changes nothing"
 
 
-def test_a_two_valued_setting_is_a_tick_box_holding_its_own_words():
-    """A menu of two words is a menu too many. The kind says `toggle` and the
-    two values it switches between, ticked first, and the variable carries the
-    config's own word so that nothing downstream translates a boolean back."""
+def test_a_two_valued_setting_is_two_buttons_holding_its_own_words():
+    """A menu of two words is a menu too many, and a tick box can only name one
+    of the two. Two buttons on one variable: choosing one releases the other by
+    construction, each says what it IS (F, (dF/dv)^2), and the variable carries
+    the config's own word so nothing downstream translates anything back."""
     from pca2d.gui import OPTIONS
 
     kinds = {key: kind for key, _path, kind in OPTIONS}
-    assert kinds["weight"] == ("toggle", "velocity", "flux")
-    for key, kind in kinds.items():
-        if isinstance(kind, tuple) and kind and kind[0] == "toggle":
-            assert len(kind) == 3, "%s: ticked and unticked, and nothing else" % key
+    kind = kinds["weight"]
+    assert kind[0] == "radio"
+    assert [value for value, _caption in kind[1:]] == ["flux", "velocity"]
+    assert [caption for _value, caption in kind[1:]] == ["F", "(dF/dv)\u00b2"], \
+        "the buttons say the quantity they weigh by, with a real superscript"
+    for key, one in kinds.items():
+        if isinstance(one, tuple) and one and one[0] == "radio":
+            assert len(one) >= 3, "%s: a choice needs at least two buttons" % key
+            for pair in one[1:]:
+                assert len(pair) == 2, "%s: (value, what the button says)" % key

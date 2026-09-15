@@ -71,8 +71,8 @@ Without PIL none of it happens and the window is the square one it was.
   instrument.
 - **The settings that change a result**, and only those: how many components in
   each frame, the velocity term, the number of sweeps, the shrinkage, the **correction fit
-  metric** as a tick box (`velocity`, the nominal, weighting every sample by the
-  star's own derivative there, against `flux`), the high pass, the
+  metric** as two buttons, `F` and `(dF/dv)²`, the second being the nominal and
+  weighting every sample by the star's own derivative there, the high pass, the
   grid step and nightly coadding. **Each travels to the run under its own
   flag**: until 2026-09-15 only the two component counts did, so a value typed
   here was shown, changed, and then ignored by the run, which used the

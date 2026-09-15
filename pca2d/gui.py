@@ -74,9 +74,12 @@ OPTIONS = [
     ("velocity_term", "twoframe.velocity_term", "bool"),
     ("iters", "twoframe.iters", "int"),
     ("shrink", "correct.shrink", "bool"),
-    # a toggle, not a menu: two values, and a tick box says which one you are in
-    # at a glance. The kind carries them, ticked first (pca2d.gui._build_options)
-    ("weight", "correct.weight", ("toggle", "velocity", "flux")),
+    # two buttons, one of which is always down: the metric is a choice between
+    # two spellings of the same thing, and a tick box can only name one of them.
+    # The kind carries (value, what the button says), and the DEFAULT is the
+    # config's, which is the derivative (pca2d.gui._build_options)
+    ("weight", "correct.weight",
+     ("radio", ("flux", "F"), ("velocity", "(dF/dv)\u00b2"))),
     # no correct.mask here either: one line set for the whole campaign
     # ("common"), decided in the code
     ("width_kms", "highpass.width_kms", "float"),
@@ -276,7 +279,6 @@ EN = {
     "opt_iters": "sweeps at most",
     "opt_shrink": "divide only what is significant",
     "opt_weight": "correction fit metric",
-    "opt_weight_on": "on dF/dv",
     "help_weight":
         "The metric the correction's amplitudes are measured in. `flux`, the"
         " nominal: every sample as the fit saw it. `velocity`: each sample"
@@ -691,7 +693,6 @@ FR = {
     "opt_iters": "itérations au plus",
     "opt_shrink": "ne diviser que le significatif",
     "opt_weight": "métrique d'ajustement de la correction",
-    "opt_weight_on": "sur dF/dv",
     "help_weight":
         "La métrique dans laquelle les amplitudes de la correction sont"
         " mesurées. `flux`, le nominal : chaque échantillon tel que"
@@ -2537,16 +2538,19 @@ class App:
             if kind == "bool":
                 var = tk.BooleanVar(value=bool(default))
                 widget = ttk.Checkbutton(grid, variable=var)
-            elif isinstance(kind, tuple) and kind and kind[0] == "toggle":
-                # a tick box holding a STRING: ttk gives a Checkbutton onvalue
-                # and offvalue, so the variable carries the config's own words
-                # and nothing downstream has to translate a boolean back
-                _, ticked, unticked = kind
+            elif isinstance(kind, tuple) and kind and kind[0] == "radio":
+                # One variable, two buttons, so choosing one releases the other
+                # by construction rather than by a callback that has to
+                # remember. The variable holds the config's OWN word, so the
+                # command still says --weight velocity and nothing downstream
+                # translates anything back.
                 var = tk.StringVar(value=str(default))
-                widget = ttk.Checkbutton(grid, variable=var, onvalue=ticked,
-                                         offvalue=unticked,
-                                         text=self.t("opt_%s_on" % key))
-                self._register(widget, "opt_%s_on" % key)
+                widget = ttk.Frame(grid)
+                for value, caption in kind[1:]:
+                    button = ttk.Radiobutton(widget, text=caption, value=value,
+                                             variable=var)
+                    button.pack(side="left", padx=(0, 10))
+                    self._tip(button, "help_" + key)
             elif isinstance(kind, tuple):
                 var = tk.StringVar(value=str(default))
                 widget = ttk.Combobox(grid, textvariable=var, values=list(kind),
