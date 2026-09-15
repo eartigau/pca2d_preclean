@@ -36,7 +36,8 @@ import shlex
 import sys
 import time
 
-from .config import VARIANT_META, cache_key, load_config, read_yaml, spectra_dir
+from .config import (VARIANT_META, cache_key, load_config, read_yaml,
+                     resolve_highpass, spectra_dir)
 from .logger import log
 from .progress import human, stage
 
@@ -82,7 +83,20 @@ def add_setting_flags(parser):
 
 
 def apply_setting_flags(config, args):
-    """Put what the command line said into the resolved configuration."""
+    """Put what the command line said into the resolved configuration, and
+    leave that configuration resolved.
+
+    The second half is not decoration. load_config DERIVES highpass.window from
+    highpass.width_kms and the grid step; two of these flags, --dv and
+    --high-pass, are exactly the two numbers it derived it from. Written in
+    here and left at that, the window would keep the value the file's dv gave
+    it, while every stage reads the config this run writes and derives it
+    again, at the dv that ran. The window is hashed into the cube's cache key
+    and the width is not, so the run then had TWO keys: the cube stage built
+    cache/cube_..._3e01c018993b and the fit opened cache/cube_..._4e793f8df25f,
+    which nothing had ever written. A resolved configuration has to be a fixed
+    point of reading it back, or the stages are not looking at one run.
+    """
     said = []
     for flag, path, kind, _help in SETTING_FLAGS:
         value = getattr(args, flag[2:].replace("-", "_"), None)
@@ -95,6 +109,9 @@ def apply_setting_flags(config, args):
         said.append("%s = %s" % (path, value))
     if said:
         log("from the command line: %s" % ", ".join(said), "value")
+        # what a stage reading this configuration back would derive, derived
+        # here instead: the file's own highpass section is what it would see
+        resolve_highpass(config, dict(config["highpass"]))
     return config
 
 

@@ -1458,9 +1458,10 @@ def cube_shape(path):
     if missing:
         raise SystemExit(
             "%s. That is the cube stage's output, and it is gone or was never"
-            " built: run this configuration with the cube stage as well"
-            " (--stages cube,fit), which reads every spectrum once and takes a"
-            " few minutes." % missing)
+            " built. Run this configuration with the cube stage as well: tick"
+            " `cube` among the stages in the window, or pass --stages cube,fit"
+            " on the command line. It reads every spectrum once and takes a few"
+            " minutes." % missing)
     with np.load(path, allow_pickle=True) as handle:
         shape = handle["data"].shape
     return int(shape[0]), int(shape[1])

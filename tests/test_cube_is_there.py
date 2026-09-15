@@ -220,7 +220,7 @@ def test_the_fit_stage_itself_says_a_missing_cube_in_words(tmp_path):
     with pytest.raises(SystemExit) as gone:
         cube_shape(str(tmp_path / "cube_tfits_4e793f8df25f"))
     assert "cube_tfits_4e793f8df25f" in str(gone.value)
-    assert "--stages cube,fit" in str(gone.value)
+    assert "--stages cube,fit" in str(gone.value) and "window" in str(gone.value)
 
     half = tmp_path / "cube_tfits_part"
     half.mkdir()
