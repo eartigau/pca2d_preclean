@@ -35,6 +35,11 @@ from . import scan
 from .logger import stamp
 
 HOME_STATE = os.path.expanduser("~/.pca2d_gui.json")
+#: the family that carries the colour emoji here. Tk falls back to the default
+#: font when a family is unknown, so a machine without it shows the character
+#: in black and white rather than failing to draw anything.
+EMOJI_FONT = ("Apple Color Emoji" if sys.platform == "darwin"
+              else "Segoe UI Emoji" if os.name == "nt" else "Noto Color Emoji")
 #: EVERY escape sequence, not only the ones this window paints with. LBL
 #: colours its own output (`\033[92;1m` for a bright bold green, `\033[0;0m` to
 #: reset), and a pattern that matched a single number left those on screen as
@@ -184,9 +189,10 @@ EN = {
         " young; a small possible means the target is the wrong one.",
     "run": "Run", "stop": "Stop", "dry": "Dry run", "export": "Export YAML...",
     "savelog": "Save log...", "openout": "Open outputs",
+    "openpdf": "Open compil PDF",
     "savedefaults": "Save as defaults...",
     "all": "all", "none": "none",
-    "idle": "idle", "running": "running", "lang": "Français",
+    "idle": "idle", "running": "running", "lang": "\U0001F1EB\U0001F1F7 Français",
     "snr_berv": "signal-to-noise against barycentric velocity",
     "snr_none": "tick a target to see where its best nights sit",
     "help_snr_berv":
@@ -268,6 +274,7 @@ EN = {
     "clean_pycache":
         "Compiled Python, remade the next time the package is imported.",
     "quit": "Quit", "quit_title": "quit pca2d-preclean",
+    "quit_yes": "Quit anyway", "quit_no": "Stay",
     "quit_running":
         "A run is going, and it is a subprocess of this window: quitting stops"
         " it. What the stages before it wrote stays where it is, the stage it is"
@@ -332,6 +339,9 @@ EN = {
     "log_nothing": "nothing to write: every setting is the configuration's own",
     "log_saved_log": "log written: %s",
     "log_no_outputs": "nothing written there yet: %s",
+    "log_no_report":
+        "no compilation PDF yet at %s. The figures stage writes it, and the LBL"
+        " stage adds the velocity pages to it",
     "log_failed": "could not start it: %s",
     "log_no_command": "nothing was installed, so there is nothing to run",
     "log_installing": "installing the command into this environment, from %s",
@@ -581,6 +591,12 @@ EN = {
         " nominal says nothing, and is refused.",
     "help_savelog_button": "Writes what the window has shown to a file.",
     "help_openout_button": "Opens the output root in the file browser.",
+    "help_openpdf_button":
+        "Opens this run's own PDF, the one everything is bound into: the"
+        " spectra before and after, the components, the correlations, and the"
+        " velocity pages at the end once LBL has measured them. It is"
+        " <object>_<tag>.pdf in the run's folder, written by the figures"
+        " stage, so it is there once that stage has run.",
     "help_lang": "Switch the window between English and French.",
     "help_apero":
         "APERO, the pipeline that reduced every spectrum this window reads"
@@ -662,9 +678,11 @@ FR = {
     "run": "Lancer", "stop": "Arrêter", "dry": "Essai à blanc",
     "export": "Exporter le YAML...", "savelog": "Enregistrer le journal...",
     "openout": "Ouvrir les sorties",
+    "openpdf": "Ouvrir le PDF de compilation",
     "savedefaults": "Enregistrer comme défauts...",
     "all": "tout", "none": "rien",
-    "idle": "au repos", "running": "en cours", "lang": "English",
+    "idle": "au repos", "running": "en cours",
+    "lang": "\U0001F1EC\U0001F1E7 English",
     "snr_berv": "rapport signal sur bruit en fonction du BERV",
     "snr_none": "cochez une cible pour voir où sont ses meilleures nuits",
     "help_snr_berv":
@@ -754,6 +772,7 @@ FR = {
     "clean_pycache":
         "Du Python compilé, refait au prochain import du paquet.",
     "quit": "Quitter", "quit_title": "quitter pca2d-preclean",
+    "quit_yes": "Quitter quand même", "quit_no": "Rester",
     "quit_running":
         "Un passage est en cours, et c'est un processus fils de cette fenêtre :"
         " quitter l'arrête. Ce que les étapes précédentes ont écrit reste en"
@@ -819,6 +838,9 @@ FR = {
     "log_nothing": "rien à écrire : tous les réglages sont ceux de la configuration",
     "log_saved_log": "journal écrit : %s",
     "log_no_outputs": "rien n'y est encore écrit : %s",
+    "log_no_report":
+        "pas encore de PDF de compilation à %s. C'est l'étape des figures qui"
+        " l'écrit, et l'étape LBL qui y ajoute les pages de vitesses",
     "log_failed": "impossible de le lancer : %s",
     "log_no_command": "rien n'a été installé, il n'y a donc rien à lancer",
     "log_installing": "installation de la commande dans cet environnement, depuis %s",
@@ -1092,6 +1114,12 @@ FR = {
     "help_savelog_button": "Écrit dans un fichier ce que la fenêtre a montré.",
     "help_openout_button":
         "Ouvre la racine de sortie dans le navigateur de fichiers.",
+    "help_openpdf_button":
+        "Ouvre le PDF de ce passage, celui où tout est relié : les spectres"
+        " avant et après, les composantes, les corrélations, et les pages de"
+        " vitesses à la fin une fois que LBL les a mesurées. C'est"
+        " <objet>_<tag>.pdf dans le dossier du passage, écrit par l'étape des"
+        " figures : il est là dès que cette étape a tourné.",
     "help_lang": "Bascule la fenêtre entre l'anglais et le français.",
     "help_apero":
         "APERO, le pipeline qui a réduit tous les spectres que cette fenêtre"
@@ -1186,6 +1214,41 @@ def absolute(path):
     if not path:
         return ""
     return os.path.abspath(os.path.expanduser(str(path)))
+
+
+def run_folder(state, out_root):
+    """The folder the run these settings describe writes into, or None.
+
+    The same three pieces cli.resolve joins, in the same order: the output root
+    with `_<name>` under it when the run is named, then the object, or
+    `joint/<A+B>` when several are fitted together, then the tag. The tag is
+    the two counts AND the `v` of the velocity term: a run with it and a run
+    without it are two folders on purpose, and a tag without the v points at
+    the other one's.
+    """
+    names = state.get("objects") or []
+    if not names:
+        return None
+    tag = "%s-%s%s" % (state.get("n_star") or 0, state.get("n_earth") or 3,
+                       "v" if state.get("velocity_term") else "")
+    named = str(state.get("run_name") or "").strip()
+    where = os.path.join(absolute(out_root), "_" + named if named else "")
+    if len(names) > 1:
+        return os.path.join(where, "joint", "+".join(names), tag)
+    return os.path.join(where, names[0], tag)
+
+
+def report_pdf(state, out_root):
+    """The run's compilation PDF: <folder>/<object>_<tag>.pdf, or None.
+
+    Named after the first object even when several were fitted together, which
+    is how cli.main names it.
+    """
+    folder = run_folder(state, out_root)
+    if not folder:
+        return None
+    return os.path.join(folder, "%s_%s.pdf" % ((state.get("objects") or [""])[0],
+                                               os.path.basename(folder)))
 
 
 def corrected_dir(data_root):
@@ -2040,7 +2103,7 @@ class App:
         self._register(quit_button, "quit")
         self._tip(quit_button, "help_quit_button")
         button = ttk.Button(frame, text=self.t("lang"),
-                            command=self.switch_language, width=10)
+                            command=self.switch_language, width=13)
         button.pack(side="right", padx=(0, 6))
         self._register(button, "lang")
         self._tip(button, "help_lang")
@@ -2759,7 +2822,8 @@ class App:
                 ("stop", "stop", "stop_button", "help_stop_button"),
                 ("dry", "dry_run", None, "help_dry_button"),
                 ("savelog", "save_log", None, "help_savelog_button"),
-                ("openout", "open_outputs", None, "help_openout_button")),
+                ("openout", "open_outputs", None, "help_openout_button"),
+                ("openpdf", "open_report", None, "help_openpdf_button")),
     }
 
     def dry_run(self):
@@ -2881,20 +2945,13 @@ class App:
         label = getattr(self, "exists", None)
         if label is None:
             return
-        names = state.get("objects") or []
-        if not names:
+        if not state.get("objects"):
             label.configure(text="")
             return
         root = (state.get("out_dir")
                 or (self._config().get("output") or {}).get("directory")
                 or "outputs")
-        named = str(state.get("run_name") or "").strip()
-        tag = "%s-%s" % (state.get("n_star") or 0, state.get("n_earth") or 3)
-        where = os.path.join(absolute(root), "_" + named if named else "")
-        if len(names) > 1:
-            where = os.path.join(where, "joint", "+".join(names), tag)
-        else:
-            where = os.path.join(where, names[0], tag)
+        where = run_folder(state, root)
         if os.path.exists(os.path.join(where, "fit.npz")):
             label.configure(text=self.t("exists"), foreground="#b26a00")
         else:
@@ -3570,19 +3627,45 @@ class App:
                 handle.write(self.log.get("1.0", "end"))
             self._say("log_saved_log", path, level="value")
 
-    def open_outputs(self):
-        """Show the output root in the file browser: a run leaves one PDF and a
-        folder of corrected spectra, and they are easier to find by looking."""
+    def _out_root(self):
+        """The output root in full, as the run will read it.
+
+        A relative root is relative to the CONFIGURATION, not to wherever the
+        window was started from, which is the same rule the run follows.
+        """
         root = self.vars["out_dir"].get() or (
             (self._config().get("output") or {}).get("directory") or "outputs")
-        path = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(
+        return os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(
             self.vars["config"].get())), root))
-        if not os.path.isdir(path):
-            self._say("log_no_outputs", path, level="warn")
-            return
+
+    def _open(self, path):
+        """Hand a file or a folder to whatever opens it here."""
         opener = ("open" if sys.platform == "darwin"
                   else "explorer" if os.name == "nt" else "xdg-open")
         subprocess.Popen([opener, path])
+
+    def open_outputs(self):
+        """Show the output root in the file browser: a run leaves one PDF and a
+        folder of corrected spectra, and they are easier to find by looking."""
+        path = self._out_root()
+        if not os.path.isdir(path):
+            self._say("log_no_outputs", path, level="warn")
+            return
+        self._open(path)
+
+    def open_report(self):
+        """Open the one PDF this run binds everything into.
+
+        The output root holds every run ever made, and finding this one's
+        report in it means knowing that a run is named by its counts and by
+        the name typed beside them. The window knows all of that already, so
+        it opens the file rather than the folder above it.
+        """
+        path = report_pdf(self.state(), self._out_root())
+        if not path or not os.path.exists(path):
+            self._say("log_no_report", path or self._out_root(), level="warn")
+            return
+        self._open(path)
 
     def _build_lbl(self, parent):
         """The `lbl:` block, on its own page: the wrapper's own questions.
@@ -3846,15 +3929,57 @@ class App:
         one, and it goes when this does.
         """
         if self.proc is not None:
-            if confirm is None:
-                from tkinter import messagebox
-
-                def confirm():
-                    return messagebox.askyesno(self.t("quit_title"),
-                                               self.t("quit_running"))
-            if not confirm():
+            if not (confirm or self._ask_quit)():
                 return
         self._close()
+
+    #: what the quit question wears. A run is an hour of somebody's afternoon,
+    #: and the stage it is in goes with the window; the plain grey line of text
+    #: tkinter offers for that is not the size of what it is asking.
+    STARTLED = "\U0001F633"
+
+    def _ask_quit(self):
+        """The quit question, in its own window, with a face on it. True to go.
+
+        messagebox.askyesno takes no image, so this is a Toplevel: the same
+        words, the face beside them, and the two answers named rather than
+        called Yes and No, since neither of those is the question.
+        """
+        tk, ttk = self.tk, self.ttk
+        win = tk.Toplevel(self.root)
+        win.title(self.t("quit_title"))
+        win.transient(self.root)
+        win.resizable(False, False)
+        answer = {"leave": False}
+        frame = ttk.Frame(win, padding=18)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(frame, text=self.STARTLED, font=(EMOJI_FONT, 46)).grid(
+            row=0, column=0, rowspan=2, padx=(0, 16), sticky="n")
+        ttk.Label(frame, text=self.t("quit_running"), wraplength=380,
+                  justify="left").grid(row=0, column=1, sticky="w")
+        bar = ttk.Frame(frame)
+        bar.grid(row=1, column=1, sticky="e", pady=(14, 0))
+
+        def leave():
+            answer["leave"] = True
+            win.destroy()
+
+        ttk.Button(bar, text=self.t("quit_no"),
+                   command=win.destroy).pack(side="right")
+        ttk.Button(bar, text=self.t("quit_yes"),
+                   command=leave).pack(side="right", padx=(0, 8))
+        win.bind("<Escape>", lambda _event: win.destroy())
+        win.protocol("WM_DELETE_WINDOW", win.destroy)
+        win.update_idletasks()
+        # over the window it interrupts, rather than wherever the system puts it
+        x = self.root.winfo_rootx() + (self.root.winfo_width()
+                                       - win.winfo_width()) // 2
+        y = self.root.winfo_rooty() + (self.root.winfo_height()
+                                       - win.winfo_height()) // 3
+        win.geometry("+%d+%d" % (max(x, 0), max(y, 0)))
+        win.grab_set()
+        self.root.wait_window(win)
+        return answer["leave"]
 
     def _close(self):
         if self.proc is not None:

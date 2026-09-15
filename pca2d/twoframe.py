@@ -2921,7 +2921,11 @@ def main(argv=None):
                 v = shift_velocity(alpha[~rejected], dv) * 1000.0        # m/s
                 shift = "  shift %.1f m/s rms" % (
                     1.4826 * np.median(np.abs(v - np.median(v))) if v.size else 0.0)
-            log("  iter %d  R2=%.6f  left/raw=%.4f  clipped=%.3f%%"
+            # a digit more than seems necessary on both: they are what
+            # convergence is read off, and on a fit that settles (TOI-2120,
+            # 800 x 421782) four decimals held left/raw at 0.0423 for five
+            # sweeps in a row, which says "stopped" for something still moving
+            log("  iter %d  R2=%.7f  left/raw=%.5f  clipped=%.3f%%"
                   "  cond(A) med/max %.1f/%.1f%s%s  [%.1fs coeff, %.1fs bases]%s"
                   % (iteration, 1 - chi2 / chi2_null, chi2 / chi2_raw, 100 * hit,
                      np.median(cond), cond.max(), shift, step, t_coeff, t_basis,

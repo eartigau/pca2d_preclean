@@ -108,7 +108,8 @@ def test_every_item_explains_itself_in_both_languages():
             "help_command", "help_log", "help_rescan", "help_quit_button",
             "help_lang", "help_run_button", "help_stop_button",
             "help_dry_button", "help_export_button", "help_savelog_button",
-            "help_openout_button", "help_savedefaults_button",
+            "help_openout_button", "help_openpdf_button",
+            "help_savedefaults_button",
             "help_lblwin_button", "help_all_button", "help_check",
             "help_col_snr", "help_col_exptime", "help_col_mag",
             "help_berv"]
@@ -937,3 +938,26 @@ def test_every_line_of_the_cleanup_list_explains_itself_in_both_languages():
         key = "clean_" + item["key"]
         assert key in EN and key in FR, "%s says nothing" % item["name"]
         assert len(EN[key]) > 10 and len(FR[key]) > 10
+
+
+def test_the_window_knows_which_pdf_is_this_run_s(tmp_path):
+    """Open compil PDF opens a file, not the folder above it, so it has to
+    name the run exactly as cli.resolve does: the name, the object or the
+    joint set, and the tag WITH the v of the velocity term."""
+    from pca2d.gui import report_pdf, run_folder
+
+    state = {"objects": ["TOI2120"], "n_star": 0, "n_earth": 3,
+             "velocity_term": False, "run_name": ""}
+    assert run_folder(state, str(tmp_path)) == str(tmp_path / "TOI2120" / "0-3")
+    assert report_pdf(state, str(tmp_path)).endswith("0-3/TOI2120_0-3.pdf")
+
+    # the velocity term is another run, and another folder
+    assert report_pdf({**state, "velocity_term": True},
+                      str(tmp_path)).endswith("0-3v/TOI2120_0-3v.pdf")
+    # a named run keeps its own root, joint runs their own subfolder
+    assert run_folder({**state, "run_name": "test1"}, str(tmp_path)) == \
+        str(tmp_path / "_test1" / "TOI2120" / "0-3")
+    assert run_folder({**state, "objects": ["PROXIMA", "GJ1"]},
+                      str(tmp_path)) == str(tmp_path / "joint" / "PROXIMA+GJ1"
+                                            / "0-3")
+    assert run_folder({"objects": []}, str(tmp_path)) is None
