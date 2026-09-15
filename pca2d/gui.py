@@ -988,27 +988,44 @@ def corrected_dir(data_root):
     return os.path.join(parent or os.sep, "corrected")
 
 
-def preclean_argv():
-    """How to run `pca2d-preclean` from HERE, or None if it cannot be found.
+def package_home():
+    """The folder holding the `pca2d` package this window is running from.
 
-    Beside the interpreter first: the window is started by the entry point
-    installed in an environment's bin, and its sibling is the command, whatever
-    PATH the window inherited. A window started from another shell had none
-    ("No such file or directory: 'pca2d-preclean'", 2026-09-13) although the
-    command was installed all along. Then PATH, then the module, which works
-    wherever the package imports.
+    What it is for: the run is spawned with the config file's folder as its
+    working directory, and `python -m` puts that folder first on the import
+    path. If it happens to hold another copy of the package, the run is that
+    copy. That is not a hypothetical: on 2026-09-15 a window that had just
+    written --no-fits-dir launched a pipeline that had never heard of it,
+    because the config it was pointed at lived in a second clone.
     """
-    beside = os.path.join(os.path.dirname(os.path.abspath(sys.executable)),
-                          "pca2d-preclean")
-    if os.path.exists(beside) and os.access(beside, os.X_OK):
-        return [beside]
-    found = shutil.which("pca2d-preclean")
-    if found:
-        return [found]
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def preclean_argv():
+    """How to run the pipeline: THIS window's own code, through this python.
+
+    `[sys.executable, "-m", "pca2d.cli"]` and not the `pca2d-preclean` script
+    beside the interpreter, which is what this used to return. The two are the
+    same thing only when one copy of the package is installed. With two
+    editable installs, which happens the moment a second clone is pip-installed
+    for a test, WHICH ONE RUNS DEPENDS ON THE DIRECTORY: on 2026-09-15 a window
+    that knew --no-fits-dir launched a pipeline that did not, and the run died
+    on `unrecognized arguments` after the window had written the flag itself.
+    The module is imported the way the window imported it, so the two are one
+    version by construction.
+
+    The command SHOWN stays `pca2d-preclean ...`, which is what a person types;
+    this is only what gets spawned.
+    """
     try:
         import pca2d.cli                                        # noqa: F401
     except Exception:                                           # noqa: BLE001
-        return None
+        beside = os.path.join(os.path.dirname(os.path.abspath(sys.executable)),
+                              "pca2d-preclean")
+        if os.path.exists(beside) and os.access(beside, os.X_OK):
+            return [beside]
+        found = shutil.which("pca2d-preclean")
+        return [found] if found else None
     return [sys.executable, "-m", "pca2d.cli"]
 
 
@@ -2957,6 +2974,12 @@ class App:
         self._say("log_command", " ".join(argv), level="value")
         argv = found + argv[1:]
         env = dict(os.environ, PCA2D_COLOUR="1", PYTHONUNBUFFERED="1")
+        # this window's own package, ahead of everything: the run starts in the
+        # config file's folder, and whatever copy of pca2d sits there would
+        # otherwise be the one that runs
+        env["PYTHONPATH"] = os.pathsep.join(
+            [package_home()] + ([env["PYTHONPATH"]] if env.get("PYTHONPATH")
+                                else []))
         try:
             self.proc = subprocess.Popen(
                 argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,

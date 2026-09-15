@@ -4,6 +4,7 @@ The widgets are not tested here, since a test machine has no screen; what is
 tested is everything the window decides before it draws anything.
 """
 import os
+import sys
 
 from pca2d.gui import (ALL_OPTIONS, OPTIONS, OPTIONS_LBL, build_command,
                        instruments_of, objects_in, variant_yaml)
@@ -712,3 +713,22 @@ def test_an_empty_products_field_is_a_decision_the_command_carries():
     silent = build_command({"objects": ["X"]})
     assert "--fits-dir" not in silent and "--no-fits-dir" not in silent, \
         "a window that never had the field says nothing about it"
+
+
+def test_the_window_runs_the_code_it_is_itself():
+    """A window that had just written --no-fits-dir launched a pipeline that
+    had never heard of it (2026-09-15): two editable installs of the package,
+    and the run starts in the config file's folder, so the copy sitting there
+    won. What is spawned is now this interpreter and this package, said twice:
+    as a module, and as the first entry of PYTHONPATH."""
+    import pca2d
+    from pca2d.gui import package_home, preclean_argv
+
+    argv = preclean_argv()
+    assert argv[0] == sys.executable, "the python running the window"
+    assert argv[1:] == ["-m", "pca2d.cli"], "and its own module, not a script"
+
+    home = package_home()
+    assert os.path.isdir(os.path.join(home, "pca2d"))
+    assert os.path.dirname(os.path.abspath(pca2d.__file__)) == \
+        os.path.join(home, "pca2d"), "the package the window imported"
