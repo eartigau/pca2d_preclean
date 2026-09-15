@@ -227,6 +227,13 @@ joint run, a dry run, and the tests. Leaving rather than activating on top is
 the point, since the two environments that matter here both hold a version of
 LBL. Run the file instead of sourcing it and it says so, with the alias to keep.
 
+If `conda env create` ends in `CondaEnvException: Pip failed`, with
+`git version did not run successfully` and `xcrun: error: unable to load
+libxcrun` above it, the environment is x86_64 under Rosetta on an Apple Silicon
+Mac and pip cannot run Apple's git stub. The page has the three lines that
+confirm it and the three ways out:
+<https://eartigau.github.io/pca2d_preclean/#trouble>.
+
 That environment holds **both codes**, this one and LBL. Having to deactivate
 one to run the other is how a t.fits gets measured by the wrong version of
 something.

@@ -91,6 +91,69 @@
       </figure>
     </section>
 
+    <section class="card span-3" id="trouble">
+      <h2>When the install fails</h2>
+      <p>
+        One failure is common enough to name, because nothing in its message
+        points at its cause. <code>conda env create</code> ends with
+        <code>CondaEnvException: Pip failed</code>, and above it:
+      </p>
+      <pre><code>× git version did not run successfully.
+  xcrun: error: unable to load libxcrun
+  (/Library/Developer/CommandLineTools/usr/lib/libxcrun.dylib:
+   fat file, but missing compatible architecture (have 'arm64,arm64e', need 'x86_64'))
+ERROR: Failed to build 'git+https://github.com/njcuk9999/lbl@main'</code></pre>
+      <p>
+        It is not LBL, and it is not pip. <strong>The environment is x86_64,
+        running under Rosetta on an Apple Silicon Mac.</strong>
+        <code>environment.yml</code> asks pip for LBL from git, pip runs
+        <code>git</code>, Apple's <code>/usr/bin/git</code> is a stub that calls
+        <code>xcrun</code>, and <code>xcrun</code> loads
+        <code>libxcrun.dylib</code>, which on recent Command Line Tools ships
+        arm64 slices only. An x86_64 process cannot load an arm64 library, so
+        <code>git version</code> fails and conda reports the only thing it saw,
+        which is that pip failed. Nothing here is specific to this package: any
+        environment that pip-installs from a git URL hits it.
+      </p>
+
+      <h3>Three lines that say whether that is what happened</h3>
+      <pre><code>uname -m                                   # the shell:      arm64 on Apple Silicon
+conda activate &lt;env&gt;
+python -c "import platform; print(platform.machine())"   # the environment
+conda config --show subdir                 # osx-arm64, or osx-64 under Rosetta</code></pre>
+      <p>
+        Three answers that agree on <code>arm64</code> and
+        <code>osx-arm64</code> mean this is not your problem. Any
+        <code>x86_64</code> or <code>osx-64</code> among them is the cause.
+      </p>
+
+      <h3>The fix worth doing</h3>
+      <p>
+        Rebuild the environment natively. It is not only the way out of this
+        error: LBL is hours of arithmetic, and hours of arithmetic under
+        emulation are longer hours.
+      </p>
+      <pre><code>CONDA_SUBDIR=osx-arm64 conda env create -f environment.yml -n pca2d-preclean
+conda activate pca2d-preclean
+conda config --env --set subdir osx-arm64   # so later installs stay native</code></pre>
+      <p>
+        And check the terminal itself, since an environment inherits the
+        architecture of the shell that made it: Finder, Applications, Terminal,
+        Get Info, and <em>Open using Rosetta</em> must be unticked. If
+        <code>uname -m</code> says <code>x86_64</code>, look there first.
+      </p>
+
+      <h3>Two ways round it, if the environment has to stay x86_64</h3>
+      <ul class="terms">
+        <li>Give the environment its own git, of its own architecture, so pip
+          stops reaching for Apple's stub:
+          <code>conda install -n &lt;env&gt; -c conda-forge git</code>.</li>
+        <li>Or take git out of the install: clone LBL by hand and point pip at
+          the folder, <code>git clone https://github.com/njcuk9999/lbl</code>
+          then <code>pip install -e ./lbl</code>.</li>
+      </ul>
+    </section>
+
     <section class="card span-3" id="window">
       <h2>The window</h2>
       <pre><code>pca2d-gui</code></pre>
@@ -383,7 +446,9 @@ pca2d-gui                            # the same, in a window</code></pre>
         <code>environment.yml</code> repeats those pins so that conda installs
         them and pip finds them already satisfied. The repository itself is
         <strong>private for the moment</strong>: the clone needs access, which
-        is <a href="#access">a message away</a>.
+        is <a href="#access">a message away</a>. If
+        <code>conda env create</code> ends in <code>Pip failed</code>, the
+        reason is almost always <a href="#trouble">the one below</a>.
       </p>
     </section>
 
