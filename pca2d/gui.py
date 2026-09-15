@@ -1105,6 +1105,38 @@ def pie_step(known, total, steps=12):
     return min(steps - 1, int(fraction * steps))
 
 
+def rounded_image(width, height, radius, fill, outline=None, thickness=1,
+                  corners=(True, True, True, True)):
+    """A rounded rectangle as a PIL image, or None without PIL.
+
+    Supersampled and shrunk, like the row marks: ImageDraw has no antialiasing,
+    and a corner drawn at its final size is a staircase. What it is FOR is the
+    nine-patch borders ttk needs, since no theme here draws a round corner.
+    """
+    try:
+        from PIL import Image, ImageDraw
+    except Exception:                                           # noqa: BLE001
+        return None
+    k = max(1, int(SUPERSAMPLE))
+    image = Image.new("RGBA", (width * k, height * k), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    draw.rounded_rectangle([0, 0, width * k - 1, height * k - 1],
+                           radius=radius * k, fill=fill,
+                           outline=outline, width=thickness * k if outline else 0,
+                           corners=corners)
+    return image.resize((width, height), Image.LANCZOS)
+
+
+def rounded_photo(tk_module, *args, **kwargs):
+    """`rounded_image`, as something a ttk element can be made of."""
+    drawing = rounded_image(*args, **kwargs)
+    if drawing is None:
+        return None
+    from PIL import ImageTk
+
+    return ImageTk.PhotoImage(drawing)
+
+
 #: how many times over the marks are drawn before being shrunk to their size.
 #: ImageDraw has no antialiasing: a circle drawn at 18 pixels IS a staircase,
 #: and the only way to round it is to draw it large and shrink it with a filter
@@ -1457,13 +1489,16 @@ class App:
                   background=[("pressed", "#08557f"), ("active", "#0d7cc2"),
                               ("disabled", "#9dbdd4")],
                   foreground=[("disabled", "#eef4f8")])
-        style.configure("TNotebook", background=BG, borderwidth=0)
+        style.configure("TNotebook", background=BG, borderwidth=0,
+                        bordercolor=BG, lightcolor=BG, darkcolor=BG,
+                        tabmargins=(2, 4, 2, 0))
         style.configure("TNotebook.Tab", background=BG, foreground=MUTED,
-                        padding=(14, 7), font=(body, 12, "bold"),
+                        padding=(16, 8), font=(body, 12, "bold"),
                         borderwidth=0)
         style.map("TNotebook.Tab",
                   background=[("selected", SURFACE), ("active", ACCENT_SOFT)],
                   foreground=[("selected", ACCENT)])
+        self._round(style)
         style.configure("Treeview", background=SURFACE, fieldbackground=SURFACE,
                         foreground=INK, rowheight=26, bordercolor=LINE,
                         font=self.fonts["body"])
@@ -1497,6 +1532,110 @@ class App:
             self.status.configure(text=self.t("pick_root"))
         else:
             self.status.configure(text=self.t("idle"))
+
+
+    def _round(self, style):
+        """Round the corners ttk draws square, out of images.
+
+        No theme here draws a rounded corner, and the only way to have one is to
+        hand ttk a picture of it: a nine-patch, which it stretches along its
+        middle and leaves alone at the corners. Every image is kept on the
+        instance, or the garbage collector takes it and the widget comes back
+        empty. Without PIL none of this happens and the window is the square one
+        it was.
+        """
+        tk = self.tk
+        self._art = getattr(self, "_art", [])
+        r = 9
+
+        def art(fill, outline=None, corners=(True, True, True, True), h=30):
+            image = rounded_photo(tk, 2 * r + 4, h, r, fill, outline=outline,
+                                  thickness=1, corners=corners)
+            if image is not None:
+                self._art.append(image)     # kept, or it is collected and blank
+            return image
+
+        # A tab is round on top only, and the SELECTED one is the same ground as
+        # the page under it: that is what makes it read as the page's own edge
+        # rather than a white card floating over a grey one.
+        top = (True, True, False, False)
+        tabs = (art("#dfe6f1", "#dfe6f1", top), art(BG, LINE, top),
+                art(ACCENT_SOFT, ACCENT_SOFT, top))
+        buttons = (art(SURFACE, LINE), art(ACCENT_SOFT, ACCENT),
+                   art("#f4f7fb", LINE))
+        fields = (art(SURFACE, LINE, h=28), art(SURFACE, ACCENT, h=28))
+        # the same box and tick the list draws, so one window speaks one language
+        ticks = (row_image(tk, False, size=16), row_image(tk, True, size=16))
+        for image in ticks:
+            if image is not None:
+                self._art.append(image)
+        primary = (art(ACCENT, ACCENT), art("#0d7cc2", "#0d7cc2"),
+                   art("#9dbdd4", "#9dbdd4"))
+        if not all(tabs + buttons + primary + fields + ticks):
+            return                          # no PIL: the square window, as before
+
+        border = (r, r, r, 2)
+        try:
+            style.element_create(
+                "round.tab", "image", tabs[0],
+                ("selected", tabs[1]), ("active", tabs[2]),
+                border=border, sticky="nsew")
+            style.element_create(
+                "round.button", "image", buttons[0],
+                ("pressed", buttons[1]), ("active", buttons[1]),
+                ("disabled", buttons[2]),
+                border=(r, r, r, r), sticky="nsew")
+            style.element_create(
+                "primary.button", "image", primary[0],
+                ("pressed", primary[1]), ("active", primary[1]),
+                ("disabled", primary[2]),
+                border=(r, r, r, r), sticky="nsew")
+            style.element_create(
+                "round.field", "image", fields[0], ("focus", fields[1]),
+                border=(r, r, r, r), sticky="nsew")
+            style.element_create(
+                "round.check", "image", ticks[0], ("selected", ticks[1]),
+                border=0, sticky="")
+        except tk.TclError:
+            return                          # a second window in one process
+        style.layout("TNotebook.Tab", [
+            ("round.tab", {"sticky": "nsew", "children": [
+                ("Notebook.padding", {"side": "top", "sticky": "nsew",
+                                      "children": [
+                                          ("Notebook.label",
+                                           {"side": "top", "sticky": ""})]})]})])
+        for name, element in (("TButton", "round.button"),
+                              ("Run.TButton", "primary.button")):
+            style.layout(name, [
+                (element, {"sticky": "nsew", "children": [
+                    ("Button.padding", {"sticky": "nsew", "children": [
+                        ("Button.label", {"sticky": "nsew"})]})]})])
+        try:
+            style.layout("TEntry", [
+                ("round.field", {"sticky": "nsew", "children": [
+                    ("Entry.padding", {"sticky": "nsew", "children": [
+                        ("Entry.textarea", {"sticky": "nsew"})]})]})])
+            style.layout("TCombobox", [
+                ("round.field", {"sticky": "nsew", "children": [
+                    ("Combobox.downarrow", {"side": "right", "sticky": "ns"}),
+                    ("Combobox.padding", {"expand": "1", "sticky": "nsew",
+                                          "children": [
+                                              ("Combobox.textarea",
+                                               {"sticky": "nsew"})]})]})])
+            style.layout("TCheckbutton", [
+                ("Checkbutton.padding", {"sticky": "nsew", "children": [
+                    ("round.check", {"side": "left", "sticky": ""}),
+                    ("Checkbutton.focus", {"side": "left", "sticky": "w",
+                                           "children": [
+                                               ("Checkbutton.label",
+                                                {"sticky": "nsew"})]})]})])
+        except tk.TclError:
+            pass                            # the square field, then
+        style.configure("TButton", padding=(12, 6))
+        style.configure("Run.TButton", padding=(18, 6))
+        style.configure("TEntry", padding=(8, 5))
+        style.configure("TCombobox", padding=(8, 4))
+        style.configure("TCheckbutton", padding=(0, 2))
 
     def _register(self, widget, key, how="text"):
         self.labels.append((widget, key, how))

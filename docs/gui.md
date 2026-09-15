@@ -14,6 +14,15 @@ be read: **targets**, what is being reduced; **settings**, how; and **run**, the
 command, the buttons that start and end it, and everything it says. The banner
 and the language button stay above them. What follows is where each thing is.
 
+The corners are round, which ttk does not do: no theme here draws one, so the
+tabs, the buttons, the fields and the tick boxes are pictures of themselves,
+nine-patch images that ttk stretches along the middle and leaves alone at the
+corners (`App._round`). They are drawn eight times over and shrunk with a
+Lanczos filter, since ImageDraw has no antialiasing and a corner drawn at its
+final size is a staircase. The selected tab is the same ground as the page under
+it, so it reads as that page's own edge rather than a card floating over it.
+Without PIL none of it happens and the window is the square one it was.
+
 ## What is on it
 
 - **A data root**, shown in full: `data` and `config.yaml` mean different
