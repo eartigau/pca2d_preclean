@@ -99,7 +99,8 @@ Without PIL none of it happens and the window is the square one it was.
   skipped, red for what stops a run. The window's own lines are in the same
   form, `YYMMDD HH:MM:SS.SS | message`, and in the window's language.
 - **The barycentric coverage** of whatever is ticked, as a histogram in bins of
-  3 km/s, stacked by star, with three numbers under it: what the campaign
+  3 km/s, stacked by star, filling whatever height the page has beside the list
+  and redrawn as the window is resized, with three numbers under it: what the campaign
   covers, its span, and what its ecliptic latitude ALLOWS. That last one is
   fixed by the sky, `|BERV| <= 29.78 cos(beta)`, and it decides whether the
   method can work on a target at all: TOI-1452 at +80.5 degrees can never span

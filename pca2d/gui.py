@@ -1916,11 +1916,15 @@ class App:
         """
         ttk = self.ttk
         box = ttk.Labelframe(parent, text=self.t("berv"))
-        box.pack(fill="x", padx=6, pady=(0, 6))
+        # BOTH directions, and expanding: this panel and the timeline share
+        # whatever height the page has beside the list of targets, and both
+        # redraw themselves on <Configure>, so dragging the window taller gives
+        # the bars the room rather than leaving a grey band under them
+        box.pack(fill="both", expand=True, padx=6, pady=(0, 6))
         self._register(box, "berv")
         self.berv_canvas = self.tk.Canvas(box, height=86, highlightthickness=0,
                                           background=SURFACE)
-        self.berv_canvas.pack(fill="x", padx=6, pady=(4, 2))
+        self.berv_canvas.pack(fill="both", expand=True, padx=6, pady=(4, 2))
         self.berv_note = ttk.Label(box, style="Hint.TLabel", text="")
         self.berv_note.pack(anchor="w", padx=8, pady=(0, 4))
         self._tip(self.berv_canvas, "help_berv")
@@ -1935,11 +1939,11 @@ class App:
         """
         ttk = self.ttk
         box = ttk.Labelframe(parent, text=self.t("timeline"))
-        box.pack(fill="x", padx=6, pady=(0, 6))
+        box.pack(fill="both", expand=True, padx=6, pady=(0, 6))
         self._register(box, "timeline")
         self.time_canvas = self.tk.Canvas(box, height=80, highlightthickness=0,
                                           background=SURFACE)
-        self.time_canvas.pack(fill="x", padx=6, pady=(4, 2))
+        self.time_canvas.pack(fill="both", expand=True, padx=6, pady=(4, 2))
         self.time_canvas.bind("<Configure>", lambda _e: self._draw_time())
         self._tip(self.time_canvas, "help_dates")
         sliders = ttk.Frame(box)
@@ -2060,6 +2064,11 @@ class App:
         keep_hi = self._bound("max_rjd", hi)
         canvas.create_rectangle(x_of(keep_lo), top - 4, x_of(keep_hi),
                                 height - foot + 4, fill=ACCENT_SOFT, outline="")
+        # the marks grow with the band they sit in: a panel dragged twice as
+        # tall used to hold the same 8-pixel ticks with twice the white space
+        # between them. Clamped at the bottom so ten campaigns stay legible,
+        # and at 0.35 of the band so two rows never touch.
+        half = max(3.0, min(band * 0.35, 90.0))
         for i, (name, values) in enumerate(sorted(times.items())):
             y = top + band * (i + 0.5)
             colour = self._star_colour(name)
@@ -2067,10 +2076,10 @@ class App:
             for t in values[::step]:
                 x = x_of(t)
                 inside = keep_lo <= t <= keep_hi
-                canvas.create_line(x, y - 4, x, y + 4,
+                canvas.create_line(x, y - half, x, y + half,
                                    fill=colour if inside else "#d6dbe4")
-            canvas.create_text(pad, y - 9, text=name, anchor="w", fill=colour,
-                               font=("Helvetica", 8))
+            canvas.create_text(pad, y - half - 5, text=name, anchor="w",
+                               fill=colour, font=("Helvetica", 8))
         # the calendar, which is what anybody reads
         canvas.create_line(pad, height - foot + 6, width - pad, height - foot + 6,
                            fill="#bbb")
