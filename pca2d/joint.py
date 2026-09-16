@@ -96,6 +96,19 @@ def build(cubes, objects, path, config_file=None, chunk=64):
     a thousand rows over half a million columns do not belong in memory at
     once. Returns the number of rows written.
     """
+    gone = [(name, c) for name, c in zip(objects, cubes)
+            if not os.path.exists(os.path.join(c, "grid.npy"))]
+    if gone:
+        # the caller builds what is missing before coming here (cli.
+        # run_joint_cube), so reaching this means it could not. Said in words,
+        # because np.load's own error names a grid.npy and nothing else
+        raise SystemExit(
+            "the joint cube is made of the objects' own cubes and %s not"
+            " there: %s. Each is written by the cube stage, so run this"
+            " configuration with the cube stage in it; if it was there a"
+            " moment ago, something emptied the cache while the run was going."
+            % ("is" if len(gone) == 1 else "are",
+               ", ".join("%s (%s)" % (name, path) for name, path in gone)))
     grids = [np.load(os.path.join(c, "grid.npy")) for c in cubes]
     for name, grid in zip(objects, grids):
         if grid.shape != grids[0].shape or not np.allclose(grid, grids[0]):

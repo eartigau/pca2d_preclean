@@ -259,6 +259,12 @@ DEFAULTS = {
         # it does not have; config.yaml names the one this campaign uses.
         "fits_directory": None,
         "use_cache": True,
+        # Whether a cube already in the cache is READ back. False builds it
+        # again and still writes it, which is what --rebuild-cube means: a
+        # rebuild that kept nothing left the fit with no cube to open, since
+        # the cube stage is the only thing that writes one. use_cache False is
+        # the other decision, no cache at all, and it stays that.
+        "reuse_cache": True,
         "max_memory_gb": 12.0,       # refuse to allocate a cube larger than this
                                      # rather than driving the machine to swap
     },

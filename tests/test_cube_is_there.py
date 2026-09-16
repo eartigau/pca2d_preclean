@@ -13,10 +13,12 @@ or found out from a traceback in np.load.
 """
 
 import os
+import shutil
 
 import pytest
 
-from pca2d.cli import CUBE_FILES, check_cubes, cubes_of, missing_cubes
+from pca2d.cli import (CUBE_FILES, check_cubes, cube_ready, cubes_of,
+                       missing_cubes)
 
 
 def cube(path, complete=True):
@@ -227,3 +229,97 @@ def test_the_fit_stage_itself_says_a_missing_cube_in_words(tmp_path):
     with pytest.raises(SystemExit) as empty:
         cube_shape(str(half))
     assert "data.npy" in str(empty.value)
+
+
+def test_a_cache_emptied_mid_run_is_built_again_not_raised(tmp_path, monkeypatch):
+    """The other half of the trap, and the one that cost 20 minutes on
+    2026-09-15: check_inputs looked before anything ran, and everything was
+    there. A joint run then built one member's cube for ten minutes while the
+    cleanup page emptied the cache, and the joint build opened a grid.npy that
+    had been there when the loop passed it."""
+    from pca2d import cli
+
+    built = []
+
+    def fake_build(argv):
+        # what the real one does, as far as this test is concerned: it writes
+        # the cube its config names, and takes long enough for anything to
+        # happen meanwhile
+        import yaml
+        config = yaml.safe_load(open(argv[0]))
+        name = config["input"]["object"]
+        built.append(name)
+        cube(str(tmp_path / ("cube_" + name)))
+        if name == "GL48":                 # the purge, while the run is going
+            shutil.rmtree(str(tmp_path / "cube_GL205"))
+
+    plan = {"config": {"output": {"use_cache": True, "reuse_cache": True},
+                       "input": {"object": "GL205+GL48"}},
+            "cube": str(tmp_path / "cube_joint"),
+            "outdir": str(tmp_path), "written_config": str(tmp_path / "c.yaml"),
+            "members": [{"object": name, "files": [],
+                         "cube": str(tmp_path / ("cube_" + name)),
+                         "config": {"input": {"object": name}}}
+                        for name in ("GL205", "GL48")]}
+    cube(str(tmp_path / "cube_GL205"))     # already built by an earlier run
+
+    joined = {}
+    monkeypatch.setattr("pca2d.joint.build",
+                        lambda cubes, objects, path, config=None: joined.update(
+                            cubes=list(cubes), objects=list(objects)))
+    cli.run_joint_cube(plan, fake_build)
+
+    assert built == ["GL48", "GL205"], \
+        "GL48 was missing and built; GL205 was there, then was not, and was" \
+        " built again rather than opened"
+    assert joined["objects"] == ["GL205", "GL48"]
+    assert all(cube_ready(c) is None for c in joined["cubes"])
+
+
+def test_the_stage_about_to_read_a_cube_builds_it_rather_than_dying(tmp_path,
+                                                                    monkeypatch):
+    """Between two stages a cache can be emptied, and the second of them would
+    open what the first one left. Whatever deleted it, there is one thing to do
+    about a missing cube."""
+    from pca2d import cli
+
+    plan = {"config": {"output": {"use_cache": True, "reuse_cache": True},
+                       "input": {"object": "TOI2120"}},
+            "cube": str(tmp_path / "cube_tfits_gone")}
+    calls = []
+    monkeypatch.setattr(cli, "run_cube",
+                        lambda p: calls.append(p) or cube(p["cube"]))
+    cli.rebuild_missing_cubes(plan, "stage fit")
+    assert len(calls) == 1 and cube_ready(plan["cube"]) is None
+
+    cli.rebuild_missing_cubes(plan, "stage figures")
+    assert len(calls) == 1, "a cube that is there is not built a second time"
+
+
+def test_a_rebuild_that_produces_nothing_stops_with_a_reason(tmp_path,
+                                                             monkeypatch):
+    from pca2d import cli
+
+    plan = {"config": {"output": {"use_cache": False, "reuse_cache": True},
+                       "input": {"object": "TOI2120"}},
+            "cube": str(tmp_path / "cube_tfits_gone")}
+    monkeypatch.setattr(cli, "run_cube", lambda p: None)
+    said = []
+    monkeypatch.setattr(cli, "log", lambda text, level="info": said.append(
+        (level, text)))
+    with pytest.raises(SystemExit):
+        cli.rebuild_missing_cubes(plan, "stage fit")
+    assert any(level == "error" and "use_cache" in text for level, text in said)
+
+
+def test_the_joint_build_names_the_object_whose_cube_is_gone(tmp_path):
+    """Defence in depth: cli builds what is missing before coming here, so
+    reaching this means it could not, and np.load's own error names a grid.npy
+    and no object at all."""
+    from pca2d.joint import build
+
+    with pytest.raises(SystemExit) as gone:
+        build([str(tmp_path / "cube_a"), str(tmp_path / "cube_b")],
+              ["GL205", "GL48"], str(tmp_path / "joint"))
+    assert "GL205" in str(gone.value) and "GL48" in str(gone.value)
+    assert "cube stage" in str(gone.value)

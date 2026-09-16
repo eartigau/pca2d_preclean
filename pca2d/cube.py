@@ -341,7 +341,8 @@ def build_cube(config: dict):
     the identical resampling, and `meta` one row per cube row.
     """
     cache = _cache_dir(config)
-    if config["output"]["use_cache"]:
+    out = config["output"]
+    if out["use_cache"] and out.get("reuse_cache", True):
         cached = _load_cache(cache)
         if cached is not None:
             return cached
@@ -364,7 +365,9 @@ def build_cube(config: dict):
         raise ValueError("unknown input.format: %r (expected 'tfits' or 's1d')" % fmt)
 
     grid, data, sigma, trans, meta = result
-    if config["output"]["use_cache"]:
+    # written whenever the cache is on, rebuild or not: what a rebuild rebuilds
+    # is the cube on disk, and the stages after this one read it from there
+    if out["use_cache"]:
         _save_cache(cache, grid, data, sigma, trans, meta)
         # after _save_cache, which replaces the whole directory
         _write_snippets(cache, snippets)

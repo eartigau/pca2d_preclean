@@ -370,9 +370,9 @@ def joint_plan(args, variant):
     if args.windows:
         config["output"]["windows"] = list(args.windows)
     if args.rebuild_cube:
-        config["output"]["use_cache"] = False
+        config["output"]["reuse_cache"] = False
         for member in members:
-            member["config"]["output"]["use_cache"] = False
+            member["config"]["output"]["reuse_cache"] = False
     if args.run_lbl:
         config.setdefault("lbl", {})["run"] = True
     named = name_run(config, args)
@@ -465,7 +465,9 @@ def resolve(args):
     if args.windows:
         config["output"]["windows"] = list(args.windows)
     if args.rebuild_cube:
-        config["output"]["use_cache"] = False
+        # build it again AND keep it: the fit reads the cube from the cache,
+        # so a rebuild that wrote nothing left the next stage with nothing
+        config["output"]["reuse_cache"] = False
     if args.run_lbl:
         config.setdefault("lbl", {})["run"] = True
 
@@ -530,13 +532,37 @@ def announce(args, plan):
             "value")
 
 
-def run_joint_cube(plan, build_main):
-    """Each object's own cube, then the one cube their rows share."""
+def reuses_cache(plan):
+    """Whether a cube already on disk is read back rather than built again."""
+    out = plan["config"]["output"]
+    return bool(out["use_cache"] and out.get("reuse_cache", True))
+
+
+def build_member_cube(plan, member, build_main):
+    """One object's own cube, from its own configuration written beside the run.
+
+    The member's config is a file on disk before it is built, because that file
+    is the recipe the cube carries (build.main copies it into the cube folder)
+    and because a stage is handed a file, never a dictionary.
+    """
     import yaml
 
+    path = os.path.join(plan["outdir"],
+                        "cube_config_%s.yaml" % member["object"])
+    with open(path, "w") as handle:
+        yaml.safe_dump(member["config"], handle, sort_keys=False,
+                       default_flow_style=False)
+    log("  %-10s %d spectra of its own" % (member["object"],
+                                           len(member["files"])), "info")
+    build_main([path] + ([] if plan["config"]["output"]["use_cache"]
+                         else ["--no-cache"]))
+
+
+def run_joint_cube(plan, build_main):
+    """Each object's own cube, then the one cube their rows share."""
     from . import joint as _joint
 
-    if plan["config"]["output"]["use_cache"]:
+    if reuses_cache(plan):
         why = cube_ready(plan["cube"])
         if why is None:
             log("a joint cube for these objects and this configuration is"
@@ -546,7 +572,7 @@ def run_joint_cube(plan, build_main):
             log("the joint cube at %s is %s, so it is built again rather than"
                 " reused" % (plan["cube"], why), "warn")
     for member in plan["members"]:
-        if plan["config"]["output"]["use_cache"]:
+        if reuses_cache(plan):
             why = cube_ready(member["cube"])
             if why is None:
                 log("  %-10s its own cube is already built: %s"
@@ -555,15 +581,22 @@ def run_joint_cube(plan, build_main):
             if os.path.isdir(member["cube"]):
                 log("  %-10s its cube is %s, building it again"
                     % (member["object"], why), "warn")
-        path = os.path.join(plan["outdir"],
-                            "cube_config_%s.yaml" % member["object"])
-        with open(path, "w") as handle:
-            yaml.safe_dump(member["config"], handle, sort_keys=False,
-                           default_flow_style=False)
-        log("  %-10s %d spectra of its own" % (member["object"],
-                                               len(member["files"])), "info")
-        build_main([path] + ([] if plan["config"]["output"]["use_cache"]
-                             else ["--no-cache"]))
+        build_member_cube(plan, member, build_main)
+    # Checked NOW, and not only when the loop decided what to build: the loop
+    # skips a member whose cube is already there, and an hour later, when the
+    # last member is finally built, that cube can be gone. It was, on
+    # 2026-09-15: a cache emptied from the window's cleanup page while the run
+    # was going took two members' cubes with it, and the joint build died in
+    # np.load on GL205's grid.npy. There is one thing to do about it, which is
+    # to build it again.
+    for member in plan["members"]:
+        why = cube_ready(member["cube"])
+        if why is None:
+            continue
+        log("  %-10s its cube is %s, and it was there when this stage began:"
+            " something emptied the cache while the run was going. Building it"
+            " again" % (member["object"], why), "warn")
+        build_member_cube(plan, member, build_main)
     _joint.build([m["cube"] for m in plan["members"]],
                  [m["object"] for m in plan["members"]],
                  plan["cube"], plan["written_config"])
@@ -670,6 +703,41 @@ def check_cubes(plan, wanted):
     return ["cube"] + list(wanted)
 
 
+def rebuild_missing_cubes(plan, stage_name):
+    """A cube the next stage will open, gone since the run began: built again.
+
+    check_inputs looks before anything runs, and the cube stage builds what was
+    missing then. This is about the interval SINCE: a cache emptied while the
+    run was going, from the window's cleanup page or --clean-cache or another
+    run, takes cubes out from under the stage about to read them. It happened
+    on 2026-09-15, between a joint run's member loop and its own joint build,
+    and came out as a FileNotFoundError in np.load with 20 minutes of building
+    behind it. There is one thing to do about a missing cube and it is to build
+    it; the only choice is whether that is said or found out from a traceback.
+    """
+    gone = missing_cubes(plan)
+    if not gone:
+        return
+    for what, path, why in gone:
+        log("%s is about to open the cube for %s and it is %s: %s"
+            % (stage_name, what, why, path), "warn")
+    log("it was there when this run started, so something emptied the cache"
+        " while the run was going. Building it again rather than stopping:"
+        " that reads every spectrum once", "warn")
+    run_cube(plan)
+    gone = missing_cubes(plan)
+    if not gone:
+        return
+    if not plan["config"]["output"]["use_cache"]:
+        log("output.use_cache is false, so the cube stage keeps nothing on"
+            " disk and there is nothing for %s to open. Set it to true, or run"
+            " every stage in one go" % stage_name, "error")
+    else:
+        log("the cube is still not there after building it: %s. Nothing else"
+            " here can fix that" % ", ".join(p for _w, p, _y in gone), "error")
+    raise SystemExit(2)
+
+
 def check_inputs(plan, wanted):
     """Before anything runs: everything a remaining stage will open, checked.
 
@@ -727,7 +795,7 @@ def run_cube(plan):
 
     if plan.get("members"):
         return run_joint_cube(plan, build_main)
-    if plan["config"]["output"]["use_cache"]:
+    if reuses_cache(plan):
         why = cube_ready(plan["cube"])
         if why is None:
             log("a cube for this exact configuration is already on disk,"
@@ -1083,6 +1151,10 @@ def main(argv=None):
         if name not in wanted:
             log("stage %s: skipped" % name, "warn")
             continue
+        # between two stages a cache can be emptied, and the second of them
+        # would open a cube that was there when the first one ended
+        if name in NEEDS_CUBE:
+            rebuild_missing_cubes(plan, "stage " + name)
         with stage("stage %s" % name):
             runners[name](plan)
 
