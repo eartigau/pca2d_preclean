@@ -101,15 +101,42 @@ OPTIONS_LBL = [
     ("lbl_after", "lbl.after", "bool"),
     ("lbl_star_template", "lbl.star_template", "bool"),
     ("lbl_strpca", "lbl.strpca", "bool"),
-    ("lbl_directory", "lbl.directory", "text"),
     ("lbl_suffix", "lbl.suffix", "text"),
     ("lbl_teff", "lbl.teff", "text"),
     ("lbl_template", "lbl.template", "text"),
     ("lbl_steps", "lbl.steps", "list"),
+]
+#: shown with the paths, beside the LBL folder it is about: a setting of what
+#: goes INTO that folder, and on the LBL page nobody found it (2026-09-16)
+OPTIONS_PATHS = [
     ("lbl_link", "lbl.link", ("symlink", "copy")),
 ]
 #: every option the window can change, wherever it is shown
-ALL_OPTIONS = OPTIONS + OPTIONS_LBL
+ALL_OPTIONS = OPTIONS + OPTIONS_LBL + OPTIONS_PATHS
+#: the config keys the window sets through a PATH field rather than an option:
+#: a folder on this machine, never exported to a variant, but a setting of the
+#: run all the same, and on the report's front page with the others
+PATH_SETTINGS = [("lbl_dir", "lbl.directory")]
+
+
+def window_settings():
+    """Every config key the window sets, in the order the report lists them."""
+    return ([path for _key, path, _kind in OPTIONS + OPTIONS_LBL]
+            + [path for _key, path in PATH_SETTINGS]
+            + [path for _key, path, _kind in OPTIONS_PATHS])
+
+
+#: the flag each LBL setting travels under (cli.SETTING_FLAGS). Until
+#: 2026-09-16 none of them travelled at all: the LBL page was shown, changed,
+#: and ignored by the run, which took the configuration's own values
+LBL_FLAGS = {
+    "run": "--lbl-run", "lbl_prepare": "--lbl-prepare",
+    "lbl_before": "--lbl-before", "lbl_after": "--lbl-after",
+    "lbl_star_template": "--lbl-star-template", "lbl_strpca": "--lbl-strpca",
+    "lbl_suffix": "--lbl-suffix", "lbl_teff": "--lbl-teff",
+    "lbl_template": "--lbl-template", "lbl_steps": "--lbl-steps",
+    "lbl_link": "--lbl-link",
+}
 #: a target is run or not run, and the list says which with a box
 CHECKED, UNCHECKED = "☑", "☐"
 #: shown where an instrument is not known YET, as against not known at all
@@ -144,6 +171,14 @@ EN = {
         " not there: the field is empty, so this run would keep everything"
         " under the output root. Fill it in if the disk should be mounted.",
     "out_dir": "output root (optional)",
+    "lbl_dir": "LBL output folder",
+    "help_lbl_dir":
+        "LBL's own tree (its DATA_DIR): the science folders it reads, and the"
+        " templates, masks, per-line tables and rdb it writes. Proposed as lbl"
+        " under the output root, and it follows that root until you type"
+        " another. One tree for every run under a root, since the delivered"
+        " object's LBL is the same for all of them and hours to make; point it"
+        " at an existing tree and that tree is used as it is.",
     "browse": "Browse", "rescan": "Rescan",
     "objects": "objects", "settings": "settings", "stages": "stages",
     "command": "the command this runs", "output": "output",
@@ -250,6 +285,10 @@ EN = {
     "clean_nothing": "nothing to free: there is no scratch or cache here",
     "clean_pick": "pick one row or several in the list first: the button"
                   " deletes what is picked",
+    "clean_while_running":
+        "A RUN IS GOING, and it reads from these folders. It builds again"
+        " whatever it finds missing, so deleting now costs that run the time"
+        " to make it a second time, in the middle of the stage it is in.",
     "clean_confirm_pick_title": "delete what is selected",
     "clean_confirm_pick":
         "About to delete %s from %d places:\n\n%s\n\n%s\n\nGo ahead?",
@@ -405,9 +444,9 @@ EN = {
     "opt_lbl_after": "measure the corrected spectra",
     "opt_lbl_star_template": "use our star as LBL's template",
     "opt_lbl_strpca": "extra star components as RESPROJ",
-    "opt_lbl_directory": "LBL data directory", "opt_lbl_suffix": "corrected name",
+    "opt_lbl_suffix": "corrected name",
     "opt_lbl_teff": "effective temperature", "opt_lbl_template": "template file",
-    "opt_lbl_steps": "steps", "opt_lbl_link": "spectra into LBL as",
+    "opt_lbl_steps": "steps", "opt_lbl_link": "spectra in it as",
     "help_lbl_prepare":
         "Write lbl_config.yaml and run_lbl.py beside the run's outputs and put"
         " both sets of spectra into LBL's science folders. Off, the correction"
@@ -431,10 +470,6 @@ EN = {
         " LBL as RESPROJ tables, the way its own DTEMP gradients are, so the rdb"
         " carries each one's projection per exposure and a correlation can be"
         " looked for rather than assumed absent.",
-    "help_lbl_directory":
-        "LBL's DATA_DIR: its own tree, shared by every object and every run, so"
-        " it sits beside the outputs rather than inside one run's folder. Point"
-        " it at an existing LBL tree and that tree is used as it is.",
     "help_lbl_suffix":
         "What the corrected object is called next to the delivered one:"
         " TOI-2120 and TOI-2120_PCA2D_2-7. `{tag}` is the run's component"
@@ -452,10 +487,12 @@ EN = {
         " compile. Fewer is for picking up a tree that already has the earlier"
         " ones, never for skipping work a later step needs.",
     "help_lbl_link":
-        "How the spectra get into LBL's science folders. `symlink` is the"
-        " nominal: a campaign is tens of gigabytes and LBL only reads them."
-        " `copy` is for a filesystem that cannot hold a link, an exFAT disk"
-        " above all.",
+        "How the spectra get into LBL's science folders. `symlink`, the"
+        " default, puts a link there: nothing is stored twice, and LBL only"
+        " reads them. `copy` puts every spectrum there a second time, tens of"
+        " gigabytes for a campaign, and a folder that no longer needs the data"
+        " disk. A disk that cannot hold a link gets copies whatever this says,"
+        " and the run says so at the top.",
     "help_col_snr":
         "The median over this target's exposures of the per-order extraction SNR"
         " the pipeline wrote in each file, so a bright target and a faint one can"
@@ -658,6 +695,15 @@ FR = {
         " sous le dossier de sortie. Remplissez-le si le disque doit être"
         " monté.",
     "out_dir": "dossier de sortie (optionnel)",
+    "lbl_dir": "dossier de sortie LBL",
+    "help_lbl_dir":
+        "L'arbre du LBL (son DATA_DIR) : les dossiers science qu'il lit, et les"
+        " gabarits, masques, tables raie par raie et rdb qu'il écrit. Proposé"
+        " comme lbl sous le dossier de sortie, il suit ce dossier tant que vous"
+        " n'en tapez pas un autre. Un seul arbre pour tous les passages d'un"
+        " dossier, puisque le LBL de l'objet livré est le même pour tous et"
+        " prend des heures ; pointé sur un arbre existant, cet arbre est"
+        " utilisé tel quel.",
     "browse": "Parcourir", "rescan": "Relire",
     "objects": "objets", "settings": "réglages", "stages": "étapes",
     "command": "la commande qui sera lancée",
@@ -772,6 +818,10 @@ FR = {
     "clean_nothing": "rien à libérer : ni brouillon ni cache ici",
     "clean_pick": "choisissez d'abord une ligne ou plusieurs dans la liste :"
                   " le bouton efface ce qui est choisi",
+    "clean_while_running":
+        "UN PASSAGE EST EN COURS, et il lit dans ces dossiers. Il reconstruit"
+        " ce qu'il ne trouve plus : effacer maintenant coûte à ce passage le"
+        " temps de le refaire, au milieu de l'étape où il en est.",
     "clean_confirm_pick_title": "effacer la sélection",
     "clean_confirm_pick":
         "Sur le point d'effacer %s à %d endroits :\n\n%s\n\n%s\n\nOn y va ?",
@@ -938,10 +988,9 @@ FR = {
     "opt_lbl_after": "mesurer les spectres corrigés",
     "opt_lbl_star_template": "notre étoile comme gabarit du LBL",
     "opt_lbl_strpca": "composantes stellaires en RESPROJ",
-    "opt_lbl_directory": "dossier de données du LBL",
     "opt_lbl_suffix": "nom du corrigé",
     "opt_lbl_teff": "température effective", "opt_lbl_template": "fichier gabarit",
-    "opt_lbl_steps": "étapes", "opt_lbl_link": "spectres vers LBL en",
+    "opt_lbl_steps": "étapes", "opt_lbl_link": "spectres dedans en",
     "help_lbl_prepare":
         "Écrire lbl_config.yaml et run_lbl.py à côté des sorties du passage et"
         " déposer les deux jeux de spectres dans les dossiers science du LBL."
@@ -968,11 +1017,6 @@ FR = {
         " gradients DTEMP, pour que le rdb porte la projection de chacune par pose"
         " et qu'une corrélation puisse être cherchée au lieu d'être supposée"
         " absente.",
-    "help_lbl_directory":
-        "Le DATA_DIR du LBL : son arbre à lui, partagé par tous les objets et"
-        " tous les passages, donc placé à côté des sorties plutôt que dans le"
-        " dossier d'un passage. Pointé sur un arbre LBL existant, cet arbre est"
-        " utilisé tel quel.",
     "help_lbl_suffix":
         "Comment s'appelle l'objet corrigé à côté du livré : TOI-2120 et"
         " TOI-2120_PCA2D_2-7. `{tag}` est le nombre de composantes du passage, et"
@@ -993,9 +1037,12 @@ FR = {
         " besoin.",
     "help_lbl_link":
         "Comment les spectres arrivent dans les dossiers science du LBL."
-        " `symlink` est le nominal : une campagne pèse des dizaines de"
-        " gigaoctets et le LBL ne fait que les lire. `copy` est pour un système"
-        " de fichiers incapable de porter un lien, un disque exFAT avant tout.",
+        " `symlink`, le défaut, y met un lien : rien n'est stocké deux fois, et"
+        " le LBL ne fait que les lire. `copy` y met chaque spectre une seconde"
+        " fois, des dizaines de gigaoctets pour une campagne, et un dossier qui"
+        " n'a plus besoin du disque de données. Un disque incapable de porter"
+        " un lien reçoit des copies quoi que dise ce choix, et le passage le"
+        " dit en tête.",
     "help_col_snr":
         "La médiane, sur les poses de cette cible, du SNR d'extraction par ordre"
         " que le pipeline a écrit dans chaque fichier : une cible brillante et une"
@@ -1389,7 +1436,7 @@ def instruments_of(rows, names):
         {"?", "", None}
 
 
-def build_command(state):
+def build_command(state, defaults=None):
     """The `pca2d-preclean` command a set of choices means, as a list.
 
     One object or several, the stages asked for, the variant if one is chosen,
@@ -1445,11 +1492,43 @@ def build_command(state):
         value = str(value).strip()
         if value:
             argv += [flag, value]
+    argv += lbl_flags(state, defaults)
     stages = [s for s in STAGES if state.get("stage_" + s)]
     if stages and len(stages) != len(STAGES):
         argv += ["--stages", ",".join(stages)]
     if state.get("dry_run"):
         argv.append("--dry-run")
+    return argv
+
+
+def lbl_flags(state, defaults=None):
+    """The LBL folder, and the LBL settings the window changed, as flags.
+
+    The folder always travels when there is one, like the output root: it is a
+    path on this machine, and the command should say where LBL will write. The
+    settings travel when they differ from the configuration (`defaults`), or
+    all of them when there is no configuration to compare with; a command that
+    repeats a dozen values the configuration already holds says nothing more
+    and is harder to read.
+    """
+    argv = []
+    tree = str(state.get("lbl_dir") or "").strip()
+    if tree:
+        argv += ["--lbl-dir", tree]
+    changed = (variant_yaml(state, defaults).get("lbl") or {}
+               if defaults is not None else None)
+    for key, path, kind in OPTIONS_LBL + OPTIONS_PATHS:
+        flag = LBL_FLAGS.get(key)
+        if flag is None or key not in state or state[key] in (None, ""):
+            continue
+        if changed is not None and path.split(".")[1] not in changed:
+            continue
+        value = state[key]
+        if kind == "bool":
+            value = "true" if value else "false"
+        elif kind == "list":
+            value = ",".join(str(value).replace(",", " ").split())
+        argv += [flag, str(value).strip()]
     return argv
 
 
@@ -1653,14 +1732,15 @@ def suggested_run_name(state, digits=6):
     return "%s_%s" % (head, short)
 
 
-def command_line(state, pending):
+def command_line(state, pending, defaults=None):
     """What the command box shows: the command, or what is still missing.
 
     `pca2d-preclean --config ... --n-star 1` with no object in it is not a
     command anybody can paste, and showing it while nothing is ticked made a
     window with no data root look like a run that was ready to go.
     """
-    return " ".join(build_command(state)) if state.get("objects") else pending
+    return (" ".join(build_command(state, defaults)) if state.get("objects")
+            else pending)
 
 
 def installed_config():
@@ -1703,10 +1783,23 @@ def opening_paths(saved, config_value=None):
     disk = absolute(disk)
     if disk and not os.path.isdir(disk):
         disk = ""
+    out_dir = saved.get("out_dir") or ""
     return {"data_dir": absolute(saved.get("data_dir") or ""),
             "config": absolute(saved.get("config") or installed_config()),
-            "out_dir": saved.get("out_dir") or "",
+            "out_dir": out_dir,
+            "lbl_dir": saved.get("lbl_dir") or lbl_proposal(out_dir),
             "fits_dir": disk}
+
+
+def lbl_proposal(out_dir):
+    """LBL's tree as the window proposes it: `lbl` under the output root.
+
+    Empty while there is no output root, since a tree under nothing is the
+    `lbl` beside wherever the run happens to start, which is how SMETHELLS_20's
+    velocities came to be in another clone's folder (2026-09-15).
+    """
+    out_dir = str(out_dir or "").strip()
+    return os.path.join(absolute(out_dir), "lbl") if out_dir else ""
 
 
 def _read_state():
@@ -2178,10 +2271,16 @@ class App:
         # shown in full, since a relative path means a different folder from a
         # different working directory and these data are reached through a link
         opening = opening_paths(self.saved, self._config_fits_dir())
+        # the LBL folder follows the output root for as long as it is the
+        # proposal, as the reduction name follows the targets (_follow_lbl_dir)
+        proposal = lbl_proposal(opening["out_dir"])
+        self._proposed_lbl = (opening["lbl_dir"]
+                              if opening["lbl_dir"] in ("", proposal) else None)
         for i, (key, default) in enumerate((
                 ("data_dir", opening["data_dir"]),
                 ("config", opening["config"]),
                 ("out_dir", opening["out_dir"]),
+                ("lbl_dir", opening["lbl_dir"]),
                 ("fits_dir", opening["fits_dir"]))):
             label = ttk.Label(frame, text=self.t(key))
             label.grid(row=i, column=0, sticky="w", pady=2)
@@ -2204,6 +2303,22 @@ class App:
         # said once, on opening, when a disk a configuration names is not there
         if self._lost_disk:
             self._say("log_no_disk", self._lost_disk, level="warn")
+        # beside the LBL folder, what goes into it: links or copies
+        how = ttk.Frame(frame)
+        how.grid(row=3, column=3, sticky="w", padx=4)
+        for key, path, kind in OPTIONS_PATHS:
+            label = ttk.Label(how, text=self.t("opt_" + key))
+            label.pack(side="left")
+            self._register(label, "opt_" + key)
+            var = tk.StringVar(value=str(self.saved.get(
+                key, self._config_default(path, kind) or kind[0])))
+            box = ttk.Combobox(how, textvariable=var, values=list(kind),
+                               width=8, state="readonly")
+            box.pack(side="left", padx=(4, 0))
+            var.trace_add("write", lambda *_: self._sync())
+            self.vars[key] = var
+            self._tip(box, "help_" + key)
+            self._tip(label, "help_" + key)
         rescan = ttk.Button(frame, text=self.t("rescan"),
                             command=self.refresh_objects)
         rescan.grid(row=0, column=3, padx=4)
@@ -2990,9 +3105,11 @@ class App:
 
     def _sync(self, *_args):
         self._follow_name()
+        self._follow_lbl_dir()
         state = self.state()
         self.command.delete("1.0", "end")
-        self.command.insert("1.0", command_line(state, self.t("command_pending")))
+        self.command.insert("1.0", command_line(state, self.t("command_pending"),
+                                                self._defaults()))
         self._warn_exists(state)
         keep = {k: v for k, v in state.items() if k != "objects"}
         keep["checked"] = sorted(self.checked)
@@ -3470,7 +3587,7 @@ class App:
                                  self.t("mixed") % (", ".join(state["objects"]),
                                                     ", ".join(sorted(instruments))))
             return
-        argv = build_command(state)
+        argv = build_command(state, self._defaults())
         # shown as `pca2d-preclean ...`, since that is what to paste into a
         # terminal, but RUN through whatever path actually holds it here
         found = preclean_argv()
@@ -3854,7 +3971,8 @@ class App:
         run's products would go, and it is the one the reader is looking at.
         """
         return (self.vars["config"].get().strip() or None,
-                self.vars["out_dir"].get().strip() or None)
+                self.vars["out_dir"].get().strip() or None,
+                self.vars["lbl_dir"].get().strip() or None)
 
     def measure_disks(self):
         """Walk the folders off the main thread and fill the list."""
@@ -3865,7 +3983,7 @@ class App:
         self.purge_button.configure(state="disabled")
         self.select_button.configure(state="disabled")
         self.clean_totals.configure(text=self.t("clean_measuring"))
-        config_path, out_root = self._clean_state()
+        config_path, out_root, lbl_dir = self._clean_state()
 
         def look():
             from . import housekeeping
@@ -3879,7 +3997,8 @@ class App:
             try:
                 items = housekeeping.survey(
                     config, config_path, out_root,
-                    package=os.path.dirname(os.path.abspath(__file__)))
+                    package=os.path.dirname(os.path.abspath(__file__)),
+                    lbl_dir=lbl_dir)
             except OSError:
                 items = []
             self.lines.put(("measured", items))
@@ -3994,7 +4113,17 @@ class App:
                           for it in sorted(items, key=lambda it: -it["bytes"]))
 
     def _ask_delete(self, title, question):
+        """The question, with a run going on this machine added to it.
+
+        A run reads from the folders on this page. It survives them going,
+        since a stage that finds a cube missing builds it again (cli.
+        rebuild_missing_cubes), but building it again is twenty minutes that
+        run is in the middle of, and that is worth knowing before rather than
+        after.
+        """
         from tkinter import messagebox
+        if getattr(self, "proc", None) is not None:
+            question = "%s\n\n%s" % (self.t("clean_while_running"), question)
         return bool(messagebox.askyesno(title, question))
 
     def _delete(self, going):
@@ -4021,6 +4150,38 @@ class App:
         """
         self._proposed = suggested_run_name(self.state())
         self.vars["run_name"].set(self._proposed)
+
+    def _defaults(self):
+        """The configuration the command is compared with, or None."""
+        try:
+            return self._config() or None
+        except Exception:                                       # noqa: BLE001
+            return None
+
+    def _follow_lbl_dir(self):
+        """Keep the proposed LBL folder under the output root as it moves.
+
+        Only while the field holds the window's own proposal, or nothing: an
+        empty field means the default anyway, which IS the proposal. A folder
+        somebody typed or browsed to, an existing LBL tree above all, is a
+        decision and is left alone.
+        """
+        var = self.vars.get("lbl_dir")
+        out = self.vars.get("out_dir")
+        if var is None or out is None or getattr(self, "_naming_lbl", False):
+            return
+        current = str(var.get() or "").strip()
+        if current and current != getattr(self, "_proposed_lbl", None):
+            return
+        fresh = lbl_proposal(out.get())
+        if fresh == current:
+            return
+        self._naming_lbl = True
+        try:
+            self._proposed_lbl = fresh
+            var.set(fresh)
+        finally:
+            self._naming_lbl = False
 
     def _follow_name(self):
         """Keep the proposed name in step with what it names.

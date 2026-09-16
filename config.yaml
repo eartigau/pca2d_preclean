@@ -271,10 +271,17 @@ general:
                             # spectra into LBL's science folders
     run: true               # and actually run LBL. That is hours, so it is
                             # asked for: `true` here, or --run-lbl for one run.
-    directory: lbl          # LBL's DATA_DIR. Its own tree, shared by every
-                            # object and every run, so it sits beside outputs
-                            # rather than inside one of them; point it at an
-                            # existing LBL tree and it will be used as it is.
+    directory: null         # LBL's DATA_DIR. null is `lbl` under the output
+                            # ROOT (output.directory or --out-dir), before a
+                            # run name or a variant adds its level: one tree
+                            # for every run under that root, since the
+                            # delivered object's LBL is the same for all of
+                            # them and hours to make. It was `lbl` beside
+                            # wherever the run started until 2026-09-16, which
+                            # put SMETHELLS_20's velocities in another clone's
+                            # folder while its report was on the data disk.
+                            # Point it at an existing LBL tree (--lbl-dir, or
+                            # the window's LBL field) and that tree is used.
     suffix: _PCA2D_{tag}    # what the corrected object is called next to the
                             # delivered one: TOI-2120 and TOI-2120_PCA2D_2-7.
                             # `{tag}` is the run's <M>-<N>, and it is in the
@@ -320,7 +327,11 @@ general:
                             # would be one ruler that fits neither.
     steps: [template, mask, compute, compile]
     link: symlink           # symlink or copy. A few hundred t.fits are tens of
-                            # gigabytes and they already exist twice.
+                            # gigabytes and they already exist twice. A disk
+                            # that cannot hold a link gets copies whatever this
+                            # says, and the run says so at the top; the one
+                            # that can is found by making one, not by its name
+                            # (irrisor, exFAT, takes them under macOS 26).
     input_file: null        # LBL's glob inside a science folder. null keeps
                             # LBL's own '*.fits', which is what BOTH sets need:
                             # the corrected files are <stem>t_<M>-<N>.fits, so

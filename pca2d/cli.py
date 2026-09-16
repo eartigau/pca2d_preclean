@@ -36,8 +36,8 @@ import shlex
 import sys
 import time
 
-from .config import (VARIANT_META, cache_key, load_config, read_yaml,
-                     resolve_highpass, spectra_dir)
+from .config import (VARIANT_META, cache_key, lbl_directory, load_config,
+                     read_yaml, resolve_highpass, spectra_dir)
 from .logger import log
 from .progress import human, stage
 
@@ -65,15 +65,43 @@ SETTING_FLAGS = (
     ("--dv", "domain.dv", float, "the grid step, in km/s"),
     ("--nightly-stack", "input.nightly_stack", str,
      "coadd each night: true, false, or auto"),
+    # The LBL page of the window, which travelled under no flag at all: a copy
+    # asked for there, or another LBL folder, reached nothing, and the run
+    # linked into the configuration's own tree (2026-09-16).
+    ("--lbl-dir", "lbl.directory", str,
+     "LBL's own tree (its DATA_DIR). Default: <output root>/lbl"),
+    ("--lbl-link", "lbl.link", ("symlink", "copy"),
+     "how the spectra get into LBL's science folders"),
+    ("--lbl-run", "lbl.run", "bool", "run LBL, which is hours"),
+    ("--lbl-prepare", "lbl.prepare", "bool",
+     "write LBL's config and its run script"),
+    ("--lbl-before", "lbl.before", "bool", "measure the delivered spectra too"),
+    ("--lbl-after", "lbl.after", "bool", "measure the corrected spectra"),
+    ("--lbl-star-template", "lbl.star_template", "bool",
+     "measure the corrected spectra against the fit's star"),
+    ("--lbl-strpca", "lbl.strpca", "bool",
+     "star components past the first as RESPROJ tables"),
+    ("--lbl-suffix", "lbl.suffix", str,
+     "the corrected object's name after the target's; {tag} is the counts"),
+    ("--lbl-teff", "lbl.teff", str, "auto, or a temperature in K"),
+    ("--lbl-template", "lbl.template", str,
+     "another object's template for both (OBJECT_COMPARISON)"),
+    ("--lbl-steps", "lbl.steps", "list",
+     "LBL's steps, comma separated: template,mask,compute,compile"),
 )
 
 
 def add_setting_flags(parser):
     """Give the parser one flag per config key the window can change."""
     for flag, path, kind, help_text in SETTING_FLAGS:
-        if kind == "bool":
+        if kind == "bool" or isinstance(kind, tuple):
             parser.add_argument(flag, dest=flag[2:].replace("-", "_"),
-                                choices=("true", "false"), default=None,
+                                choices=("true", "false") if kind == "bool"
+                                else kind, default=None,
+                                help="%s (config %s)" % (help_text, path))
+        elif kind == "list":
+            parser.add_argument(flag, dest=flag[2:].replace("-", "_"),
+                                default=None, metavar="A,B",
                                 help="%s (config %s)" % (help_text, path))
         else:
             parser.add_argument(flag, dest=flag[2:].replace("-", "_"),
@@ -104,6 +132,8 @@ def apply_setting_flags(config, args):
             continue
         if kind == "bool":
             value = str(value).lower() == "true"
+        elif kind == "list":
+            value = [part for part in str(value).replace(",", " ").split()]
         section, key = path.split(".")
         config.setdefault(section, {})[key] = value
         said.append("%s = %s" % (path, value))
@@ -325,6 +355,9 @@ def joint_members(args, variant):
         elif getattr(args, "fits_dir", None):
             cfg["output"]["fits_directory"] = args.fits_dir
         apply_setting_flags(cfg, args)
+        # the joint config is a copy of the first member's, taken before a run
+        # name moves its output directory, so the tree is resolved here
+        cfg["lbl"]["directory"] = lbl_directory(cfg)
         # the date window decides which exposures are IN THE CUBE, so it has to
         # be on every member's own configuration, not only on the joint copy
         # made from the first of them: set there alone, the member cubes would
@@ -363,6 +396,7 @@ def joint_plan(args, variant):
     config = copy.deepcopy(members[0]["config"])
     # the same command-line overrides a solo run takes
     apply_setting_flags(config, args)
+    config["lbl"]["directory"] = lbl_directory(config)
     if args.n_star is not None:
         config["twoframe"]["n_star"] = args.n_star
     if args.n_earth is not None:
@@ -441,6 +475,9 @@ def resolve(args):
         config["output"]["fits_directory"] = None
     elif getattr(args, "fits_dir", None):
         config["output"]["fits_directory"] = args.fits_dir
+    # the root as the command line and the config gave it, before a variant or
+    # a run name adds its own level: LBL's tree hangs off THIS one
+    out_root = config["output"]["directory"]
     root = name_variant(config, name, variant, args.out_dir)
     directory = spectra_dir(config)
     if not os.path.isdir(directory):
@@ -451,6 +488,7 @@ def resolve(args):
         raise SystemExit(2)
     # what the command line said about the settings, before anything reads them
     apply_setting_flags(config, args)
+    config["lbl"]["directory"] = lbl_directory(config, out_root)
     if args.n_star is not None:
         config["twoframe"]["n_star"] = args.n_star
     if args.n_earth is not None:
@@ -768,6 +806,28 @@ def check_inputs(plan, wanted):
     return check_cubes(plan, wanted)
 
 
+def say_lbl_tree(plan, dry_run=False):
+    """Where LBL will write, and whether the spectra will be linked or copied.
+
+    Said at the top, because the LBL stage comes after the fit, and finding
+    out there that a disk takes no links, or that the tree is not the one
+    holding the delivered object's hours of LBL, is finding out too late. A
+    dry run touches nothing, so it names the folder without probing it.
+    """
+    from . import lbl as splbl
+
+    block = plan["config"].get("lbl") or {}
+    tree = lbl_directory(plan["config"])
+    log("LBL tree    %s" % tree, "value")
+    if dry_run:
+        return
+    mode, why = splbl.link_mode(tree, block.get("link"))
+    if why:
+        log(why, "warn")
+    else:
+        log("the spectra go into it as %ss" % mode, "info")
+
+
 def warn_if_run_exists(plan):
     """Say so when this run's folder already holds a fit.
 
@@ -1016,7 +1076,7 @@ def run_lbl(plan):
     from . import storage as _storage
     for sub in _storage.LBL_FOLDERS:
         _storage.link_dir(plan["config"],
-                          os.path.join(block.get("directory") or "lbl", sub))
+                          os.path.join(lbl_directory(plan["config"]), sub))
     if plan.get("members"):
         # one LBL object per star, each measured on its own; what they share is
         # the observer basis that corrected them, not their velocities
@@ -1110,6 +1170,8 @@ def main(argv=None):
     # everything a remaining stage will open, checked here and not found
     # missing by np.load three stages in
     wanted = check_inputs(plan, wanted)
+    if "lbl" in wanted:
+        say_lbl_tree(plan, dry_run=args.dry_run)
     if args.dry_run:
         log("dry run: stopping here, nothing written", "warn")
         return None

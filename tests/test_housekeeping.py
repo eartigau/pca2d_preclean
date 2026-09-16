@@ -203,3 +203,33 @@ def test_the_expensive_and_the_results_go_when_they_are_asked_for(tmp_path):
     assert os.path.isdir(str(tmp_path / "out"))
     assert os.listdir(str(tmp_path / "cache")), "and nothing else touched"
     assert REMOVABLE == ("scratch", "rebuildable")
+
+
+def test_the_lbl_tree_inside_the_output_root_is_counted_once_and_kept(tmp_path):
+    """LBL's tree sits inside the output root since 2026-09-16. The results
+    line must not count it a second time, and emptying the results must not
+    take LBL's velocities with it: each line deletes what it counts."""
+    from pca2d.housekeeping import RESULTS, purge
+
+    out = tmp_path / "out"
+    fill(str(out / "TOI756" / "0-3"), 1, 1_000_000)
+    fill(str(out / "lbl" / "lblrdb"), 1, 5_000)
+    items = survey({"output": {"directory": str(out)}},
+                   str(tmp_path / "config.yaml"))
+    by_name = {it["name"]: it for it in items}
+    assert by_name["reports and corrected spectra"]["bytes"] == 1_000_000
+    assert by_name["LBL lblrdb"]["bytes"] == 5_000
+
+    purge([by_name["reports and corrected spectra"]], kinds=(RESULTS,))
+    assert sorted(os.listdir(str(out))) == ["lbl"], "the run went, LBL did not"
+    assert os.listdir(str(out / "lbl" / "lblrdb")), "LBL's velocities stayed"
+
+
+def test_the_old_tree_beside_the_config_is_still_listed(tmp_path):
+    """Where every run put LBL until the default moved. Tens of gigabytes can
+    be there, and a cleanup page that stopped showing them would hide them."""
+    fill(str(tmp_path / "lbl" / "lblrv"), 1, 7_000)
+    items = survey({"output": {"directory": str(tmp_path / "out")}},
+                   str(tmp_path / "config.yaml"))
+    old = [it for it in items if it["name"].startswith("old LBL")]
+    assert old and any(it["bytes"] == 7_000 for it in old)

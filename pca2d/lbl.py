@@ -21,9 +21,12 @@ also go to LBL, as RESPROJ tables STRPCA2..N: LBL projects every line on them
 the way it does on its DTEMP gradients, and the rdb gets each exposure's
 amplitude along them.
 
-Symlinks, not copies: a few hundred t.fits are a few tens of gigabytes, they
-already exist twice (delivered and corrected), and a third copy would buy
-nothing. Nothing here writes into the input tree.
+Symlinks by default (lbl.link), not copies: a few hundred t.fits are a few
+tens of gigabytes, they already exist twice (delivered and corrected), and a
+third copy would buy nothing. A disk that cannot hold a link at all, exFAT as
+the data disks here are, gets copies instead, and the run says so and how much
+before it starts rather than failing at this stage after the fit (link_mode).
+Nothing here writes into the input tree.
 
 What it leaves beside the run's other outputs:
 
@@ -205,6 +208,55 @@ def corrected_files(corrdir: str) -> list:
         return []
     return sorted(os.path.join(corrdir, name) for name in os.listdir(corrdir)
                   if name.endswith(".fits") and not name.startswith("."))
+
+
+def can_link(folder: str) -> bool:
+    """Whether `folder` can hold a symbolic link, found out by making one.
+
+    Not read off the filesystem's name: macOS mounts exFAT through fskit and
+    a network share can be anything, and the only answer that is certainly
+    right is the one the disk gives. The probe is made in the folder itself,
+    which is created if it has to be, and removed whatever happens.
+    """
+    import tempfile
+
+    os.makedirs(folder, exist_ok=True)
+    # a folder that cannot even take a file is not this function's question:
+    # a copy would fail there too, and mkstemp says so in its own words
+    handle, source = tempfile.mkstemp(prefix=".pca2d_probe_", dir=folder)
+    os.close(handle)
+    probe = source + ".link"
+    try:
+        os.symlink(source, probe)
+        return os.path.islink(probe)
+    except OSError:
+        return False
+    finally:
+        for path in (probe, source):
+            if os.path.lexists(path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+
+
+def link_mode(data_dir: str, asked: str = "symlink") -> tuple:
+    """(mode, reason) for putting spectra in `data_dir`/science.
+
+    `asked` is lbl.link. A copy is always possible; a link only where the disk
+    can hold one, and where it cannot the answer is a copy and the reason says
+    why. The reason is None when the answer is what was asked.
+    """
+    asked = str(asked or "symlink")
+    if asked == "copy":
+        return "copy", None
+    science = os.path.join(data_dir, "science")
+    if can_link(science):
+        return "symlink", None
+    return "copy", ("%s cannot hold a symbolic link (an exFAT disk cannot), so"
+                    " the spectra are COPIED into it: each one will be on that"
+                    " disk twice. An LBL folder on a disk that takes links, the"
+                    " internal one for instance, avoids that" % science)
 
 
 def link_spectra(files, target: str, mode: str = "symlink") -> tuple:
@@ -478,7 +530,8 @@ def prepare(plan) -> dict:
     block = config.get("lbl") or {}
     object_name = config["input"]["object"]
     instrument, data_source, where = profile(config)
-    data_dir = block.get("directory") or "lbl"
+    from .config import lbl_directory
+    data_dir = lbl_directory(config)
     before, after = object_names(config, object_name, plan["tag"])
 
     log("LBL profile: instrument %s, data source %s, from %s"
@@ -499,7 +552,9 @@ def prepare(plan) -> dict:
             wanted.append((after, plan["corrdir"], corrected))
 
     objects = []
-    mode = str(block.get("link") or "symlink")
+    mode, why = link_mode(data_dir, block.get("link"))
+    if why:
+        log(why, "warn")
     for name, source, files in wanted:
         target = os.path.join(data_dir, "science", name)
         linked, kept, strangers = link_spectra(files, target, mode)

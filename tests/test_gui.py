@@ -814,9 +814,10 @@ def test_every_window_setting_is_on_the_report_page():
     appear on the run's own front page, which is how a (dF/dv)^2 run and a flux
     run read identically on 2026-09-15."""
     from pca2d.config import WINDOW_SETTINGS
-    from pca2d.gui import ALL_OPTIONS
+    from pca2d.gui import window_settings
 
-    window = [path for _name, path, _kind in ALL_OPTIONS]
+    # the LBL folder is a path field since 2026-09-16, and still a setting
+    window = window_settings()
     listed = [path for path, _what in WINDOW_SETTINGS]
     assert sorted(window) == sorted(listed), (
         "only in the window: %s; only on the page: %s"
@@ -966,7 +967,8 @@ def test_every_row_can_be_deleted_by_picking_it_and_the_question_is_priced():
     assert asked[-1].index("LBL templates") < asked[-1].index("reports")
 
 
-def test_every_line_of_the_cleanup_list_explains_itself_in_both_languages():
+def test_every_line_of_the_cleanup_list_explains_itself_in_both_languages(
+        tmp_path):
     """The list is 14 folders and the window is bilingual; the explanation is
     the only part that says what deleting one would cost."""
     import os
@@ -974,8 +976,11 @@ def test_every_line_of_the_cleanup_list_explains_itself_in_both_languages():
     from pca2d.gui import EN, FR
     from pca2d.housekeeping import survey
 
-    items = survey({"lbl": {"directory": "lbl"}}, "config.yaml",
-                   out_root="out",
+    # a tree of its own: the LBL lines are listed only for a tree that exists,
+    # and `lbl` beside wherever the tests run is there in one checkout only
+    (tmp_path / "lbl").mkdir()
+    items = survey({"lbl": {"directory": str(tmp_path / "lbl")}},
+                   str(tmp_path / "config.yaml"), out_root="out",
                    package=os.path.dirname(os.path.abspath(
                        __import__("pca2d").__file__)))
     assert len(items) >= 13

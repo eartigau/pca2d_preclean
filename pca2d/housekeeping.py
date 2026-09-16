@@ -111,6 +111,9 @@ class Item(dict):
     def __init__(self, name, path, kind, what, exclude=(), key=None):
         size, files = tree_size(path, exclude)
         super().__init__(name=name, path=path, kind=kind, what=what,
+                         # what the line does not count is what deleting it
+                         # must not touch: purge passes it on to empty()
+                         exclude=[os.path.abspath(p) for p in exclude if p],
                          # a stable slug, because `name` is what the window
                          # PRINTS and the window prints it in two languages
                          key=key or name, bytes=size, files=files,
@@ -138,13 +141,20 @@ def under(base, path):
     return path if os.path.isabs(path) else os.path.join(base, path)
 
 
-def survey(config=None, config_path=None, out_root=None, package=None):
+def survey(config=None, config_path=None, out_root=None, package=None,
+           lbl_dir=None):
     """Every place pca2d puts bytes, measured, biggest kind first.
 
     `config` is a resolved or raw configuration (only output.cache_directory,
     output.directory and lbl.directory are read, all optional); `out_root`
-    overrides output.directory, which is what the window passes because the
-    window's field is the truth while it is open.
+    overrides output.directory and `lbl_dir` lbl.directory, which is what the
+    window passes because the window's fields are the truth while it is open.
+
+    LBL's tree is lbl.directory when set, else `lbl` under the output root. The
+    tree beside the configuration, where every run put it until 2026-09-16, is
+    listed too when it is still there and is another folder: it can hold tens
+    of gigabytes, and a cleanup page that stopped showing it the day the
+    default moved would be hiding exactly what it exists to find.
     """
     config = config or {}
     base = work_dir(config_path)
@@ -165,17 +175,29 @@ def survey(config=None, config_path=None, out_root=None, package=None):
                       " reads it once the fit has ended", key="spill"))
 
     root = out_root or out.get("directory")
+    tree = (lbl_dir or (under(base, lbl["directory"]) if lbl.get("directory")
+                        else os.path.join(under(base, root or "outputs"), "lbl")))
     if root:
+        # LBL's tree sits INSIDE the output root by default: counted once, on
+        # its own lines, and left alone when the results are emptied
         items.append(Item("reports and corrected spectra", root, RESULTS,
                           "what the runs produced: deleting this is deleting"
-                          " the run, not its scratch", key="results"))
+                          " the run, not its scratch", key="results",
+                          exclude=[tree]))
 
-    tree = under(base, lbl.get("directory") or "lbl")
-    if tree and os.path.isdir(tree):
+    trees = [("LBL ", tree)]
+    legacy = under(base, "lbl")
+    if (os.path.isdir(legacy)
+            and os.path.realpath(legacy) != os.path.realpath(tree)):
+        trees.append(("old LBL beside the config, ", legacy))
+    for prefix, tree in trees:
+        if not os.path.isdir(tree):
+            continue
         for folder, kind, what in (
                 ("science", REBUILDABLE,
-                 "links to the spectra LBL measures. Remade by the lbl stage;"
-                 " symlinks, so this is rarely more than a few MB"),
+                 "the spectra LBL measures, linked or copied there by the lbl"
+                 " stage (lbl.link). Links weigh nothing; copies weigh what"
+                 " the spectra do, and come back from them"),
                 ("plots", REBUILDABLE, "LBL's own figures, one per exposure"),
                 ("log", REBUILDABLE, "LBL's logs"),
                 ("lblrv", EXPENSIVE,
@@ -188,7 +210,7 @@ def survey(config=None, config_path=None, out_root=None, package=None):
                 ("lblreftable", EXPENSIVE, "LBL's reference tables"),
                 ("lblrdb", RESULTS, "the velocities: every RV page of every"
                  " report is drawn from these")):
-            items.append(Item("LBL " + folder, os.path.join(tree, folder),
+            items.append(Item(prefix + folder, os.path.join(tree, folder),
                               kind, what, key="lbl_" + folder))
 
     if package:
@@ -221,8 +243,9 @@ def totals(items):
             sum(it["bytes"] for it in items if it["removable"]))
 
 
-def empty(path):
-    """Remove everything INSIDE a folder, keeping the folder itself.
+def empty(path, keep=()):
+    """Remove everything INSIDE a folder, keeping the folder itself, and every
+    path in `keep` with whatever leads to it.
 
     Not rmtree: half these folders are symlinks onto another disk made before
     the run started (storage.link_dir), and a cleanup that deleted the link
@@ -230,10 +253,17 @@ def empty(path):
     deleted the target would leave a link pointing at nothing. Emptying works
     the same either way, and what the next run expects to find is a folder.
     """
+    keep = [os.path.abspath(k) for k in keep if k]
     for name in os.listdir(path):
-        full = os.path.join(path, name)
+        full = os.path.abspath(os.path.join(path, name))
+        if full in keep:
+            continue
+        real_dir = os.path.isdir(full) and not os.path.islink(full)
         try:
-            if os.path.isdir(full) and not os.path.islink(full):
+            if real_dir and any(k.startswith(full + os.sep) for k in keep):
+                # a kept folder further down: empty around it, never through it
+                empty(full, keep)
+            elif real_dir:
                 shutil.rmtree(full)
             else:
                 os.remove(full)
@@ -261,11 +291,11 @@ def purge(items, dry_run=False, kinds=REMOVABLE):
         for path in paths:
             if not path or not os.path.exists(path):
                 continue
-            size, _files = tree_size(path)
+            size, _files = tree_size(path, it.get("exclude") or ())
             if not dry_run:
                 try:
                     if os.path.isdir(path):
-                        empty(path)
+                        empty(path, it.get("exclude") or ())
                     else:
                         os.remove(path)
                 except OSError as exc:

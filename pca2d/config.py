@@ -413,7 +413,14 @@ DEFAULTS = {
     "lbl": {
         "prepare": True,             # write LBL's config and its run script
         "run": False,                # and run it. Hours, so it is asked for.
-        "directory": "lbl",          # LBL's DATA_DIR, its own tree
+        # LBL's DATA_DIR, its own tree. None puts it under the output ROOT,
+        # <output.directory>/lbl, before a run name or a variant adds its own
+        # level: the delivered object's LBL products are the same for every
+        # run of a target, and hours to make, so the runs of one output root
+        # share one tree. It used to be `lbl` beside wherever the run was
+        # started, which put SMETHELLS_20's velocities in another clone's
+        # folder while its report was on the data disk (2026-09-15).
+        "directory": None,
         # The corrected object's name. {tag} becomes the run's <M>-<N>, and
         # it is in the default because without it two runs at different
         # component counts write their corrected spectra into ONE LBL science
@@ -436,7 +443,12 @@ DEFAULTS = {
         # gradients, and each exposure's projection on them is an rdb column.
         "strpca": True,
         "steps": ["template", "mask", "compute", "compile"],
-        "link": "symlink",           # 'symlink' or 'copy' into LBL's tree
+        # How the spectra get into LBL's science folders: 'symlink' costs no
+        # room, 'copy' holds every spectrum a second time. A disk that cannot
+        # store a link (exFAT, as the data disks here are) gets copies
+        # whatever this says, and the run says so before it starts
+        # (lbl.link_mode).
+        "link": "symlink",
         "input_file": None,          # LBL's glob inside a science folder
         "instrument": None,          # LBL's name for this spectrograph, which
         "data_source": None,         # with the source selects its reader
@@ -664,6 +676,27 @@ def resolve_highpass(cfg, file_hp=None):
     return cfg
 
 
+def lbl_directory(config: dict, out_root: str | None = None) -> str:
+    """LBL's tree for this configuration, in full.
+
+    `lbl.directory` when it is set, otherwise `lbl` under the output root.
+    `out_root` is that root as it was BEFORE a run name or a variant added a
+    level to output.directory, which is what a caller passes: the tree is
+    shared by every run under one root, and the delivered object in it is
+    hours of LBL that no run should have to make twice.
+
+    Absolute, because every stage reads it back from the run's resolved
+    configuration and a relative path means another folder from another
+    working directory.
+    """
+    block = config.get("lbl") or {}
+    chosen = block.get("directory")
+    if not chosen:
+        root = out_root or (config.get("output") or {}).get("directory") or "outputs"
+        chosen = os.path.join(root, "lbl")
+    return os.path.abspath(os.path.expanduser(str(chosen)))
+
+
 def spectra_dir(config: dict) -> str:
     """The folder holding one object's spectra: input.directory/input.object.
 
@@ -766,11 +799,11 @@ WINDOW_SETTINGS = (
     ("lbl.after", "measure the corrected spectra"),
     ("lbl.star_template", "give LBL the fit's own star spectrum as template"),
     ("lbl.strpca", "keep the STRPCA columns"),
-    ("lbl.directory", "LBL's data tree"),
     ("lbl.suffix", "what the corrected object is called in LBL"),
     ("lbl.teff", "effective temperature handed to LBL"),
     ("lbl.template", "an existing template to reuse instead"),
     ("lbl.steps", "which LBL steps run"),
+    ("lbl.directory", "LBL's data tree"),
     ("lbl.link", "symlink or copy the spectra into LBL's tree"),
 )
 

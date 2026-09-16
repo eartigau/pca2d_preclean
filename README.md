@@ -142,12 +142,17 @@ characters and a HIERARCH card.
 ## LBL, built in
 
 The `lbl` stage puts two objects side by side in one LBL tree, from the same
-instrument profile:
+instrument profile. The tree is `lbl` under the output root unless
+`lbl.directory` (or `--lbl-dir`, or the window's LBL field) names another:
 
 ```
-lbl/science/TOI-2120/               symlinks to the spectra as delivered
-lbl/science/TOI-2120_PCA2D_2-3v/    symlinks to what this run corrected
+<output root>/lbl/science/TOI-2120/               the spectra as delivered
+<output root>/lbl/science/TOI-2120_PCA2D_2-3v/    what this run corrected
 ```
+
+Both as symbolic links by default, or as copies with `lbl.link: copy`
+(`--lbl-link copy`). A disk that refuses a link gets copies whatever was asked,
+and the run says so, with the reason, before its first stage.
 
 The name carries the run's tag because LBL takes a whole science folder, and two
 corrections landing in one would be measured as one series without a word.
@@ -332,8 +337,8 @@ minutes, and LBL about half an hour per object.
 `output.fits_directory` keeps a run's products elsewhere, an external disk for
 instance: the run folder becomes one link to the same path under it, made
 before anything is written, and so do LBL's folders except `lbl/science`, which
-is made of links an exFAT disk cannot hold. A run stops rather than write
-locally when that disk is not mounted. `cache/` stays put.
+is made of links. A run stops rather than write locally when that disk is not
+mounted. `cache/` stays put.
 
 Useful flags: `--dry-run` resolves everything and touches nothing, `--stages
 cube,fit` runs part of it, `--n-star`/`--n-earth` override the component
