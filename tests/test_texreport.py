@@ -307,3 +307,34 @@ def test_an_old_report_rewritten_is_kept_whole_first(tmp_path):
     assert tr.render(str(run))
     assert (run / "report" / "bound_before_the_report.pdf").read_bytes() == before
     assert bound.read_bytes() != before
+
+
+def test_the_two_posteriors_are_drawn_on_the_same_axes(tmp_path):
+    """Side by side, they are compared: one amp axis and one sigma axis for
+    both, whatever each posterior spans."""
+    from pca2d import bervbias
+
+    r = np.random.default_rng(8)
+    berv = r.uniform(-25, 25, 150)
+    e = np.full(150, 5.0)
+    noise = r.normal(0, 5, 150)
+    fits = {"before": bervbias.fit(berv, bervbias.shape(berv, -10, 6) + noise,
+                                   e, seed=1),
+            "after": bervbias.fit(berv, noise, e, seed=2)}
+    before = {"label": "delivered", "fits": fits}
+    after = {"label": "corrected"}
+    captured = []
+    real = plt.Figure.savefig
+
+    def keep(fig, *args, **kwargs):
+        captured.append(fig)
+        return real(fig, *args, **kwargs)
+
+    import unittest.mock
+    with unittest.mock.patch.object(plt.Figure, "savefig", keep):
+        assert tr.figure_corner(before, after, str(tmp_path / "c.pdf"))
+    joints = [ax for ax in captured[0].axes
+              if ax.get_ylabel().startswith("amp")]
+    assert len(joints) == 2
+    assert joints[0].get_ylim() == joints[1].get_ylim()
+    assert joints[0].get_xlim() == joints[1].get_xlim()

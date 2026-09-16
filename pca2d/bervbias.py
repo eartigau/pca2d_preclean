@@ -24,7 +24,13 @@ on SMETHELLS_20. The sampler is Goodman and Weare's affine-invariant stretch
 move, emcee's algorithm, in a few lines of numpy: emcee is not in the
 pipeline's environment, and four parameters do not need it.
 
-    amp       uniform, (m/s)/(km/s)
+    amp       modified Jeffreys, p(amp) ~ 1 / (|amp| + a0), (m/s)/(km/s),
+              within +-1e4 (asked for on 2026-09-16). Scale-invariant above
+              the knee a0, flat below it, and signed, since a bias pulls
+              either way; 1/|amp| itself has no normalisation at zero.
+              The knee is the noise level (Gregory 2005, ApJ 631, 1198, for
+              RV amplitudes): the amp whose peak, at the prior's median
+              width sqrt(1 * 60) km/s, is the median error over sqrt(N)
     sigma     log-uniform over 1 to 60 km/s. Below 1 km/s is narrower than
               any blend of two lines can be at a resolution of 70 000 to
               80 000 (a 4 km/s FWHM): allowed, the few points within +-sigma
@@ -61,7 +67,13 @@ def peak(amp, sigma):
     return amp * sigma * np.exp(-0.5)
 
 
-def log_probability(theta, berv, v, e):
+def amp_knee(e, n):
+    """The modified Jeffreys prior's knee, from the data's own noise."""
+    width = np.sqrt(SIGMA_MIN * SIGMA_MAX)
+    return float(np.median(e) / np.sqrt(max(n, 1)) / (width * np.exp(-0.5)))
+
+
+def log_probability(theta, berv, v, e, knee=None):
     """ln posterior of (amp, ln sigma, c, ln jitter), one row per walker."""
     theta = np.atleast_2d(theta)
     amp, lsig, c, ljit = theta.T
@@ -77,6 +89,9 @@ def log_probability(theta, berv, v, e):
     var = e[None, :] ** 2 + np.exp(2 * ljit[inside])[:, None]
     out[inside] = -0.5 * np.sum((v[None, :] - model) ** 2 / var + np.log(var),
                                 axis=1)
+    if knee is None:
+        knee = amp_knee(e, e.size)
+    out[inside] -= np.log(np.abs(amp[inside]) + knee)
     return out
 
 
@@ -143,6 +158,7 @@ def fit(berv, v, e, walkers=32, steps=2500, burn=1000, seed=0):
         return None
     berv, v, e = berv[ok], v[ok], e[ok]
     rng = np.random.default_rng(seed)
+    knee = amp_knee(e, e.size)
     centre = starting_point(berv, v, e)
     scale = np.array([max(abs(centre[0]) * 0.1, 1e-2), 0.1,
                       max(np.std(v) * 0.01, 1e-2), 0.1])
@@ -150,11 +166,13 @@ def fit(berv, v, e, walkers=32, steps=2500, burn=1000, seed=0):
     start[:, 1] = np.clip(start[:, 1], np.log(SIGMA_MIN) + 1e-3,
                           np.log(SIGMA_MAX) - 1e-3)
     chain, acceptance = stretch(
-        lambda theta: log_probability(theta, berv, v, e), start, steps, rng)
+        lambda theta: log_probability(theta, berv, v, e, knee), start,
+        steps, rng)
     flat = chain[burn:].reshape(-1, 4)
     samples = np.column_stack([flat[:, 0], np.exp(flat[:, 1]), flat[:, 2],
                                np.exp(flat[:, 3])])
-    out = {"samples": samples, "acceptance": acceptance, "n": int(ok.sum())}
+    out = {"samples": samples, "acceptance": acceptance, "n": int(ok.sum()),
+           "knee": knee}
     for i, name in enumerate(NAMES):
         out[name] = np.percentile(samples[:, i], [50, 16, 84])
     peaks = peak(samples[:, 0], samples[:, 1])

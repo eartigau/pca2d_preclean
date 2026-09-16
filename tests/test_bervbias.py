@@ -79,3 +79,24 @@ def test_the_envelope_holds_the_truth():
     truth = bb.shape(grid, -10.0, 6.0)
     inside = (truth >= lo - 2 * (hi - lo)) & (truth <= hi + 2 * (hi - lo))
     assert inside.mean() > 0.9
+
+
+def test_amp_has_a_modified_jeffreys_prior():
+    """With no BERV there is nothing for amp to change in the likelihood, so
+    two amplitudes differ by the prior alone: log((|a2| + a0)/(|a1| + a0)),
+    the same for either sign."""
+    berv = np.zeros(20)
+    v = np.zeros(20)
+    e = np.full(20, 2.0)
+    knee = bb.amp_knee(e, e.size)
+    assert knee == pytest.approx(2.0 / np.sqrt(20)
+                                 / (np.sqrt(60.0) * np.exp(-0.5)))
+    theta = np.array([[1.0, np.log(5.0), 0.0, 0.0],
+                      [3.0, np.log(5.0), 0.0, 0.0],
+                      [-3.0, np.log(5.0), 0.0, 0.0]])
+    lp = bb.log_probability(theta, berv, v, e)
+    assert lp[0] - lp[1] == pytest.approx(np.log((3.0 + knee) / (1.0 + knee)))
+    assert lp[1] == pytest.approx(lp[2])
+    assert np.isfinite(bb.log_probability(
+        np.array([[0.0, np.log(5.0), 0.0, 0.0]]), berv, v, e)[0]), \
+        "no divergence at zero"

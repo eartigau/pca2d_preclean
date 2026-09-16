@@ -623,9 +623,23 @@ def figure_berv(before, after, path):
     return _save(fig, path)
 
 
-def _corner(fig, cell, fitted, colour, title):
+def amp_range(*fits):
+    """One amp axis for every fit shown side by side.
+
+    Each posterior on its own axis made the delivered one look as wide as
+    the corrected one, which spans four times more: two panels meant to be
+    compared are drawn on the same scale.
+    """
+    ends = np.array([np.percentile(f["samples"][:, 0], [0.5, 99.5])
+                     for f in fits])
+    lo, hi = float(ends[:, 0].min()), float(ends[:, 1].max())
+    pad = 0.05 * (hi - lo) if hi > lo else 1.0
+    return lo - pad, hi + pad
+
+
+def _corner(fig, cell, fitted, colour, title, arange):
     """amp against sigma for one fit: the joint posterior and both
-    marginals, with 1 and 2 sigma contours."""
+    marginals, with 1 and 2 sigma contours, on the amp axis given."""
     inner = cell.subgridspec(2, 2, width_ratios=[1.0, 0.35],
                              height_ratios=[0.35, 1.0], wspace=0.05,
                              hspace=0.05)
@@ -634,9 +648,6 @@ def _corner(fig, cell, fitted, colour, title):
     side = fig.add_subplot(inner[1, 1], sharey=joint)
     amp = fitted["samples"][:, 0]
     lsig = np.log10(fitted["samples"][:, 1])
-    alo, ahi = np.percentile(amp, [0.5, 99.5])
-    pad = 0.05 * (ahi - alo) if ahi > alo else 1.0
-    arange = (alo - pad, ahi + pad)
     srange = (np.log10(bervbias.SIGMA_MIN), np.log10(bervbias.SIGMA_MAX))
     counts, xe, ye = np.histogram2d(lsig, amp, bins=45, range=[srange, arange])
     ordered = np.sort(counts.ravel())[::-1]
@@ -679,8 +690,9 @@ def figure_corner(before, after, path):
         return None
     fig = plt.figure(figsize=(WIDTH, 3.6))
     cells = fig.add_gridspec(1, 2, wspace=0.35)
-    _corner(fig, cells[0], fb["before"], BEFORE, before["label"])
-    _corner(fig, cells[1], fb["after"], AFTER, after["label"])
+    arange = amp_range(fb["before"], fb["after"])
+    _corner(fig, cells[0], fb["before"], BEFORE, before["label"], arange)
+    _corner(fig, cells[1], fb["after"], AFTER, after["label"], arange)
     fig.subplots_adjust(left=0.1, right=0.98, bottom=0.14, top=0.84)
     return _save(fig, path)
 
@@ -1336,7 +1348,8 @@ def velocity_section(star, before, after, numbers, folder, stale):
          "The velocities against the barycentric velocity, with the bias a"
          " telluric line blended with the stellar lines produces, fitted by"
          " MCMC: $v = c + a\\,B\\,e^{-B^2/2\\sigma^2}$, with a jitter added"
-         " to LBL's error bars. The line is the posterior median, the band its"
+         " to LBL's error bars, a modified Jeffreys prior on $a$ and a"
+         " log-uniform one on $\\sigma$ between 1 and 60 km/s. The line is the posterior median, the band its"
          " 1$\\sigma$ envelope (the band alone for a bias that is not"
          " detected); squares are medians in 2 km/s bins. Above,"
          " each series less its fitted offset; below, both envelopes on one"
@@ -1346,8 +1359,8 @@ def velocity_section(star, before, after, numbers, folder, stale):
         (figure_corner(before, after, os.path.join(figures, base + "-corner.pdf")),
          "%s: the covariance of amp and sigma" % name,
          "The joint posterior of the bias's amplitude $a$ and width"
-         " $\\sigma$, delivered and corrected, with its 1 and 2$\\sigma$"
-         " contours and both marginals. The two trade against each other,"
+         " $\\sigma$, delivered and corrected, on the same axes, with its 1"
+         " and 2$\\sigma$ contours and both marginals. The two trade against each other,"
          " since a narrower bias needs a larger amplitude to reach the same"
          " points; a posterior filling the width's prior is a bias that is"
          " not there."),
@@ -1383,13 +1396,16 @@ def run_section(config, manifest, folder):
     parts = ["\\section{The run}\n"]
     rows = (manifest or {}).get("run") or []
     if rows:
-        parts.append("\\begin{longtable}{p{0.34\\linewidth}p{0.6\\linewidth}}\n"
-                     "\\toprule\n")
+        parts.append("\\begin{longtable}{>{\\raggedright\\arraybackslash}"
+                     "p{0.34\\linewidth}>{\\raggedright\\arraybackslash}"
+                     "p{0.6\\linewidth}}\n\\toprule\n")
         for key, value in rows:
             parts.append("%s & %s \\\\\n" % (tex(key), tex_break(value)))
         parts.append("\\bottomrule\n\\end{longtable}\n")
     parts.append("\\subsection{Every setting the window can set}\n"
-                 "\\begin{longtable}{p{0.28\\linewidth}p{0.2\\linewidth}"
+                 "\\begin{longtable}{>{\\raggedright\\arraybackslash}"
+                 "p{0.28\\linewidth}>{\\raggedright\\arraybackslash}"
+                 "p{0.2\\linewidth}>{\\raggedright\\arraybackslash}"
                  "p{0.44\\linewidth}}\n\\toprule\nsetting & value & what it"
                  " does \\\\\n\\midrule\n\\endhead\n")
     for path, what in WINDOW_SETTINGS:
