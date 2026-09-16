@@ -119,8 +119,9 @@ Without PIL none of it happens and the window is the square one it was.
   weighs a spectrum by 1/sigma^2, so a range whose far end is covered by a
   campaign's worst nights is not the range the fit really sees, and the two
   frames come apart less well than the coverage promises.
-- **English or French**, one button, everything included: the labels, the
-  explanations and the window's own log lines.
+- **English, French, Spanish or Portuguese**, one flag each at the top, the
+  other languages than the one the window is in: everything is included, the
+  labels, the explanations and the window's own log lines.
 
 ## The index of a data root
 

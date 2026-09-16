@@ -320,7 +320,7 @@ pca2d-gui
 lists the objects of the data root with their median SNR and exposure time, a
 box to tick each one, runs one of them or several together, refuses two
 instruments at once, explains what every choice implies when the pointer rests
-on it, in English or in French, writes the command it is about to run so it can
+on it, in English, French, Spanish or Portuguese, writes the command it is about to run so it can
 be copied into a terminal, and shows the run's log as it comes. What it read of
 a data root is remembered under `~/.pca2d/`, so a folder opens at once the
 second time and only new files are read. `docs/gui.md`.

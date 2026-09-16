@@ -9,7 +9,8 @@ handful of settings that change a result, writes the command it is about to
 run so that it can be copied into a terminal, and streams the run's own log
 into the window with the colours it would have in a terminal.
 
-Every item explains itself on hover, in English or in French, and says what
+Every item explains itself on hover, in English, French, Spanish or Portuguese,
+and says what
 the choice implies rather than only what it is called. Nothing here decides
 anything: every option maps to one key of config.yaml or one flag of
 `pca2d-preclean`, the command is shown before it runs, and the settings can be
@@ -227,7 +228,8 @@ EN = {
     "openpdf": "Open compil PDF",
     "savedefaults": "Save as defaults...",
     "all": "all", "none": "none",
-    "idle": "idle", "running": "running", "lang": "\U0001F1EB\U0001F1F7 Français",
+    # the language the window is in, on the button that opens the others
+    "idle": "idle", "running": "running", "lang": "\U0001F1EC\U0001F1E7 English",
     "snr_berv": "signal-to-noise against barycentric velocity",
     "snr_none": "tick a target to see where its best nights sit",
     "help_snr_berv":
@@ -663,7 +665,9 @@ EN = {
         " velocity pages at the end once LBL has measured them. It is"
         " <object>_<tag>.pdf in the run's folder, written by the figures"
         " stage, so it is there once that stage has run.",
-    "help_lang": "Switch the window between English and French.",
+    "help_lang":
+        "Choose the window's language: click the one you want. English,"
+        " French, Spanish and Portuguese.",
     "help_apero":
         "APERO, the pipeline that reduced every spectrum this window reads"
         " (Cook et al. 2022, PASP 134, 114509). It is what wrote the extensions,"
@@ -757,7 +761,7 @@ FR = {
     "savedefaults": "Enregistrer comme défauts...",
     "all": "tout", "none": "rien",
     "idle": "au repos", "running": "en cours",
-    "lang": "\U0001F1EC\U0001F1E7 English",
+    "lang": "\U0001F1EB\U0001F1F7 Français",
     "snr_berv": "rapport signal sur bruit en fonction du BERV",
     "snr_none": "cochez une cible pour voir où sont ses meilleures nuits",
     "help_snr_berv":
@@ -1226,7 +1230,9 @@ FR = {
         " vitesses à la fin une fois que LBL les a mesurées. C'est"
         " <objet>_<tag>.pdf dans le dossier du passage, écrit par l'étape des"
         " figures : il est là dès que cette étape a tourné.",
-    "help_lang": "Bascule la fenêtre entre l'anglais et le français.",
+    "help_lang":
+        "Choisit la langue de la fenêtre : cliquez sur celle que vous voulez."
+        " Anglais, français, espagnol et portugais.",
     "help_apero":
         "APERO, le pipeline qui a réduit tous les spectres que cette fenêtre"
         " lit (Cook et al. 2022, PASP 134, 114509). C'est lui qui a écrit les"
@@ -1239,7 +1245,12 @@ FR = {
         " sauté, rouge pour ce qui arrête un passage.",
 }
 
-TEXTS = {"en": EN, "fr": FR}
+from .gui_es import ES  # noqa: E402
+from .gui_pt import PT  # noqa: E402
+
+TEXTS = {"en": EN, "fr": FR, "es": ES, "pt": PT}
+#: the order the language buttons are in, and switch_language cycles
+LANGUAGES = ("en", "fr", "es", "pt")
 
 
 def text(lang, key, default=None):
@@ -2208,7 +2219,34 @@ class App:
         return widget
 
     def switch_language(self):
-        self.lang = "fr" if self.lang == "en" else "en"
+        """The next language in LANGUAGES, round again after the last."""
+        order = list(LANGUAGES)
+        here = order.index(self.lang) if self.lang in order else -1
+        self.set_language(order[(here + 1) % len(order)])
+
+    def _draw_languages(self):
+        """A button for each language the window is not in, flag and name.
+
+        Drawn again at every change, since which languages are "the others"
+        is what changed.
+        """
+        bar = getattr(self, "lang_bar", None)
+        if bar is None:
+            return
+        for child in bar.winfo_children():
+            child.destroy()
+        for code in LANGUAGES:
+            if code == self.lang:
+                continue
+            button = self.ttk.Button(bar, text=TEXTS[code]["lang"],
+                                     command=lambda c=code: self.set_language(c))
+            button.pack(side="left", padx=(0, 4))
+            self._tip(button, "help_lang")
+
+    def set_language(self, lang):
+        """Say everything again in `lang`: every label, tab and heading."""
+        self.lang = lang if lang in TEXTS else "en"
+        self._draw_languages()
         for book, page, key in getattr(self, "tabs", []):
             try:
                 book.tab(page, text=self.t(key))
@@ -2254,11 +2292,11 @@ class App:
         quit_button.pack(side="right")
         self._register(quit_button, "quit")
         self._tip(quit_button, "help_quit_button")
-        button = ttk.Button(frame, text=self.t("lang"),
-                            command=self.switch_language, width=13)
-        button.pack(side="right", padx=(0, 6))
-        self._register(button, "lang")
-        self._tip(button, "help_lang")
+        # every other language, flag and name, one click each: with four a
+        # button that flips between two no longer reaches them all
+        self.lang_bar = ttk.Frame(frame)
+        self.lang_bar.pack(side="right", padx=(0, 6))
+        self._draw_languages()
         self._register(ttk.Label(frame, style="Hint.TLabel", wraplength=780,
                                  justify="left", text=self.t("subtitle")),
                        "subtitle").pack(side="left", padx=10)
