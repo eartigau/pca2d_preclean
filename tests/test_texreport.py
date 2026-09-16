@@ -159,9 +159,12 @@ def test_an_old_bound_pdf_is_cut_along_its_bookmarks(tmp_path):
 
 
 # ------------------------------------------------------- the document ---
-def write_rdb(path, t, v, e, berv, d2v):
+def write_rdb(path, t, v, e, berv, d2v, dtemp=None):
     table = Table({"rjd": t, "vrad": v, "svrad": e, "d2v": d2v,
                    "sd2v": np.full_like(d2v, 1e4), "BERV": berv})
+    if dtemp is not None:
+        table["DTEMP3500"] = dtemp
+        table["sDTEMP3500"] = np.full_like(dtemp, 2.0)
     table.write(path, format="ascii.rdb", overwrite=True)
 
 
@@ -197,11 +200,15 @@ def a_run(tmp_path, star="TOI_756", with_rdb=True):
         e = np.full(t.size, 2.0)
         noise = r.normal(0, 2, t.size)
         d2v = r.normal(0, 3e4, t.size)
+        # a temperature that rotates at 7.3 d, and a telluric residual in the
+        # delivered one that follows BERV
+        spot = 8.0 * np.sin(2 * np.pi * t / 7.3) + r.normal(0, 2, t.size)
         write_rdb(tree / "lblrdb" / ("lbl_%s_%s.rdb" % (star, star)),
-                  t, 1000 + noise + 0.5 * berv, e, berv, d2v)
+                  t, 1000 + noise + 0.5 * berv, e, berv, d2v,
+                  spot + 0.4 * berv)
         name = star + "_PCA2D_0-3"
         write_rdb(tree / "lblrdb" / ("lbl_%s_%s.rdb" % (name, name)),
-                  t, 1000 + noise, e, berv, d2v)
+                  t, 1000 + noise, e, berv, d2v, spot)
     return run
 
 
@@ -222,9 +229,14 @@ def test_a_run_with_velocities_becomes_a_document(tmp_path):
     assert tex.count(r"\begin{figure}") == tex.count(r"\caption[")
     assert r"\caption[TOI\_756: the BERV bias, fitted]" in tex
     assert "<<" not in tex, "every placeholder of the template is filled"
-    for kind in ("time", "berv", "corner", "d2v", "change", "periods"):
+    for kind in ("time", "berv", "corner", "d2v", "dtemp", "change",
+                 "periods"):
         assert (run / "report" / "figures" / ("rv-toi-756-%s.pdf" % kind)).exists()
     assert "older than this run" not in tex
+    # the temperature projection, both ways, and what the correction did to it
+    assert r"DTEMP3500 robust sigma (K)" in tex
+    assert "DTEMP3500's structure against BERV" in tex
+    assert "No temperature projection" not in tex
 
 
 @pytest.mark.skipif(not HAVE_TEX, reason="no pdflatex on this machine")
@@ -338,3 +350,49 @@ def test_the_two_posteriors_are_drawn_on_the_same_axes(tmp_path):
     assert len(joints) == 2
     assert joints[0].get_ylim() == joints[1].get_ylim()
     assert joints[0].get_xlim() == joints[1].get_xlim()
+
+
+@pytest.mark.skipif(not HAVE_TEX, reason="no pdflatex on this machine")
+def test_a_run_without_dtemp_says_so(tmp_path):
+    """Every run before 2026-09-16: LBL was given no temperature table."""
+    run = a_run(tmp_path)
+    tree = tmp_path / "lbl" / "lblrdb"
+    for path in tree.glob("*.rdb"):
+        table = Table.read(path, format="ascii.rdb")
+        table.remove_columns(["DTEMP3500", "sDTEMP3500"])
+        table.write(path, format="ascii.rdb", overwrite=True)
+    assert tr.render(str(run))
+    tex = (run / "report" / "TOI_756_0-3.tex").read_text()
+    assert "No temperature projection" in tex
+    assert "DTEMP3500 robust sigma" not in tex
+    assert not (run / "report" / "figures" / "rv-toi-756-dtemp.pdf").exists()
+
+
+def test_the_dtemp_table_is_the_one_nearest_the_star():
+    from pca2d.lbl import dtemp_table, runparams
+
+    assert dtemp_table({}, 3304.0) == {"DTEMP3500": "temperature_gradient_3500.fits"}
+    assert dtemp_table({"dtemp": "auto"}, 2700.0) == \
+        {"DTEMP3000": "temperature_gradient_3000.fits"}
+    assert dtemp_table({"dtemp": 5200}, 3000.0) == \
+        {"DTEMP5000": "temperature_gradient_5000.fits"}
+    assert dtemp_table({"dtemp": False}, 3300.0) == {}
+    assert dtemp_table({}, None) == {}, "no Teff, nothing to choose by"
+    with pytest.raises(SystemExit):
+        dtemp_table({"dtemp": "hot"}, 3300.0)
+    params = runparams({"lbl": {"steps": ["compute"]}}, "lbl", "NIRPS_HE",
+                       "CADC", ["A", "A_PCA2D_0-3"], "c.yaml", teff=3717.0)
+    assert params["RESPROJ_TABLES"] == \
+        {"DTEMP3500": "temperature_gradient_3500.fits"}
+
+
+def test_dtemp_stays_first_when_strpca_joins_it(tmp_path):
+    """Only the first RESPROJ table is right in the LBL installed here, and
+    DTEMP is the one both objects are compared on."""
+    from pca2d.lbl import write_runner
+
+    path = write_runner(str(tmp_path / "run_lbl.py"),
+                        [("AFTER", "x", {"RESPROJ_TABLES": {"DTEMP3500": "t"}})],
+                        {"fit": "f"}, "A", "2-3", str(tmp_path / "c.yaml"))
+    body = open(path).read()
+    assert 'dict(AFTER.get("RESPROJ_TABLES") or {}, **strpca_from(**STRPCA))' in body

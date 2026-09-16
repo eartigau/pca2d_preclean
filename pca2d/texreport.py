@@ -300,10 +300,15 @@ def load(tree, name, label):
     t, v, e, table = rdb_rows(path)
     if t.size < 3:
         return None
+    # LBL's temperature projection, DTEMP<T>, when the run asked for one
+    dtemp = next((c for c in table.colnames if re.fullmatch(r"DTEMP\d+", c)),
+                 None)
     return {"label": label, "name": name, "path": path, "t": t, "v": v,
             "e": e, "berv": column(table, "BERV"),
             "d2v": column(table, "d2v"), "sd2v": column(table, "sd2v"),
-            "mtime": os.path.getmtime(path)}
+            "dtemp": column(table, dtemp) if dtemp else None,
+            "sdtemp": column(table, "s" + dtemp) if dtemp else None,
+            "dtemp_name": dtemp, "mtime": os.path.getmtime(path)}
 
 
 def common(before, after):
@@ -315,7 +320,7 @@ def common(before, after):
         keep = np.isin(key(run["t"]), shared)
         order = np.argsort(run["t"][keep])
         cut = dict(run)
-        for name in ("t", "v", "e", "berv", "d2v", "sd2v"):
+        for name in ("t", "v", "e", "berv", "d2v", "sd2v", "dtemp", "sdtemp"):
             if cut.get(name) is not None:
                 cut[name] = np.asarray(run[name])[keep][order]
         out.append(cut)
@@ -432,6 +437,17 @@ def star_numbers(before, after, planets=(), seed=0):
                        d2v_error=float(np.nanmedian(run["sd2v"]))
                        if run.get("sd2v") is not None else np.nan,
                        d2v_r=pearson(run["d2v"][good], run["v"][good]))
+        if run.get("dtemp") is not None:
+            good = inliers(run["dtemp"])
+            _, medians, _ = binned(run["berv"], run["dtemp"] - np.nanmedian(
+                run["dtemp"])) if run.get("berv") is not None else (0, [], 0)
+            row.update(dtemp_name=run["dtemp_name"],
+                       dtemp_sigma=robust_sigma(run["dtemp"]),
+                       dtemp_error=float(np.nanmedian(run["sdtemp"]))
+                       if run.get("sdtemp") is not None else np.nan,
+                       dtemp_r=pearson(run["dtemp"][good], run["v"][good]),
+                       dtemp_berv_binned=float(np.std(medians))
+                       if len(medians) >= 3 else np.nan)
         found = periodogram(run["t"], run["v"], run["e"])
         if found:
             row.update(peak_period=found[2], peak_power=found[3],
@@ -775,28 +791,111 @@ def figure_change(before, after, path):
     return _save(fig, path)
 
 
+def figure_dtemp(before, after, path):
+    """LBL's temperature projection, delivered and corrected, over time and
+    against BERV, all four panels on one scale.
+
+    A correction of the observer frame has no business changing the star's
+    temperature; what it may change is a telluric residual that DTEMP picked
+    up, and that shows against BERV.
+    """
+    if before.get("dtemp") is None or after.get("dtemp") is None:
+        return None
+    name = before["dtemp_name"]
+    fig, axes = plt.subplots(2, 2, figsize=(WIDTH, 5.4), sharey=True)
+    both = np.concatenate([before["dtemp"] - np.nanmedian(before["dtemp"]),
+                           after["dtemp"] - np.nanmedian(after["dtemp"])])
+    lim = _limits(both[inliers(both)])
+    for col, (run, colour) in enumerate(((before, BEFORE), (after, AFTER))):
+        y = run["dtemp"] - np.nanmedian(run["dtemp"])
+        e = run.get("sdtemp")
+        outside = int(np.sum(np.abs(y) > lim[1]))
+        top, bottom = axes[0, col], axes[1, col]
+        _points(top, run["t"], y, e, colour, "exposures")
+        top.set_title("%s %s\nrobust sigma %.1f K, median error %.1f K%s"
+                      % (run["label"], name, robust_sigma(y),
+                         np.nanmedian(e) if e is not None else np.nan,
+                         "; %d off the scale" % outside if outside else ""),
+                      fontsize=7.5, color=INK, loc="left")
+        top.set_xlabel("RJD (BJD - 2400000)", fontsize=7.5, color=INK)
+        if run.get("berv") is not None:
+            _points(bottom, run["berv"], y, e, colour, "exposures", alpha=0.45)
+            centres, medians, errors = binned(run["berv"], y)
+            if centres.size:
+                bottom.errorbar(centres, medians, yerr=errors, fmt="s",
+                                ls="none", ms=4.5, mfc="white", mec=INK,
+                                mew=0.8, ecolor=INK, elinewidth=0.7,
+                                capsize=0, zorder=5, label="2 km/s bins, median")
+            bottom.set_title("against BERV: binned medians scatter %.1f K"
+                             % (np.std(medians) if centres.size >= 3
+                                else np.nan),
+                             fontsize=7.5, color=INK, loc="left")
+        bottom.set_xlabel("BERV (km/s)", fontsize=7.5, color=INK)
+        for ax in (top, bottom):
+            ax.axhline(0, color=MUTED, lw=0.6)
+            ax.set_ylim(*lim)
+            _style(ax)
+    axes[0, 0].set_ylabel("%s - median (K)" % name, fontsize=7.5, color=INK)
+    axes[1, 0].set_ylabel("%s - median (K)" % name, fontsize=7.5, color=INK)
+    axes[1, 0].legend(fontsize=6.5, frameon=False, loc="upper left")
+    fig.tight_layout()
+    return _save(fig, path)
+
+
+def _mark_peak(ax, periods, power, colour, label, above):
+    """The highest peak of one curve: where, and how high, said on the plot."""
+    best = int(np.nanargmax(power))
+    period, level = periods[best], power[best]
+    ax.axhline(level, color=colour, lw=0.7, alpha=0.7, zorder=1)
+    ax.plot([period], [level], marker="v", ms=7, mfc=colour, mec="white",
+            mew=0.8, ls="none", zorder=6)
+    # on the side with room: a peak in the right third of a log axis is
+    # labelled leftwards, or the label runs off the figure
+    lo, hi = np.log10(np.nanmin(periods)), np.log10(np.nanmax(periods))
+    right = (np.log10(period) - lo) > 0.66 * (hi - lo)
+    ax.annotate("%s %.3g d, %.2f" % (label, period, level),
+                (period, level), xytext=(-5 if right else 5,
+                                         6 if above else -12),
+                textcoords="offset points", fontsize=6.5, color=INK,
+                ha="right" if right else "left", va="bottom", zorder=7)
+    return period, level
+
+
 def figure_periodograms(before, after, planets, path):
     rows = [("velocity", "v", "e")]
     if before.get("d2v") is not None and after.get("d2v") is not None:
         rows.append(("d2v", "d2v", "sd2v"))
+    if before.get("dtemp") is not None and after.get("dtemp") is not None:
+        rows.append((before["dtemp_name"], "dtemp", "sdtemp"))
     fig, axes = plt.subplots(len(rows), 1, figsize=(WIDTH, 2.5 * len(rows) + 0.4),
                              sharex=True, squeeze=False)
     drawn = False
     for ax, (what, value, error) in zip(axes[:, 0], rows):
+        found_both = []
         for run, colour in ((before, BEFORE), (after, AFTER)):
             y, e = run[value], run.get(error)
             if e is None:
                 e = np.ones_like(y)
-            keep = inliers(y) if value == "d2v" else np.isfinite(y)
+            keep = inliers(y) if value != "v" else np.isfinite(y)
             found = periodogram(run["t"][keep], y[keep], e[keep])
             if not found:
                 continue
             drawn = True
-            periods, power, best, _, fap = found
+            periods, power, best, level, fap = found
             # see-through, both: the two series overlap nearly everywhere,
             # and at full ink the one drawn last hid the other
             ax.plot(periods, power, color=colour, lw=0.9, alpha=0.55,
-                    label="%s: peak %.3g d, FAP %.2g" % (run["label"], best, fap))
+                    label="%s: peak %.3g d at %.2f, FAP %.2g"
+                          % (run["label"], best, level, fap))
+            found_both.append((periods, power, colour, run["label"]))
+        # each curve's highest peak, where it is and how high, the higher
+        # one's label above its marker and the other's below, so they part
+        order = sorted(range(len(found_both)),
+                       key=lambda i: -np.nanmax(found_both[i][1]))
+        for rank, i in enumerate(order):
+            periods, power, colour, label = found_both[i]
+            _mark_peak(ax, periods, power, colour, label, above=rank == 0)
+        ax.set_ylim(0, ax.get_ylim()[1] * 1.12)
         top = ax.get_ylim()[1] if drawn else 1.0
         for letter, period in zip("bcdefgh", planets):
             ax.axvline(period, color=INK, lw=0.7, zorder=0)
@@ -812,10 +911,7 @@ def figure_periodograms(before, after, planets, path):
     if not drawn:
         plt.close(fig)
         return None
-    axes[-1, 0].set_xlabel("period (d); grey lines: 1 yr, 1/2 yr, 1 lunar"
-                           " month%s" % ("; black: the known planets"
-                                         if planets else ""),
-                           fontsize=8, color=INK)
+    axes[-1, 0].set_xlabel("period (d)", fontsize=8, color=INK)
     fig.tight_layout()
     return _save(fig, path)
 
@@ -1189,6 +1285,24 @@ def summary_table(star, numbers):
                     % (number(vb, 1), number(va, 1), mark(word)))
         rows.append("velocity-d2v correlation r & %s & %s & & \\muted{activity}"
                     " \\\\" % (number(b["d2v_r"], 3), number(a["d2v_r"], 3)))
+    if "dtemp_sigma" in b and "dtemp_sigma" in a:
+        name = tex(b["dtemp_name"])
+        word = ("watch" if verdict(b["dtemp_sigma"], a["dtemp_sigma"],
+                                   tolerance=0.1) != "same" else "same")
+        rows.append("%s robust sigma (K) & %s & %s & & %s \\\\"
+                    % (name, number(b["dtemp_sigma"]), number(a["dtemp_sigma"]),
+                       mark(word)))
+        rows.append("%s median error (K) & %s & %s & & \\\\"
+                    % (name, number(b["dtemp_error"]), number(a["dtemp_error"])))
+        rows.append("velocity-%s correlation r & %s & %s & & \\muted{activity}"
+                    " \\\\" % (name, number(b["dtemp_r"], 3),
+                                 number(a["dtemp_r"], 3)))
+        rows.append("scatter of %s's BERV-binned medians (K) & %s & %s & & %s"
+                    " \\\\" % (name, number(b["dtemp_berv_binned"]),
+                                 number(a["dtemp_berv_binned"]),
+                                 mark(verdict(b["dtemp_berv_binned"],
+                                              a["dtemp_berv_binned"],
+                                              tolerance=0.05))))
     if "peak_period" in b:
         rows.append("highest velocity peak (d) & %s & %s & & \\\\"
                     % (number(b["peak_period"], 3), number(a["peak_period"], 3)))
@@ -1264,6 +1378,15 @@ def verdict_lines(numbers):
     word = bias_verdict(b, a)
     (better if word == "gain" else worse if word == "loss"
      else []).append("the fitted BERV bias")
+    if "dtemp_sigma" in b and "dtemp_sigma" in a:
+        if verdict(b["dtemp_sigma"], a["dtemp_sigma"], tolerance=0.1) != "same":
+            moved.append("%s's scatter (%.1f to %.1f K)"
+                         % (tex(b["dtemp_name"]), b["dtemp_sigma"],
+                            a["dtemp_sigma"]))
+        word = verdict(b["dtemp_berv_binned"], a["dtemp_berv_binned"],
+                       tolerance=0.05)
+        (better if word == "gain" else worse if word == "loss"
+         else []).append("%s's structure against BERV" % tex(b["dtemp_name"]))
     if "d2v_sigma" in b and verdict(b["d2v_sigma"], a["d2v_sigma"],
                                     tolerance=0.1) != "same":
         moved.append("d2v's scatter (%.0f to %.0f, in $10^3$ m$^2$/s$^2$)"
@@ -1336,6 +1459,11 @@ def velocity_section(star, before, after, numbers, folder, stale):
                      " one yet.}\n\n")
     parts.append(star_sentence(star, numbers) + " " + activity_note(numbers)
                  + "\n")
+    if before.get("dtemp") is None:
+        parts.append("\n\\muted{No temperature projection in these"
+                     " velocities: this run's LBL had no DTEMP table. Runs from"
+                     " 2026-09-16 measure the one nearest the star's Teff"
+                     " (lbl.dtemp).}\n")
     name = tex(star)
     drawn = [
         (figure_time(before, after, os.path.join(figures, base + "-time.pdf")),
@@ -1373,16 +1501,33 @@ def velocity_section(star, before, after, numbers, folder, stale):
          " velocity against it. A correction of the observer frame has no"
          " business changing it, and a velocity that correlates with it is"
          " activity rather than noise."),
+        (figure_dtemp(before, after, os.path.join(figures, base + "-dtemp.pdf")),
+         "%s: %s, the temperature projection" % (name, tex(
+             before.get("dtemp_name") or "DTEMP")),
+         "LBL's projection of every line's residual on the temperature"
+         " gradient of the model nearest the star's Teff, delivered and"
+         " corrected, on one scale. Above, over the campaign; below, against"
+         " BERV, with medians in 2 km/s bins. The star's temperature is not"
+         " the observer frame's business: a scatter that changes is a"
+         " correction reaching into the star, and a structure against BERV"
+         " that goes away is a telluric residual DTEMP had picked up."),
         (figure_change(before, after, os.path.join(figures, base + "-change.pdf")),
          "%s: what the correction moved" % name,
          "What the correction changed, exposure by exposure: the corrected"
          " velocity less the delivered one, over time and against BERV."),
         (figure_periodograms(before, after, numbers["planet_periods"],
                              os.path.join(figures, base + "-periods.pdf")),
-         "%s: periodograms of the velocity and of d2v" % name,
-         "Lomb-Scargle periodograms of the velocity and of d2v, delivered and"
-         " corrected. A known planet should keep its peak; a peak at a year or"
-         " its harmonics is the Earth's."),
+         "%s: periodograms of the velocity and its indicators" % name,
+         "Lomb-Scargle periodograms of the velocity, of d2v%s, delivered and"
+         " corrected. Each curve's"
+         " highest peak is marked by a triangle, with a line at its level and"
+         " its period and power beside it. Grey lines are a year, half a year"
+         " and a lunar month; black ones, when there are any, the known"
+         " planets. A known planet should keep its peak; a peak at a"
+         " year or its harmonics is the Earth's; one shared with d2v or the"
+         " temperature is the star's activity."
+         % (" and of the temperature projection"
+            if before.get("dtemp") is not None else "")),
     ]
     for path, short, caption in drawn:
         if path:

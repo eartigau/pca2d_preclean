@@ -221,7 +221,7 @@ list of figures:
 | --- | --- |
 | The star | SIMBAD's description beside APERO's (its `PP_` keys, each with its source, and its name for the object, `PP_OBJN`) |
 | Summary | per star, the gains and losses in words, then every number delivered against corrected, each row saying which way it went |
-| Velocities | the time series as points, the fitted BERV bias, d2v as an activity indicator, what the correction moved, the periodograms |
+| Velocities | the time series as points, the fitted BERV bias, d2v as an activity indicator, the temperature projection DTEMP over time and against BERV, what the correction moved, the periodograms with each curve's highest peak and its level |
 | The run | the fit's numbers, every window setting, the command, the code |
 | The correction | the figures of the figures stage, each with a caption |
 | Parameters | the resolved configuration, verbatim |
@@ -248,6 +248,15 @@ an upper limit on the peak is quoted. On SMETHELLS 20 (NIRPS, 127 exposures,
 0-3): -68.4 +- 9.9 m/s at sigma = 6.8 km/s delivered, none detected
 (< 25.3 m/s) corrected; `docs/make_figures.py --only berv --run <folder>` draws
 the page's figures of it with the report's own code.
+
+**DTEMP.** LBL projects every line's residual on the temperature gradient of
+the model nearest the star's Teff (`lbl.dtemp: auto`, LBL's grid of 3000 to
+6000 K by 500) for both objects, and the report sets the two side by side:
+their scatter, which a correction of the observer frame should leave alone,
+and their structure against BERV, which it may remove. The table goes first
+among LBL's RESPROJ tables, since the LBL installed here divides the residual
+in place for each and only the first is projected right; with STRPCA tables as
+well, `lbl.dtemp: false` puts STRPCA2 first again.
 
 Without `pdflatex` (MacTeX, or BasicTeX: every package past the LaTeX base is
 optional in the template), the bound PDF of the figures stays the report and

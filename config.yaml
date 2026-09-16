@@ -314,6 +314,14 @@ general:
                             # the first go to LBL as RESPROJ tables STRPCA2..N,
                             # the way its DTEMP gradients do: the rdb gets each
                             # exposure's projection on them, and its error.
+    dtemp: auto             # LBL's temperature-gradient projection, DTEMP<T>,
+                            # on both objects, for the report's before/after.
+                            # auto: the table (3000 to 6000 K by 500) nearest
+                            # the star's Teff; a number: nearest that; false:
+                            # none. First among the RESPROJ tables, since this
+                            # LBL divides the residual in place for each and
+                            # only the first is right; with STRPCA tables too,
+                            # false puts STRPCA2 first again.
     teff: auto             # the target's effective temperature, which LBL
                             # needs to choose the stellar model its mask comes
                             # from, and stops without. `auto` reads it from the

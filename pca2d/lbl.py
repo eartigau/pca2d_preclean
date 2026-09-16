@@ -329,6 +329,35 @@ def config_document(config: dict, data_dir: str, instrument: str,
     return document
 
 
+#: the temperatures LBL has gradient tables for, temperature_gradient_<T>.fits
+#: in its models folder, which LBL downloads itself with its MODEL_FILES
+DTEMP_GRID = (3000, 3500, 4000, 4500, 5000, 5500, 6000)
+
+
+def dtemp_table(block: dict, teff=None) -> dict:
+    """{'DTEMP<T>': 'temperature_gradient_<T>.fits'} for this star, or {}.
+
+    lbl.dtemp 'auto' takes the grid temperature nearest the star's Teff, a
+    number the one nearest that number, and false (or no Teff to go by)
+    none at all.
+    """
+    asked = block.get("dtemp", "auto")
+    if asked in (None, False) or str(asked).lower() in ("false", "none", "no"):
+        return {}
+    if str(asked).lower() == "auto":
+        target = teff
+    else:
+        try:
+            target = float(asked)
+        except (TypeError, ValueError):
+            raise SystemExit("lbl.dtemp is %r: 'auto', a temperature in K, or"
+                             " false" % (asked,))
+    if target is None:
+        return {}
+    grid = min(DTEMP_GRID, key=lambda t: abs(t - float(target)))
+    return {"DTEMP%d" % grid: "temperature_gradient_%d.fits" % grid}
+
+
 def runparams(config: dict, data_dir: str, instrument: str, data_source: str,
               objects: list, config_file: str, teff=None) -> dict:
     """The dict LBL's wrapper takes, with both objects in it.
@@ -363,6 +392,11 @@ def runparams(config: dict, data_dir: str, instrument: str, data_source: str,
     # hours, and neither depends on anything this package changed.
     for step in ("template", "mask", "compute", "compile"):
         params["SKIP_LBL_%s" % step.upper()] = True
+    # the same temperature table on both objects, so that the report can set
+    # DTEMP delivered beside DTEMP corrected
+    tables = dtemp_table(block, teff)
+    if tables:
+        params["RESPROJ_TABLES"] = tables
     return params
 
 
@@ -426,7 +460,10 @@ def write_runner(path: str, runs: list, strpca, object_name: str, tag: str,
                      "    lbl_wrap.main(dict(AFTER, RUN_LBL_COMPUTE=False,"
                      " RUN_LBL_COMPILE=False))",
                      "    from pca2d.lbltemplate import strpca_from",
-                     '    AFTER["RESPROJ_TABLES"] = strpca_from(**STRPCA)']
+                     "    # after DTEMP, which has to stay first (see the"
+                     " config's lbl.dtemp)",
+                     '    AFTER["RESPROJ_TABLES"] = dict(AFTER.get('
+                     '"RESPROJ_TABLES") or {}, **strpca_from(**STRPCA))']
         main.append("    lbl_wrap.main(%s)" % name)
     body = RUNNER % {
         "object": object_name,
@@ -570,6 +607,14 @@ def prepare(plan) -> dict:
     teff, whence = resolve_teff(config, plan["files"])
     if teff is not None:
         log("Teff %.0f K, from %s" % (teff, whence), "value")
+    tables = dtemp_table(block, teff)
+    if tables:
+        log("LBL measures %s on both objects, the temperature table nearest"
+            " %s" % (", ".join(tables), "%.0f K" % teff if str(
+                block.get("dtemp", "auto")).lower() == "auto" and teff
+                else block.get("dtemp")), "value")
+    elif str(block.get("dtemp", "auto")).lower() == "auto":
+        log("no Teff, so no DTEMP table for LBL to measure", "warn")
 
     document = config_document(config, data_dir, instrument, data_source, teff)
     config_file = os.path.join(plan["outdir"], "lbl_config.yaml")
@@ -635,6 +680,12 @@ def prepare(plan) -> dict:
                 % (n_star, ", ".join("STRPCA%d" % k for k in range(2, n_star + 1))),
                 "value")
             from .lbltemplate import resproj_divides_in_place
+            if dtemp_table(block, teff) and resproj_divides_in_place():
+                log("DTEMP is the first RESPROJ table and the STRPCA ones come"
+                    " after it, and the LBL installed here divides the residual"
+                    " in place for each table: DTEMP is right and STRPCA2..%d"
+                    " are not. lbl.dtemp: false puts STRPCA2 first again"
+                    % n_star, "warn")
             if n_star >= 3 and resproj_divides_in_place():
                 log("the LBL installed here divides the residual in place for"
                     " each RESPROJ table (frac_diff_seg = diff_seg in"

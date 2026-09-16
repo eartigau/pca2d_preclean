@@ -442,6 +442,13 @@ DEFAULTS = {
         # LBL as RESPROJ tables STRPCA2..N, in the place of its DTEMP
         # gradients, and each exposure's projection on them is an rdb column.
         "strpca": True,
+        # LBL's temperature-gradient projection, DTEMP<T>, measured on both
+        # objects so that the report can set them side by side. 'auto' takes
+        # the table of LBL's grid (3000 to 6000 K by 500) nearest the star's
+        # Teff, a number the one nearest that, false none. It goes first
+        # among the RESPROJ tables: the LBL installed here divides the
+        # residual in place for every table, so only the first is right.
+        "dtemp": "auto",
         "steps": ["template", "mask", "compute", "compile"],
         # How the spectra get into LBL's science folders: 'symlink' costs no
         # room, 'copy' holds every spectrum a second time. A disk that cannot
