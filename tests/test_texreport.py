@@ -258,3 +258,31 @@ def test_the_template_ships_with_the_package():
     for key in ("TITLE", "SUBTITLE", "DATE", "RUNHEAD", "ABSTRACT", "BODY"):
         assert "<<%s>>" % key in body
     assert "—" not in body and "---" not in body, "no em dash"
+
+
+@pytest.mark.skipif(not HAVE_TEX, reason="no pdflatex on this machine")
+def test_an_old_report_rewritten_is_kept_whole_first(tmp_path):
+    """--run on a run from before the report replaces its bound PDF, the only
+    copy of its figures: the old file is kept, so that can be undone."""
+    from matplotlib.backends.backend_pdf import PdfPages
+    from pypdf import PdfWriter
+
+    run = a_run(tmp_path)
+    os.remove(run / "report" / "manifest.json")
+    pages = tmp_path / "pages.pdf"
+    with PdfPages(pages) as pdf:
+        for _ in range(3):
+            fig = plt.figure()
+            pdf.savefig(fig)
+            plt.close(fig)
+    writer = PdfWriter()
+    writer.append(str(pages))
+    writer.add_outline_item("Front matter", 0)
+    writer.add_outline_item("Variance", 1)
+    bound = run / "TOI_756_0-3.pdf"
+    with open(bound, "wb") as handle:
+        writer.write(handle)
+    before = bound.read_bytes()
+    assert tr.render(str(run))
+    assert (run / "report" / "bound_before_the_report.pdf").read_bytes() == before
+    assert bound.read_bytes() != before

@@ -1162,6 +1162,12 @@ def render(outdir, config=None, lbl_dir=None, out=None, stars=None):
     if manifest is None and os.path.exists(out):
         log("no report folder in %s: cutting the bound PDF along its"
             " bookmarks to write one" % outdir, "info")
+        # the report is about to take its name: the old one is kept whole,
+        # so that writing a run's report again can always be undone
+        kept = os.path.join(folder, "bound_before_the_report.pdf")
+        if not os.path.exists(kept):
+            shutil.copyfile(out, kept)
+            log("  the bound PDF as it was is kept: %s" % kept, "info")
         manifest = {"figures": split_bundle(out, folder), "failures": [],
                     "run": run_rows(outdir)}
         write_manifest(folder, manifest)
