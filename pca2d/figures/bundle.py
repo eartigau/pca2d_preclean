@@ -126,7 +126,15 @@ def object_name(config, args):
 
 
 def summary(config, args, fit):
-    """The few numbers a reader wants before anything else."""
+    """The few numbers a reader wants before anything else, as text."""
+    rows = summary_rows(config, args, fit)
+    width = max(len(k) for k, _ in rows)
+    head = "\n".join("%-*s   %s" % (width, k, v) for k, v in rows)
+    return head + settings_block(config)
+
+
+def summary_rows(config, args, fit):
+    """[(what, value)] of the run: the report's table and the text above."""
     tw = config["twoframe"]
     rows = []
     rows.append(("object", object_name(config, args)))
@@ -168,9 +176,11 @@ def summary(config, args, fit):
         if "rejected" in fit.files:
             rows.append(("rejected by the MAD cut",
                          "%d" % int(np.asarray(fit["rejected"]).sum())))
-    width = max(len(k) for k, _ in rows)
-    head = "\n".join("%-*s   %s" % (width, k, v) for k, v in rows)
+    return rows
 
+
+def settings_block(config):
+    """Every window setting and the command, as the text pages print them."""
     # Every setting the window can change, all of them, whether or not it was
     # touched. A report that names only the settings that differ from some
     # default makes the reader guess what the default was; a report that names
@@ -196,7 +206,7 @@ def summary(config, args, fit):
     else:
         block += ("\n\nTHE COMMAND THIS RUN WAS GIVEN\n  not recorded: the run"
                   " predates provenance.command (2026-09-15)")
-    return head + block
+    return block
 
 
 def periodogram_args(py, script, fit_path, out, config):
@@ -403,6 +413,26 @@ def main(argv=None):
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
     with open(out, "wb") as fh:
         writer.write(fh)
+
+    # The report's own copy of every figure, and what it needs to be written
+    # again after LBL, when the velocities exist (texreport). Taken before the
+    # loose figures below are removed, since some of them are among these.
+    from .. import texreport
+    folder = os.path.join(args.outdir, "report")
+    old = os.path.join(folder, "figures")
+    if os.path.isdir(old):
+        for name in os.listdir(old):
+            if name.endswith(".pdf"):
+                os.remove(os.path.join(old, name))
+    texreport.write_manifest(folder, {
+        "object": obj, "tag": tag, "cube": args.cube,
+        "windows": [str(w) for w in args.windows],
+        "figures": texreport.keep_figures(order, folder),
+        "failures": [{"what": f[0], "why": f[1],
+                      "skipped": bool(len(f) > 2 and f[2])} for f in failures],
+        "run": [[k, str(v)] for k, v in summary_rows(config, args, fit)
+                if str(v).strip() not in ("[]", "")],
+    })
 
     # A run leaves ONE document. The figures the fit itself wrote into the
     # output directory are now pages of it, and leaving them beside it is how

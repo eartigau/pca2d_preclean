@@ -29,7 +29,8 @@ packages = ["pca2d", "pca2d.figures"]
 # the window's header image: it ships with the package, since the window never
 # fetches anything at run time
 [tool.setuptools.package-data]
-pca2d = ["assets/*.png"]
+# and the LaTeX template the run report is written from
+pca2d = ["assets/*.png", "templates/*.tex"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

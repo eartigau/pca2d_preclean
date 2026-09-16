@@ -912,6 +912,27 @@ def run_figures(plan):
     if plan.get("members"):
         argv += ["--source-dir", plan["members"][0]["directory"]]
     bundle_main(argv)
+    render_report(plan)
+
+
+def render_report(plan):
+    """The run's LaTeX report, written again from what is on disk.
+
+    At the figures stage, and again after LBL with the velocities. Never
+    fatal: without pdflatex, or when it fails, the PDF the figures stage bound
+    stays the report, and texreport says why. Returns the report, or None.
+    """
+    from . import texreport
+    stars = ([m["object"] for m in plan["members"]] if plan.get("members")
+             else None)
+    try:
+        return texreport.render(plan["outdir"], config=plan["config"],
+                                stars=stars)
+    except Exception as exc:                                  # noqa: BLE001
+        log("the LaTeX report could not be written (%s: %s); the PDF the"
+            " figures stage bound stays the report"
+            % (type(exc).__name__, exc), "warn")
+        return None
 
 
 def run_correct(plan):
@@ -1051,6 +1072,10 @@ def _velocity_pages(plan):
     fatal: LBL has already finished by the time this runs, and a report that
     could not be appended to is not a reason to lose the velocities.
     """
+    # the whole report again, velocities included; the pages below are what
+    # a machine without LaTeX gets instead, on the end of the bound PDF
+    if render_report(plan):
+        return
     from .rvpages import velocity_pages
     try:
         velocity_pages(plan)
