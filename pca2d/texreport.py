@@ -10,6 +10,7 @@ what it looked like (2026-09-16). This writes a report instead, from
 templates/report.tex:
 
     abstract          what was run and what it did to the velocities, in words
+    lists             the contents, and every figure by a short name
     1 Summary         the gains and losses of every star, one table each,
                       every row saying which way it went
     2 Velocities      per star: the time series (points, no lines), the same
@@ -795,13 +796,16 @@ def newest_input(outdir, star, joint):
 
 
 # ============================================================== sections ===
-def figure_block(path, caption, label=None, width=r"\linewidth", page=None):
+def figure_block(path, caption, short=None, label=None, width=r"\linewidth",
+                 page=None):
+    """One figure. `short` is what the list of figures says of it: a caption
+    is a paragraph, and a list of paragraphs is not a list anybody reads."""
     options = "width=%s,height=0.82\\textheight,keepaspectratio" % width
     if page is not None:
         options += ",page=%d" % page
     return ("\\begin{figure}\n\\centering\n\\includegraphics[%s]{%s}\n"
-            "\\caption{%s}%s\n\\end{figure}\n"
-            % (options, path, caption,
+            "\\caption%s{%s}%s\n\\end{figure}\n"
+            % (options, path, "[%s]" % short if short else "", caption,
                "\\label{%s}" % label if label else ""))
 
 
@@ -957,37 +961,43 @@ def velocity_section(star, before, after, numbers, folder, stale):
                      " one yet.}\n\n")
     parts.append(star_sentence(star, numbers) + " " + activity_note(numbers)
                  + "\n")
+    name = tex(star)
     drawn = [
         (figure_time(before, after, os.path.join(figures, base + "-time.pdf")),
+         "%s: the velocities over the campaign" % name,
          "The velocities over the campaign, delivered above and corrected"
          " below, on the same scale. %s; no line joins them."
          % ("Small points are exposures, large ones the weighted nightly"
             " means" if numbers["nights"] < 0.8 * numbers["n"]
             else "One point per exposure, about one a night")),
         (figure_berv(before, after, os.path.join(figures, base + "-berv.pdf")),
+         "%s: the velocities against BERV" % name,
          "The same velocities against the barycentric velocity. What the"
          " observer frame leaves in the velocities follows BERV, so a slope or"
          " a structure in the binned medians is telluric or instrumental, and"
          " the correction should remove it."),
         (figure_d2v(before, after, os.path.join(figures, base + "-d2v.pdf")),
+         "%s: d2v, the activity indicator" % name,
          "d2v, LBL's second-derivative term, which follows the line width and"
          " is an activity indicator. Above, over the campaign; below, the"
          " velocity against it. A correction of the observer frame has no"
          " business changing it, and a velocity that correlates with it is"
          " activity rather than noise."),
         (figure_change(before, after, os.path.join(figures, base + "-change.pdf")),
+         "%s: what the correction moved" % name,
          "What the correction changed, exposure by exposure: the corrected"
          " velocity less the delivered one, over time and against BERV."),
         (figure_periodograms(before, after, numbers["planet_periods"],
                              os.path.join(figures, base + "-periods.pdf")),
+         "%s: periodograms of the velocity and of d2v" % name,
          "Lomb-Scargle periodograms of the velocity and of d2v, delivered and"
          " corrected. A known planet should keep its peak; a peak at a year or"
          " its harmonics is the Earth's."),
     ]
-    for path, caption in drawn:
+    for path, short, caption in drawn:
         if path:
             parts.append(figure_block("figures/" + os.path.basename(path),
-                                      caption))
+                                      caption, short=short))
     parts.append("\\clearpage\n")
     return "".join(parts)
 
@@ -1073,7 +1083,7 @@ def correction_section(manifest, windows=()):
         parts.append("\\subsection{%s}\n" % tex(title))
         caption = tex(CAPTIONS.get(title, title))
         if pages <= 1:
-            parts.append(figure_block(path, caption))
+            parts.append(figure_block(path, caption, short=tex(title)))
         else:
             # the sequence draws one page per window, in the config's order
             named = (list(windows) if title.startswith("The sequence")
@@ -1083,6 +1093,9 @@ def correction_section(manifest, windows=()):
                          if window else "")
                 parts.append(figure_block(
                     path, "%s%s (%d of %d)" % (caption, where, page, pages),
+                    short=("%s, window %s" % (tex(title), tex(window))
+                           if window else "%s, %d of %d"
+                           % (tex(title), page, pages)),
                     page=page))
         parts.append("\\clearpage\n")
     return "".join(parts)

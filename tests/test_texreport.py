@@ -198,8 +198,12 @@ def test_a_run_with_velocities_becomes_a_document(tmp_path):
     for said in (r"\section{Summary}", r"\section{Velocities}",
                  r"\section{The run}", r"\section{The correction}",
                  r"\section{What did not build}", r"\tableofcontents",
-                 r"TOI\_756", r"\gain{gain}", "K at 7.3000 d"):
+                 r"TOI\_756", r"\gain{gain}", "K at 7.3000 d",
+                 r"\listoffigures"):
         assert said in tex, said
+    # every figure has a short name for the list, not its whole caption
+    assert tex.count(r"\begin{figure}") == tex.count(r"\caption[")
+    assert r"\caption[TOI\_756: the velocities against BERV]" in tex
     assert "<<" not in tex, "every placeholder of the template is filled"
     for kind in ("time", "berv", "d2v", "change", "periods"):
         assert (run / "report" / "figures" / ("rv-toi-756-%s.pdf" % kind)).exists()
