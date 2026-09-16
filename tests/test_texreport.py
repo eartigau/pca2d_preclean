@@ -396,3 +396,28 @@ def test_dtemp_stays_first_when_strpca_joins_it(tmp_path):
                         {"fit": "f"}, "A", "2-3", str(tmp_path / "c.yaml"))
     body = open(path).read()
     assert 'dict(AFTER.get("RESPROJ_TABLES") or {}, **strpca_from(**STRPCA))' in body
+
+
+def test_the_minus_signs_are_in_the_figures_text(tmp_path):
+    """A viewer showed the posterior's amp axis as 20, 10, 0, 10, 20: the
+    Unicode minus of a Type 3 font was drawn but not in the PDF's text. The
+    report's figures embed a real font and write an ASCII minus, and the amp
+    axis carries its sign."""
+    from pypdf import PdfReader
+
+    from pca2d import bervbias
+
+    r = np.random.default_rng(8)
+    berv = r.uniform(-25, 25, 150)
+    e = np.full(150, 5.0)
+    noise = r.normal(0, 5, 150)
+    fits = {"before": bervbias.fit(berv, bervbias.shape(berv, -10, 6) + noise,
+                                   e, seed=1),
+            "after": bervbias.fit(berv, noise, e, seed=2)}
+    path = str(tmp_path / "corner.pdf")
+    assert tr.figure_corner({"label": "delivered", "fits": fits},
+                            {"label": "corrected"}, path)
+    text = PdfReader(path).pages[0].extract_text()
+    assert "-10" in text and "+10" in text
+    fonts = PdfReader(path).pages[0]["/Resources"]["/Font"]
+    assert all(f.get_object()["/Subtype"] != "/Type3" for f in fonts.values())

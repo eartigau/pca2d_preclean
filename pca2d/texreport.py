@@ -48,6 +48,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import yaml
+from matplotlib.ticker import FuncFormatter
 
 from . import bervbias
 from .lblscan import AFTER, BEFORE, amplitude_at, nightly, rdb_rows, velocity_stats
@@ -70,6 +71,15 @@ INK, MUTED, GRID = "#1f1f1f", "#5f6368", "#e3e3e3"
 #: a figure is drawn at the width it is printed at, so its text prints at the
 #: size it was written at: A4 less two 2.2 cm margins
 WIDTH = 6.6
+#: how the report's figures write their text. Matplotlib's default is a
+#: Type 3 font and a Unicode minus sign, and a viewer showed the amp axis of
+#: the posterior as 20, 10, 0, 10, 20 (2026-09-16): the minus signs were in
+#: the drawing but not in the PDF's text. Embedded TrueType, and the minus
+#: sign every keyboard has
+STYLE = {"pdf.fonttype": 42, "ps.fonttype": 42, "axes.unicode_minus": False}
+#: tick labels that carry their sign, for the axes where the sign is the point
+SIGNED = FuncFormatter(lambda value, _pos: "0" if abs(value) < 1e-9
+                       else "%+g" % value)
 
 #: what each figure of the figures stage shows, said under it. Keyed by the
 #: bundle's own section titles
@@ -524,7 +534,8 @@ def _points(ax, x, y, e, colour, label, size=3.2, alpha=0.55, zorder=2):
 
 
 def _save(fig, path):
-    fig.savefig(path)
+    with plt.rc_context(STYLE):
+        fig.savefig(path)
     plt.close(fig)
     return path
 
@@ -688,6 +699,7 @@ def _corner(fig, cell, fitted, colour, title, arange):
     joint.set_xticklabels(["%g" % t for t in ticks])
     joint.set_xlim(*srange)
     joint.set_ylim(*arange)
+    joint.yaxis.set_major_formatter(SIGNED)
     top.hist(lsig, bins=45, range=srange, color=colour, alpha=0.7)
     side.hist(amp, bins=45, range=arange, color=colour, alpha=0.7,
               orientation="horizontal")
