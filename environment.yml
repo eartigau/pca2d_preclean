@@ -19,6 +19,10 @@
 # pca2d-preclean's own floors are looser (see pyproject.toml); it runs fine on
 # every version below, and the tests are run here on exactly them.
 #
+# The run report is LaTeX, compiled by pdflatex from a TeX installation
+# (MacTeX, or BasicTeX), which conda does not provide and the report does not
+# require: without it the figures are bound in one PDF as before.
+#
 # astropy-base and matplotlib-base rather than the metapackages: `astropy`
 # also drags in s3fs, bqplot and ipykernel, and every entry point here calls
 # matplotlib.use("Agg") before it draws, so the GUI toolkits would be

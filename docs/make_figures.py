@@ -5,6 +5,8 @@
     python docs/make_figures.py --run outputs/TOI2120/1-3v --only lbl \
         --lbl-objects "TOI2120_PCA2D_1-3v=1-3v, LBL's own template" \
                       "TOI2120_PCA2D_1-3v_PT=1-3v, the fit's star template"
+    python docs/make_figures.py --only berv \
+        --run /Volumes/irrisor/pca2d_preclean/corrected/_GL406_3b7955/SMETHELLS_20/0-3
 
 --format pdf or png draws the same figures in another format, to look at them
 somewhere that does not read SVG.
@@ -52,10 +54,13 @@ def parse_args(argv=None):
     p.add_argument("--run", default="outputs/TOI2120/1-3v")
     p.add_argument("--cube", default=None,
                    help="the cube the run was fitted on; the only cache/cube_* by default")
-    p.add_argument("--lbl-dir", default="lbl")
+    p.add_argument("--lbl-dir", default=None,
+                   help="LBL's tree; the run's own, as its report finds it, by"
+                        " default")
     p.add_argument("--out", default=os.path.join(HERE, "figures"))
     p.add_argument("--only", nargs="+", default=None,
-                   choices=("sequence", "corrected", "coefficients", "lbl", "strpca"),
+                   choices=("sequence", "corrected", "coefficients", "lbl", "strpca",
+                            "berv"),
                    help="draw only these figures")
     p.add_argument("--format", default="svg", choices=("svg", "pdf", "png"),
                    help="svg for the site; pdf or png to look at them elsewhere")
@@ -265,11 +270,58 @@ def strpca_figure(rdb_path, fit):
     return fig, stats
 
 
+def berv_figures(run, lbl_dir, out):
+    """The BERV bias of a run's stars, drawn by the run report's own code.
+
+    No cube is read: the fit is of LBL's velocities, and the same seed the
+    report uses gives the same posterior, so the page and the report agree
+    to the last digit.
+    """
+    import zlib
+
+    import yaml
+
+    from pca2d import texreport as tr
+    from pca2d.lbl import object_names
+
+    with open(os.path.join(run, "resolved_config.yaml")) as handle:
+        config = yaml.safe_load(handle)
+    tag = os.path.basename(os.path.normpath(run))
+    tree = tr.find_tree(config, run, lbl_dir)
+    for star in tr.stars_of(run, config):
+        before_name, after_name = object_names(config, star, tag)
+        before = tr.load(tree, before_name, "delivered")
+        after = tr.load(tree, after_name, "corrected")
+        if before is None or after is None:
+            log("no LBL velocities for %s in %s" % (star, tree), "warn")
+            continue
+        before, after = tr.common(before, after)
+        numbers = tr.star_numbers(before, after,
+                                  seed=zlib.crc32(star.encode()) & 0xffffffff)
+        before["fits"] = {"before": numbers["before"].get("bias"),
+                          "after": numbers["after"].get("bias")}
+        base = os.path.join(out, "berv_bias_%s" % tr.slug(star))
+        for draw, path in ((tr.figure_berv, base + "." + FORMAT),
+                           (tr.figure_corner, base + "_posterior." + FORMAT)):
+            if draw(before, after, path):
+                log("wrote %s (%.0f kB)" % (path, os.path.getsize(path) / 1e3),
+                    "value")
+        for key in ("before", "after"):
+            side = numbers[key]
+            log("%s %-9s %s; jitter %.1f m/s; amp-ln sigma r %.2f"
+                % (star, key, tr.bervbias.summary(side.get("bias")),
+                   side.get("jitter", float("nan")),
+                   side.get("bias_amp_sigma_r", float("nan"))), "value")
+
+
 def main(argv=None):
     global FORMAT
     args = parse_args(argv)
     FORMAT = args.format
     os.makedirs(args.out, exist_ok=True)
+    if args.only == ["berv"]:
+        berv_figures(args.run, args.lbl_dir, args.out)
+        return None
     cfg = load_config(os.path.join(args.run, "resolved_config.yaml"))
     source = spectra_dir(cfg)
     cube = args.cube or sorted(glob.glob(os.path.join(cfg["output"]["cache_directory"], "cube_*")))[0]
@@ -295,7 +347,8 @@ def main(argv=None):
         _coefficient_figures(fit, keep, n_star, sigma, args.out)
 
     obj, tag = os.path.normpath(args.run).split(os.sep)[-2:]
-    rdb = lambda name: os.path.join(args.lbl_dir, "lblrdb", "lbl_%s_%s.rdb" % (name, name))
+    rdb = lambda name: os.path.join(args.lbl_dir or "lbl", "lblrdb",
+                                    "lbl_%s_%s.rdb" % (name, name))
     series = [("delivered spectra", rdb(obj))]
     for item in args.lbl_objects or ["%s_PCA2D_%s=corrected, %s" % (obj, tag, tag)]:
         name, _, label = item.partition("=")
@@ -323,7 +376,7 @@ def main(argv=None):
         for key, n, r, slope in stats:
             log("%s against the fit's own coefficient, %d exposures: r = %.3f,"
                 " slope %.3f" % (key, n, r, slope), "value")
-    elif want("strpca") and args.only:
+    elif want("strpca") and args.only and "strpca" in args.only:
         log("no STRPCA columns in %s: the fit has one star component, or LBL has"
             " not measured it yet" % own, "warn")
     return None

@@ -793,7 +793,9 @@ def figure_periodograms(before, after, planets, path):
                 continue
             drawn = True
             periods, power, best, _, fap = found
-            ax.plot(periods, power, color=colour, lw=0.9,
+            # see-through, both: the two series overlap nearly everywhere,
+            # and at full ink the one drawn last hid the other
+            ax.plot(periods, power, color=colour, lw=0.9, alpha=0.55,
                     label="%s: peak %.3g d, FAP %.2g" % (run["label"], best, fap))
         top = ax.get_ylim()[1] if drawn else 1.0
         for letter, period in zip("bcdefgh", planets):

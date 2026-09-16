@@ -21,4 +21,4 @@ divided out of the spectra, which then go to LBL.
 Input is APERO `t.fits`, order by order. Documentation:
 https://eartigau.github.io/pca2d_preclean/
 """
-__version__ = "0.2.0"
+__version__ = "0.3.0"

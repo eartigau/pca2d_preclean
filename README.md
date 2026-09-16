@@ -211,6 +211,50 @@ was observed in, and the wrong one raises no error, it returns velocities from
 another instrument's profile. The effective temperature LBL needs for its mask
 is read from the spectra (`OBJTEMP`), unless `lbl.teff` says otherwise.
 
+## The report
+
+A run's report, `<object>_<tag>.pdf` in its folder, is a LaTeX document
+(`pca2d/texreport.py`, from `pca2d/templates/report.tex`), with contents and a
+list of figures:
+
+| section | what it holds |
+| --- | --- |
+| The star | SIMBAD's description beside APERO's (its `PP_` keys, each with its source, and its name for the object, `PP_OBJN`) |
+| Summary | per star, the gains and losses in words, then every number delivered against corrected, each row saying which way it went |
+| Velocities | the time series as points, the fitted BERV bias, d2v as an activity indicator, what the correction moved, the periodograms |
+| The run | the fit's numbers, every window setting, the command, the code |
+| The correction | the figures of the figures stage, each with a caption |
+| Parameters | the resolved configuration, verbatim |
+
+It is written at the figures stage and again after LBL, from `report/` in the
+run's folder (the figures, a manifest, the `.tex`), and
+`python -m pca2d.texreport --run <folder>` writes it again, for a run from
+before the report too: that run's bound PDF is cut along its bookmarks, and
+kept whole in `report/bound_before_the_report.pdf`.
+
+**The bias that follows BERV** (`pca2d/bervbias.py`). A telluric line blended
+with a stellar line pulls the velocity by the derivative of a Gaussian in the
+barycentric velocity B:
+
+```
+v(B) = c + a * B * exp(-B**2 / (2 sigma**2))     peak a * sigma * exp(-1/2) at B = +-sigma
+```
+
+fitted by MCMC (Goodman and Weare's stretch move) to the delivered and to the
+corrected velocities: `a` with a modified Jeffreys prior, 1/(|a| + a0), its
+knee at the noise level; `sigma` log-uniform over 1 to 60 km/s; the offset `c`
+and a jitter beside LBL's error bars marginalised. Below 3 sigma from zero only
+an upper limit on the peak is quoted. On SMETHELLS 20 (NIRPS, 127 exposures,
+0-3): -68.4 +- 9.9 m/s at sigma = 6.8 km/s delivered, none detected
+(< 25.3 m/s) corrected; `docs/make_figures.py --only berv --run <folder>` draws
+the page's figures of it with the report's own code.
+
+Without `pdflatex` (MacTeX, or BasicTeX: every package past the LaTeX base is
+optional in the template), the bound PDF of the figures stays the report and
+the run says why. SIMBAD is the only network call a run makes, answers are
+kept a month under `~/.pca2d/simbad`, and a star SIMBAD does not answer for is
+described from its headers.
+
 ## Installing it
 
 ```
@@ -252,6 +296,10 @@ dependency come through pip. `astropy-base` and `matplotlib-base` rather than
 the metapackages: nothing here imports pyarrow or bqplot, and every entry point
 calls `matplotlib.use("Agg")` before it draws. `pyproject.toml` keeps this
 package's own looser floor, python 3.10, for anyone installing it on its own.
+
+The report is compiled by `pdflatex`, which comes from a TeX installation and
+not from conda: MacTeX, or BasicTeX, on a Mac. Without it a run still leaves
+its figures bound in one PDF.
 
 ## A window, if the command line is one thing too many
 

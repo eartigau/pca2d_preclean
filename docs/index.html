@@ -188,13 +188,26 @@ conda activate pca2d-preclean
         how a t.fits gets measured by the wrong version of something.
       </p>
       <p>
-        <code>./check.sh</code> is the check that it worked: 489 tests, about
-        thirteen seconds, and not one spectrum or network call among them. Then put the spectra of
-        a target in <code>data/&lt;object&gt;/</code> under the input root,
-        which is never written to, and either
+        <code>./check.sh</code> is the check that it worked: some 660 tests,
+        about twenty-five seconds, and not one spectrum or network call among
+        them. Then put the spectra of a target in
+        <code>data/&lt;object&gt;/</code> under the input root, which is never
+        written to, and either
       </p>
       <pre><code>pca2d-preclean --object TOI-2120     # the whole thing, t.fits to velocities
 pca2d-gui                            # the same, in a window</code></pre>
+      <p>
+        <strong>The report is LaTeX.</strong> A run writes its report with
+        <code>pdflatex</code>, which comes from a TeX installation rather than
+        from conda: <a href="https://www.tug.org/mactex/" target="_blank">MacTeX</a>,
+        or its small sibling BasicTeX, on a Mac. Every package the report uses
+        past the LaTeX base is optional, so BasicTeX is enough; without any TeX
+        at all a run still leaves its figures bound in one PDF, and says why.
+        The first section of a report asks <a
+        href="https://simbad.cds.unistra.fr/simbad/" target="_blank">SIMBAD</a>
+        about the star, which is the only network call a run makes; each answer
+        is kept a month, and a report is written again without a network.
+      </p>
       <p>
         The environment pins rather than floors its versions, because LBL pins
         its own exactly: <code>numpy==2.3.3</code>, <code>astropy==7.2.0</code>,
@@ -482,6 +495,16 @@ pca2d-gui                            # the same, in a window</code></pre>
         without a word.
       </p>
       <p>
+        That tree is <code>lbl</code> under the output root, shared by every
+        run under it, since the delivered object's LBL is the same for all of
+        them and hours to make; the window shows it as <em>LBL output
+        folder</em> and <code>--lbl-dir</code> names another. The spectra go
+        into it as symbolic links, or as copies with <code>--lbl-link
+        copy</code>. Whether a disk can hold a link is asked of the disk, by
+        making one: a disk that cannot gets copies, and the run says so before
+        its first stage rather than after the fit.
+      </p>
+      <p>
         <strong>The corrected object's template is the fit's star.</strong>
         The first star component at its mean amplitude is a high-passed template
         of the star, fitted to every exposure at once with the atmosphere
@@ -629,8 +652,22 @@ pca2d-gui                            # the same, in a window</code></pre>
       <h2>What comes out</h2>
       <ul class="runbox">
         <li><strong>outputs/&lt;object&gt;/&lt;tag&gt;/&lt;object&gt;_&lt;tag&gt;.pdf</strong>:
-            one multipage document, the resolved parameters as selectable text
-            first, then every figure, with bookmarks.</li>
+            the run's report, a LaTeX document with contents and a list of
+            figures. <em>The star</em>, as SIMBAD describes it beside what
+            APERO worked with (its <code>PP_</code> keys and its name for the
+            object); <em>Summary</em>, every number delivered against
+            corrected, each row saying which way it went, with the gains and
+            losses in words; <em>Velocities</em>, the time series as points,
+            the <a href="#berv">bias that follows BERV</a>, d2v as an activity
+            indicator, what the correction moved and the periodograms;
+            <em>The run</em>, every setting and the command; <em>The
+            correction</em>, the figures of the fit, each with a caption; and
+            the resolved parameters in an appendix. Written at the figures
+            stage and again once LBL has measured, from
+            <strong>report/</strong>, which keeps the figures and the
+            <code>.tex</code>; <code>python -m pca2d.texreport --run
+            &lt;folder&gt;</code> writes it again, for a run from before the
+            report too.</li>
         <li><strong>fit.npz</strong>, <strong>twoframe_components.fits</strong>,
             the coefficients as CSV, and <strong>resolved_config.yaml</strong>:
             exactly what ran, next to what it produced.</li>
@@ -683,6 +720,76 @@ pca2d-gui                            # the same, in a window</code></pre>
           own star template the same spectra scatter a little less and their
           formal errors are 19% larger, line by line on the same lines; why is
           not pinned down yet.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section class="card span-3" id="berv">
+      <h2>A bias that follows BERV, fitted</h2>
+      <p>
+        A telluric line blended with a stellar line pulls the velocity measured
+        on it, by an amount set by how far apart the two are, which is the
+        barycentric velocity <em>B</em>. Superposed, the blend is symmetric and
+        nothing moves; far apart, nothing is blended; in between, the pull is
+        the derivative of a Gaussian:
+      </p>
+      <pre><code>v(B) = c + a &middot; B &middot; exp(&minus;B&sup2; / 2&sigma;&sup2;)      peak: a&sigma;e<sup>&minus;1/2</sup> at B = &plusmn;&sigma;</code></pre>
+      <p>
+        The report fits it to the delivered and to the corrected velocities by
+        MCMC (Goodman and Weare's stretch move, in a few lines of numpy):
+        <em>a</em> and <em>&sigma;</em>, with the velocities' offset
+        <em>c</em> and a jitter beside LBL's error bars marginalised. <em>a</em>
+        has a modified Jeffreys prior, 1/(|<em>a</em>|&nbsp;+&nbsp;<em>a</em><sub>0</sub>),
+        with its knee at the noise level; <em>&sigma;</em> is log-uniform from
+        1&nbsp;km/s, narrower than any blend can be at a resolution of 75&nbsp;000,
+        to 60&nbsp;km/s, beyond which the Gaussian is a straight line within
+        the BERV any star reaches. Below 3&sigma; from zero only an upper limit
+        is quoted, since the width is then the prior's. A straight line
+        against BERV, which the report used to draw, has none of this shape and
+        is gone.
+      </p>
+      <p>
+        <strong>SMETHELLS 20</strong> (Smethells&nbsp;20, M1Ve, 50.7&nbsp;pc),
+        127 NIRPS exposures over 125 nights, corrected with three observer
+        components:
+      </p>
+      <div class="numbers">
+        <table>
+          <thead>
+            <tr><th>velocities</th><th>bias at its peak</th><th>width &sigma;</th>
+                <th>a&ndash;ln&nbsp;&sigma; correlation</th><th>jitter</th><th>rms</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>as delivered</td><td>&minus;68.4 &plusmn; 9.9 m/s (6.9&sigma;)</td>
+                <td>6.8 &plusmn; 0.6 km/s</td><td>0.79</td><td>47.2 m/s</td><td>61.7 m/s</td></tr>
+            <tr><td>corrected, 0-3</td><td>none detected, &lt; 25.3 m/s</td>
+                <td>unconstrained</td><td>0.11</td><td>41.2 m/s</td><td>44.1 m/s</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <figure class="wide">
+        <img src="figures/berv_bias_smethells-20.svg" alt="SMETHELLS 20 velocities against BERV, delivered and corrected, with the fitted bias and its 1 sigma envelope" />
+        <figcaption>
+          Above, each series less its fitted offset against BERV, with the
+          posterior median of the bias and its 1&sigma; envelope (the band
+          alone where no bias is detected); squares are medians in 2&nbsp;km/s
+          bins. Below, both envelopes on one axis. The delivered velocities
+          swing by +70&nbsp;m/s near &minus;7&nbsp;km/s and &minus;70&nbsp;m/s
+          near +7&nbsp;km/s; the corrected ones do not.
+        </figcaption>
+      </figure>
+      <figure class="wide">
+        <img src="figures/berv_bias_smethells-20_posterior.svg" alt="Joint posterior of the bias amplitude and width, delivered and corrected, on the same axes" />
+        <figcaption>
+          The joint posterior of <em>a</em> and <em>&sigma;</em>, on the same
+          axes for both, with its 1 and 2&sigma; contours and both marginals.
+          Delivered, a compact ellipse: the two trade against each other, a
+          narrower bias needing a larger amplitude to reach the same points.
+          Corrected, <em>a</em> sits at zero and <em>&sigma;</em> fills its
+          prior, which is what a bias that is not there looks like. The same
+          run's rms falls from 61.7 to 44.1&nbsp;m/s; what is left is largely
+          the star, whose strongest velocity period, 5.38&nbsp;d, is also its
+          d2v's.
         </figcaption>
       </figure>
     </section>
