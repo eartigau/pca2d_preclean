@@ -234,10 +234,12 @@ kept whole in `report/bound_before_the_report.pdf`.
 
 **The bias that follows BERV** (`pca2d/bervbias.py`). A telluric line blended
 with a stellar line pulls the velocity by the derivative of a Gaussian in the
-barycentric velocity B:
+total velocity, the star's velocity in the telluric frame (systemic less BERV,
+composed relativistically), not in the BERV alone:
 
 ```
-v(B) = c + a * B * exp(-B**2 / (2 sigma**2))     peak a * sigma * exp(-1/2) at B = +-sigma
+V = vrad / 1000 - BERV   (km/s)
+v(V) = c + a * V * exp(-V**2 / (2 sigma**2))     peak a * sigma * exp(-1/2) at V = +-sigma
 ```
 
 fitted by MCMC (Goodman and Weare's stretch move) to the delivered and to the
@@ -245,8 +247,9 @@ corrected velocities: `a`, signed, with a flat prior on both sides (within
 +-1e4 (m/s)/(km/s)), and half the walkers starting on each sign; `sigma` log-uniform over 1 to 60 km/s; the offset `c`
 and a jitter beside LBL's error bars marginalised. Below 3 sigma from zero only
 an upper limit on the peak is quoted. On SMETHELLS 20 (NIRPS, 127 exposures,
-0-3): -70.9 +- 9.7 m/s at sigma = 6.7 km/s delivered (P(a > 0) = 0.00), none
-detected (< 33.6 m/s, P(a > 0) = 0.13) corrected; `docs/make_figures.py --only berv --run <folder>` draws
+0-3, systemic +2.6 km/s): +80.2 +- 8.9 m/s at sigma = 6.0 km/s (9.1 sigma)
+delivered (P(a > 0) = 1.00; against the BERV alone it was -70.9, 7.2 sigma),
+none detected (< 33.4 m/s, P(a > 0) = 0.94) corrected; `docs/make_figures.py --only berv --run <folder>` draws
 the page's figures of it with the report's own code.
 
 **DTEMP.** LBL projects every line's residual on the temperature gradient of

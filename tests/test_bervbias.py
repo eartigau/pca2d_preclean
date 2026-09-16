@@ -112,3 +112,20 @@ def test_both_signs_are_explored_and_found():
     berv, v, e = a_campaign(amp=0.0, sigma=6.0, seed=13)
     nothing = bb.fit(berv, v, e, seed=14)
     assert 0.05 < nothing["p_positive"] < 0.95, "no bias, no preferred sign"
+
+
+def test_total_velocity_is_vrad_less_berv_composed_relativistically():
+    """vrad in m/s, BERV in km/s, V_tot in km/s: the plain difference to a
+    micron per second, and exactly the velocity whose Doppler factor is the
+    ratio of the two."""
+    vrad = np.array([2551.9, -30000.0, 110000.0])
+    berv = np.array([10.4, 29.9, -30.0])
+    got = bb.total_velocity(vrad, berv)
+    assert np.allclose(got, vrad / 1000.0 - berv, atol=2e-6)
+
+    def factor(v):
+        beta = v / bb.C_KMS
+        return np.sqrt((1 + beta) / (1 - beta))
+
+    assert np.allclose(factor(got), factor(vrad / 1000.0) / factor(berv),
+                       rtol=0, atol=1e-15)

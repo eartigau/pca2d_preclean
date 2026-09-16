@@ -661,9 +661,12 @@ pca2d-gui                            # the same, in a window</code></pre>
             losses in words; <em>Velocities</em>, the time series as points,
             the <a href="#berv">bias that follows BERV</a>, d2v as an activity
             indicator, LBL's temperature projection (DTEMP, from the model
-            nearest the star's Teff) over time and against BERV, what the
-            correction moved, and the periodograms with each curve's highest
-            peak and its level;
+            nearest the star's Teff) over time and against the total velocity,
+            what the correction moved, and the periodograms with each curve's
+            highest peak, the false-alarm levels and the year, its harmonics
+            and the month marked; a table of what the headers say (SNR, BERV,
+            dates, and the dates the star's lines sit on the tellurics) comes
+            first, and the title page gives the time the PDF was written;
             <em>The run</em>, every setting and the command; <em>The
             correction</em>, the figures of the fit, each with a caption; and
             the resolved parameters in an appendix. Written at the figures
@@ -732,12 +735,16 @@ pca2d-gui                            # the same, in a window</code></pre>
       <h2>A bias that follows BERV, fitted</h2>
       <p>
         A telluric line blended with a stellar line pulls the velocity measured
-        on it, by an amount set by how far apart the two are, which is the
-        barycentric velocity <em>B</em>. Superposed, the blend is symmetric and
-        nothing moves; far apart, nothing is blended; in between, the pull is
-        the derivative of a Gaussian:
+        on it, by an amount set by how far apart the two are. That is the
+        star's velocity in the telluric frame, the systemic velocity less the
+        BERV, <em>V</em><sub>tot</sub>&nbsp;=&nbsp;vrad/1000&nbsp;&minus;&nbsp;BERV
+        (composed relativistically), and not the BERV alone: a star at
+        &plusmn;30&nbsp;km/s may never bring its lines onto the tellurics.
+        Superposed, the blend is symmetric and nothing moves; far apart,
+        nothing is blended; in between, the pull is the derivative of a
+        Gaussian:
       </p>
-      <pre><code>v(B) = c + a &middot; B &middot; exp(&minus;B&sup2; / 2&sigma;&sup2;)      peak: a&sigma;e<sup>&minus;1/2</sup> at B = &plusmn;&sigma;</code></pre>
+      <pre><code>v(V) = c + a &middot; V &middot; exp(&minus;V&sup2; / 2&sigma;&sup2;)      V = V<sub>tot</sub>,  peak: a&sigma;e<sup>&minus;1/2</sup> at V = &plusmn;&sigma;</code></pre>
       <p>
         The report fits it to the delivered and to the corrected velocities by
         MCMC (Goodman and Weare's stretch move, in a few lines of numpy):
@@ -747,8 +754,8 @@ pca2d-gui                            # the same, in a window</code></pre>
         &plusmn;10<sup>4</sup>&nbsp;(m/s)/(km/s), and half the walkers start on
         each sign; <em>&sigma;</em> is log-uniform from
         1&nbsp;km/s, narrower than any blend can be at a resolution of 75&nbsp;000,
-        to 60&nbsp;km/s, beyond which the Gaussian is a straight line within
-        the BERV any star reaches. Below 3&sigma; from zero only an upper limit
+        to 60&nbsp;km/s, beyond which the Gaussian is a straight line over
+        the &plusmn;30&nbsp;km/s any BERV spans. Below 3&sigma; from zero only an upper limit
         is quoted, since the width is then the prior's. A straight line
         against BERV, which the report used to draw, has none of this shape and
         is gone.
@@ -756,7 +763,13 @@ pca2d-gui                            # the same, in a window</code></pre>
       <p>
         <strong>SMETHELLS 20</strong> (Smethells&nbsp;20, M1Ve, 50.7&nbsp;pc),
         127 NIRPS exposures over 125 nights, corrected with three observer
-        components:
+        components. Its systemic velocity is +2.6&nbsp;km/s, which is enough
+        to matter: against the BERV alone the delivered bias was
+        &minus;70.9&nbsp;m/s at 7.2&sigma;, against <em>V</em><sub>tot</sub> it
+        is found at 9.1&sigma; (the sign turns with the axis, since
+        <em>V</em><sub>tot</sub> runs opposite to the BERV).
+        <em>V</em><sub>tot</sub> comes within 4&nbsp;km/s of zero on 15 dates,
+        between mid-June and early July of each year:
       </p>
       <div class="numbers">
         <table>
@@ -765,22 +778,24 @@ pca2d-gui                            # the same, in a window</code></pre>
                 <th>a&ndash;ln&nbsp;&sigma; correlation</th><th>P(a&nbsp;&gt;&nbsp;0)</th><th>jitter</th><th>rms</th></tr>
           </thead>
           <tbody>
-            <tr><td>as delivered</td><td>&minus;70.9 &plusmn; 9.7 m/s (7.2&sigma;)</td>
-                <td>6.7 &plusmn; 0.6 km/s</td><td>0.79</td><td>0.00</td><td>47.3 m/s</td><td>61.7 m/s</td></tr>
-            <tr><td>corrected, 0-3</td><td>none detected, &lt; 33.6 m/s</td>
-                <td>unconstrained</td><td>0.02</td><td>0.13</td><td>41.3 m/s</td><td>44.1 m/s</td></tr>
+            <tr><td>as delivered</td><td>+80.2 &plusmn; 8.9 m/s (9.1&sigma;)</td>
+                <td>6.0 &plusmn; 0.5 km/s</td><td>&minus;0.76</td><td>1.00</td><td>43.9 m/s</td><td>61.7 m/s</td></tr>
+            <tr><td>corrected, 0-3</td><td>none detected (1.7&sigma;), &lt; 33.4 m/s</td>
+                <td>unconstrained</td><td>&minus;0.31</td><td>0.94</td><td>40.9 m/s</td><td>44.1 m/s</td></tr>
           </tbody>
         </table>
       </div>
       <figure class="wide">
-        <img src="figures/berv_bias_smethells-20.svg" alt="SMETHELLS 20 velocities against BERV, delivered and corrected, with the fitted bias and its 1 sigma envelope" />
+        <img src="figures/berv_bias_smethells-20.svg" alt="SMETHELLS 20 velocities against the total velocity, delivered and corrected, with the fitted bias and its 1 sigma envelope" />
         <figcaption>
-          Above, each series less its fitted offset against BERV, with the
-          posterior median of the bias and its 1&sigma; envelope (the band
-          alone where no bias is detected); squares are medians in 2&nbsp;km/s
-          bins. Below, both envelopes on one axis. The delivered velocities
-          swing by +70&nbsp;m/s near &minus;7&nbsp;km/s and &minus;70&nbsp;m/s
-          near +7&nbsp;km/s; the corrected ones do not.
+          Above, each series less its fitted offset against
+          <em>V</em><sub>tot</sub>, with the posterior median of the bias and
+          its 1&sigma; envelope (the band alone where no bias is detected);
+          squares are medians in 2&nbsp;km/s bins, and the grey band is
+          |<em>V</em><sub>tot</sub>|&nbsp;&lt;&nbsp;4&nbsp;km/s. Below, both
+          envelopes on one axis. The delivered velocities swing by
+          &minus;80&nbsp;m/s near &minus;6&nbsp;km/s and +80&nbsp;m/s near
+          +6&nbsp;km/s; the corrected ones do not.
         </figcaption>
       </figure>
       <figure class="wide">

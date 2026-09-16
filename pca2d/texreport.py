@@ -302,6 +302,41 @@ def column(table, *names):
     return None
 
 
+def text_column(table, name):
+    """A column of an rdb as strings, or None."""
+    lower = {c.strip().lower(): c for c in table.colnames}
+    if name.lower() not in lower:
+        return None
+    return np.asarray([str(x).strip() for x in table[lower[name.lower()]]])
+
+
+def snr_column(table):
+    """(name, values) of the SNR the headers carry, or (None, None).
+
+    APERO writes the extracted SNR of one order, EXTSN060 for NIRPS; the
+    first such column, or one called SNR, is the one quoted.
+    """
+    for name in table.colnames:
+        if re.fullmatch(r"(EXTSN\d+|SNR\w*)", name.strip(), re.IGNORECASE):
+            values = column(table, name)
+            if values is not None:
+                return name.strip(), values
+    return None, None
+
+
+def vtot_of(run):
+    """V_tot = vrad/1000 - BERV of a series, in km/s, or None without BERV.
+
+    The separation of the star's lines from the telluric ones, which is what
+    the bias follows (bervbias.total_velocity).
+    """
+    if run.get("vtot") is not None:
+        return run["vtot"]
+    if run.get("berv") is None:
+        return None
+    return bervbias.total_velocity(run["v"], run["berv"])
+
+
 def load(tree, name, label):
     """One LBL object as the figures take it, or None when it has no rdb."""
     path = rdb_file(tree, name)
@@ -313,8 +348,14 @@ def load(tree, name, label):
     # LBL's temperature projection, DTEMP<T>, when the run asked for one
     dtemp = next((c for c in table.colnames if re.fullmatch(r"DTEMP\d+", c)),
                  None)
+    berv = column(table, "BERV")
+    snr_name, snr = snr_column(table)
     return {"label": label, "name": name, "path": path, "t": t, "v": v,
-            "e": e, "berv": column(table, "BERV"),
+            "e": e, "berv": berv,
+            "vtot": (bervbias.total_velocity(v, berv)
+                     if berv is not None else None),
+            "snr": snr, "snr_name": snr_name,
+            "date_obs": text_column(table, "DATE-OBS"),
             "d2v": column(table, "d2v"), "sd2v": column(table, "sd2v"),
             "dtemp": column(table, dtemp) if dtemp else None,
             "sdtemp": column(table, "s" + dtemp) if dtemp else None,
@@ -330,7 +371,8 @@ def common(before, after):
         keep = np.isin(key(run["t"]), shared)
         order = np.argsort(run["t"][keep])
         cut = dict(run)
-        for name in ("t", "v", "e", "berv", "d2v", "sd2v", "dtemp", "sdtemp"):
+        for name in ("t", "v", "e", "berv", "vtot", "snr", "date_obs", "d2v",
+                     "sd2v", "dtemp", "sdtemp"):
             if cut.get(name) is not None:
                 cut[name] = np.asarray(run[name])[keep][order]
         out.append(cut)
@@ -384,8 +426,18 @@ def binned(x, y, width=2.0, least=3):
     return np.array(centres), np.array(medians), np.array(errors)
 
 
+#: false-alarm probabilities whose power levels the periodograms draw
+FAP_LEVELS = (1e-2, 1e-3, 1e-4)
+
+
 def periodogram(t, y, e, pmin=1.1, samples=6000):
-    """(periods, power, best period, its power, false-alarm probability)."""
+    """(periods, power, best period, its power, false-alarm probability,
+    the powers of FAP_LEVELS).
+
+    The false alarms are Baluev's (2008) approximation over the frequencies
+    searched, astropy's default: the power a peak anywhere in them needs to
+    reach that probability.
+    """
     from astropy.timeseries import LombScargle
 
     t, y, e = (np.asarray(a, float) for a in (t, y, e))
@@ -403,7 +455,13 @@ def periodogram(t, y, e, pmin=1.1, samples=6000):
             power[best], minimum_frequency=fmin, maximum_frequency=fmax))
     except Exception:                                          # noqa: BLE001
         fap = np.nan
-    return 1.0 / freq, power, float(1.0 / freq[best]), float(power[best]), fap
+    try:
+        levels = np.asarray(model.false_alarm_level(
+            FAP_LEVELS, minimum_frequency=fmin, maximum_frequency=fmax), float)
+    except Exception:                                          # noqa: BLE001
+        levels = np.full(len(FAP_LEVELS), np.nan)
+    return (1.0 / freq, power, float(1.0 / freq[best]), float(power[best]),
+            fap, levels)
 
 
 def bias_row(fitted):
@@ -434,13 +492,16 @@ def star_numbers(before, after, planets=(), seed=0):
         row = {"rms": s["rms"], "robust": s["robust"],
                "nightly_rms": s["nightly_rms"],
                "median_error": s["median_error"]}
-        if run.get("berv") is not None:
-            _, medians, _ = binned(run["berv"],
-                                   run["v"] - np.median(run["v"]))
+        vtot = vtot_of(run)
+        if vtot is not None:
+            # against V_tot, the separation of the star's lines from the
+            # tellurics, which is what the bias follows; BERV alone is that
+            # only for a star at rest
+            _, medians, _ = binned(vtot, run["v"] - np.median(run["v"]))
             row.update(berv_binned=float(np.std(medians))
                        if medians.size >= 3 else np.nan)
             # the bias's own shape, by MCMC; a straight line has no meaning
-            row.update(bias_row(bervbias.fit(run["berv"], run["v"], run["e"],
+            row.update(bias_row(bervbias.fit(vtot, run["v"], run["e"],
                                              seed=seed)))
         if run.get("d2v") is not None:
             good = inliers(run["d2v"])
@@ -450,8 +511,8 @@ def star_numbers(before, after, planets=(), seed=0):
                        d2v_r=pearson(run["d2v"][good], run["v"][good]))
         if run.get("dtemp") is not None:
             good = inliers(run["dtemp"])
-            _, medians, _ = binned(run["berv"], run["dtemp"] - np.nanmedian(
-                run["dtemp"])) if run.get("berv") is not None else (0, [], 0)
+            _, medians, _ = binned(vtot, run["dtemp"] - np.nanmedian(
+                run["dtemp"])) if vtot is not None else (0, [], 0)
             row.update(dtemp_name=run["dtemp_name"],
                        dtemp_sigma=robust_sigma(run["dtemp"]),
                        dtemp_error=float(np.nanmedian(run["sdtemp"]))
@@ -480,6 +541,61 @@ def star_numbers(before, after, planets=(), seed=0):
     out["removed"] = float(np.sqrt(rb ** 2 - ra ** 2)) if rb > ra else np.nan
     out["planet_periods"] = [float(p) for p in planets]
     out["baseline"] = float(np.ptp(after["t"]))
+    out["observations"] = observations(before, after, out["nights"])
+    return out
+
+
+def utc_dates(run):
+    """The UT date of each exposure: DATE-OBS's, or the rjd's."""
+    if run.get("date_obs") is not None:
+        return np.asarray([d[:10] for d in run["date_obs"]])
+    from astropy.time import Time
+
+    return np.asarray(Time(np.asarray(run["t"], float) + 2400000.0,
+                           format="jd").isot.astype("U10"))
+
+
+def close_passages(vtot, dates, limit=bervbias.CLOSE_KMS):
+    """The stretches of the campaign with |V_tot| < limit, in time order.
+
+    A stretch is a run of consecutive exposures all inside the limit, so one
+    that is interrupted by an exposure outside it is two. Each is (first
+    date, last date, exposures, dates).
+    """
+    inside = np.abs(np.asarray(vtot, float)) < limit
+    out, start = [], None
+    for i, flag in enumerate(list(inside) + [False]):
+        if flag and start is None:
+            start = i
+        elif not flag and start is not None:
+            span = dates[start:i]
+            out.append((str(span[0]), str(span[-1]), i - start,
+                        int(np.unique(span).size)))
+            start = None
+    return out
+
+
+def observations(before, after, nights):
+    """What the headers say about the exposures both series share."""
+    dates = utc_dates(after)
+    out = {"n": int(after["t"].size), "nights": int(nights),
+           "first": str(dates[0]), "last": str(dates[-1]),
+           "span": float(np.ptp(after["t"]))}
+    run = before if before.get("snr") is not None else after
+    if run.get("snr") is not None:
+        out["snr_name"] = run["snr_name"]
+        out["snr"] = float(np.nanmedian(run["snr"]))
+    if after.get("berv") is not None:
+        berv = np.asarray(after["berv"], float)
+        out["berv"] = (float(np.nanmin(berv)), float(np.nanmax(berv)))
+    vtot = vtot_of(after)
+    if vtot is not None:
+        out["systemic"] = float(np.median(after["v"]) / 1000.0)
+        out["vtot"] = (float(np.nanmin(vtot)), float(np.nanmax(vtot)))
+        out["close"] = close_passages(vtot, dates)
+        out["close_n"] = int(np.sum(np.abs(vtot) < bervbias.CLOSE_KMS))
+        out["close_dates"] = int(np.unique(
+            dates[np.abs(vtot) < bervbias.CLOSE_KMS]).size)
     return out
 
 
@@ -565,7 +681,8 @@ def figure_time(before, after, path):
                                     s["median_error"]),
                      fontsize=8.5, color=INK, loc="left")
         ax.axhline(0, color=MUTED, lw=0.6)
-        ax.set_ylabel("velocity - median (m/s)", fontsize=8, color=INK)
+        ax.set_ylabel("velocity - median (m/s)\nmedian = %.1f m/s" % middle,
+                      fontsize=8, color=INK)
         ax.set_ylim(*lim)
         ax.legend(fontsize=7, frameon=False, loc="upper right", ncol=2)
         _style(ax)
@@ -590,11 +707,21 @@ def _bias_band(ax, fitted, grid, colour, label=None, offset=0.0):
                 label=label)
 
 
+VTOT_LABEL = "$V_\\mathrm{tot}$ = vrad - BERV (km/s)"
+
+
+def _close_band(ax):
+    """|V_tot| < 4 km/s, where the star's lines sit on the tellurics."""
+    ax.axvspan(-bervbias.CLOSE_KMS, bervbias.CLOSE_KMS, color=GRID, alpha=0.6,
+               lw=0, zorder=0)
+
+
 def figure_berv(before, after, path):
-    """The velocities against BERV with the fitted bias and its 1 sigma
+    """The velocities against V_tot with the fitted bias and its 1 sigma
     envelope, each series on its own, then both envelopes on one axis."""
     fb = (before.get("fits") or {})
-    if before.get("berv") is None or after.get("berv") is None \
+    vb, va = vtot_of(before), vtot_of(after)
+    if vb is None or va is None \
             or fb.get("before") is None or fb.get("after") is None:
         return None
     fits = {"before": fb["before"], "after": fb["after"]}
@@ -603,16 +730,17 @@ def figure_berv(before, after, path):
     top = [fig.add_subplot(grid_spec[0, 0])]
     top.append(fig.add_subplot(grid_spec[0, 1], sharex=top[0], sharey=top[0]))
     both = fig.add_subplot(grid_spec[1, :], sharex=top[0])
-    span = np.concatenate([before["berv"], after["berv"]])
+    span = np.concatenate([vb, va])
     grid = np.linspace(np.nanmin(span), np.nanmax(span), 300)
     residuals = []
-    for ax, run, key, colour in zip(top, (before, after), ("before", "after"),
-                                    (BEFORE, AFTER)):
+    for ax, run, x, key, colour in zip(top, (before, after), (vb, va),
+                                       ("before", "after"), (BEFORE, AFTER)):
         fitted = fits[key]
         y = run["v"] - fitted["c"][0]
         residuals.append(y)
-        _points(ax, run["berv"], y, run["e"], colour, "exposures", alpha=0.4)
-        centres, medians, errors = binned(run["berv"], y)
+        _close_band(ax)
+        _points(ax, x, y, run["e"], colour, "exposures", alpha=0.4)
+        centres, medians, errors = binned(x, y)
         if centres.size:
             ax.errorbar(centres, medians, yerr=errors, fmt="s", ls="none",
                         ms=4.5, mfc="white", mec=INK, mew=0.8, ecolor=INK,
@@ -622,17 +750,17 @@ def figure_berv(before, after, path):
         ax.set_title("%s\n%s" % (run["label"], bervbias.summary(fitted)),
                      fontsize=7, color=INK, loc="left")
         ax.axhline(0, color=MUTED, lw=0.6)
-        ax.set_xlabel("BERV (km/s)", fontsize=8, color=INK)
+        ax.set_xlabel(VTOT_LABEL, fontsize=8, color=INK)
         _style(ax)
     lim = _limits(*residuals)
     top[0].set_ylim(*lim)
     top[0].set_ylabel("velocity - fitted offset (m/s)", fontsize=8, color=INK)
     top[0].legend(fontsize=6, frameon=False, loc="upper left")
-    for run, key, colour in ((before, "before", BEFORE),
-                             (after, "after", AFTER)):
+    _close_band(both)
+    for run, x, key, colour in ((before, vb, "before", BEFORE),
+                                (after, va, "after", AFTER)):
         fitted = fits[key]
-        centres, medians, errors = binned(run["berv"],
-                                          run["v"] - fitted["c"][0])
+        centres, medians, errors = binned(x, run["v"] - fitted["c"][0])
         if centres.size:
             both.errorbar(centres, medians, yerr=errors, fmt="s", ls="none",
                           ms=4.5, mfc="white", mec=colour, mew=0.9,
@@ -640,12 +768,15 @@ def figure_berv(before, after, path):
         _bias_band(both, fitted, grid, colour,
                    label="%s: %s" % (run["label"], bervbias.summary(fitted)))
     both.axhline(0, color=MUTED, lw=0.6)
-    both.set_xlabel("BERV (km/s)", fontsize=8, color=INK)
+    both.set_xlabel(VTOT_LABEL, fontsize=8, color=INK)
     both.set_ylabel("fitted bias (m/s)", fontsize=8, color=INK)
-    both.set_title("both fits, 1$\\sigma$ envelopes, over the binned medians",
-                   fontsize=7.5, color=INK, loc="left")
-    both.legend(fontsize=6.5, frameon=False, loc="lower left",
-                bbox_to_anchor=(0.0, 1.06), ncol=1, borderaxespad=0.0)
+    # the title is the legend's own: set apart, the two overlapped
+    legend = both.legend(fontsize=6.5, frameon=False, loc="lower left",
+                         bbox_to_anchor=(0.0, 1.02), ncol=1,
+                         borderaxespad=0.0,
+                         title="both fits, 1$\\sigma$ envelopes, over the"
+                               " binned medians", title_fontsize=7.5)
+    legend._legend_box.align = "left"
     _style(both)
     fig.tight_layout()
     return _save(fig, path)
@@ -775,7 +906,8 @@ def figure_d2v(before, after, path):
 def figure_change(before, after, path):
     change = after["v"] - before["v"]
     change = change - np.median(change)
-    panels = 2 if before.get("berv") is not None else 1
+    vtot = vtot_of(before)
+    panels = 2 if vtot is not None else 1
     fig, axes = plt.subplots(1, panels, figsize=(WIDTH, 3.0), sharey=True,
                              squeeze=False)
     lim = _limits(change)
@@ -790,15 +922,16 @@ def figure_change(before, after, path):
     _style(ax)
     if panels == 2:
         ax = axes[0, 1]
-        _points(ax, before["berv"], change, None, INK, "exposures", alpha=0.6)
-        centres, medians, errors = binned(before["berv"], change)
+        _close_band(ax)
+        _points(ax, vtot, change, None, INK, "exposures", alpha=0.6)
+        centres, medians, errors = binned(vtot, change)
         if centres.size:
             ax.errorbar(centres, medians, yerr=errors, fmt="s", ls="none",
                         ms=5, mfc="white", mec=INK, mew=0.9, ecolor=INK,
                         elinewidth=0.8, capsize=0, zorder=4)
-        ax.set_xlabel("BERV (km/s)", fontsize=8, color=INK)
-        ax.set_title("against BERV, 2 km/s bins", fontsize=8, color=INK,
-                     loc="left")
+        ax.set_xlabel(VTOT_LABEL, fontsize=8, color=INK)
+        ax.set_title("against $V_\\mathrm{tot}$, 2 km/s bins", fontsize=8,
+                     color=INK, loc="left")
         ax.axhline(0, color=MUTED, lw=0.6)
         _style(ax)
     fig.tight_layout()
@@ -832,19 +965,22 @@ def figure_dtemp(before, after, path):
                          "; %d off the scale" % outside if outside else ""),
                       fontsize=7.5, color=INK, loc="left")
         top.set_xlabel("RJD (BJD - 2400000)", fontsize=7.5, color=INK)
-        if run.get("berv") is not None:
-            _points(bottom, run["berv"], y, e, colour, "exposures", alpha=0.45)
-            centres, medians, errors = binned(run["berv"], y)
+        vtot = vtot_of(run)
+        if vtot is not None:
+            _close_band(bottom)
+            _points(bottom, vtot, y, e, colour, "exposures", alpha=0.45)
+            centres, medians, errors = binned(vtot, y)
             if centres.size:
                 bottom.errorbar(centres, medians, yerr=errors, fmt="s",
                                 ls="none", ms=4.5, mfc="white", mec=INK,
                                 mew=0.8, ecolor=INK, elinewidth=0.7,
                                 capsize=0, zorder=5, label="2 km/s bins, median")
-            bottom.set_title("against BERV: binned medians scatter %.1f K"
+            bottom.set_title("against $V_\\mathrm{tot}$: binned medians"
+                             " scatter %.1f K"
                              % (np.std(medians) if centres.size >= 3
                                 else np.nan),
                              fontsize=7.5, color=INK, loc="left")
-        bottom.set_xlabel("BERV (km/s)", fontsize=7.5, color=INK)
+        bottom.set_xlabel(VTOT_LABEL, fontsize=7.5, color=INK)
         for ax in (top, bottom):
             ax.axhline(0, color=MUTED, lw=0.6)
             ax.set_ylim(*lim)
@@ -875,6 +1011,14 @@ def _mark_peak(ax, periods, power, colour, label, above):
     return period, level
 
 
+#: the periods the Earth puts in a velocity: the year and its first two
+#: harmonics (the BERV, the water column, the seasons), and the synodic month
+#: (the Moon's light in the sky)
+FAP_NAMES = {1e-2: "1%", 1e-3: "0.1%", 1e-4: "$10^{-4}$"}
+REFERENCE_PERIODS = ((365.25, "1 yr"), (365.25 / 2, "1/2 yr"),
+                     (365.25 / 3, "1/3 yr"), (29.53, "month"))
+
+
 def figure_periodograms(before, after, planets, path):
     rows = [("velocity", "v", "e")]
     if before.get("d2v") is not None and after.get("d2v") is not None:
@@ -886,6 +1030,7 @@ def figure_periodograms(before, after, planets, path):
     drawn = False
     for ax, (what, value, error) in zip(axes[:, 0], rows):
         found_both = []
+        fap_levels = []
         for run, colour in ((before, BEFORE), (after, AFTER)):
             y, e = run[value], run.get(error)
             if e is None:
@@ -895,7 +1040,8 @@ def figure_periodograms(before, after, planets, path):
             if not found:
                 continue
             drawn = True
-            periods, power, best, level, fap = found
+            periods, power, best, level, fap, levels = found
+            fap_levels.append(levels)
             # see-through, both: the two series overlap nearly everywhere,
             # and at full ink the one drawn last hid the other
             ax.plot(periods, power, color=colour, lw=0.9, alpha=0.55,
@@ -909,15 +1055,39 @@ def figure_periodograms(before, after, planets, path):
         for rank, i in enumerate(order):
             periods, power, colour, label = found_both[i]
             _mark_peak(ax, periods, power, colour, label, above=rank == 0)
-        ax.set_ylim(0, ax.get_ylim()[1] * 1.12)
+        # the power a peak needs for each false-alarm probability: the two
+        # series share their dates, so their levels agree to a fraction of a
+        # per cent, and the higher of the two is drawn once
+        levels = (np.nanmax(np.vstack(fap_levels), axis=0) if fap_levels
+                  else np.full(len(FAP_LEVELS), np.nan))
+        ceiling = ax.get_ylim()[1]
+        if np.isfinite(levels).any():
+            ceiling = max(ceiling, 1.05 * float(np.nanmax(levels)))
+        ax.set_ylim(0, ceiling * 1.12)
+        for probability, power_level in zip(FAP_LEVELS, levels):
+            if not np.isfinite(power_level):
+                continue
+            ax.axhline(power_level, color=MUTED, lw=0.7, ls=":", zorder=1)
+            ax.annotate("FAP %s" % FAP_NAMES[probability],
+                        (1.0, power_level), xycoords=("axes fraction", "data"),
+                        xytext=(-2, 1), textcoords="offset points",
+                        fontsize=6, color=MUTED, ha="right", va="bottom")
         top = ax.get_ylim()[1] if drawn else 1.0
         for letter, period in zip("bcdefgh", planets):
             ax.axvline(period, color=INK, lw=0.7, zorder=0)
             ax.text(period, top, " " + letter, fontsize=7, color=INK,
                     va="top", ha="left")
-        for period in (365.25, 182.6, 29.53):
-            ax.axvline(period, color=MUTED, lw=0.5, zorder=0, alpha=0.6)
         ax.set_xscale("log")
+        shown = (np.nanmin([np.nanmin(f[0]) for f in found_both]),
+                 np.nanmax([np.nanmax(f[0]) for f in found_both])) \
+            if found_both else (0, np.inf)
+        for period, name in REFERENCE_PERIODS:
+            if not shown[0] <= period <= shown[1]:
+                continue
+            ax.axvline(period, color=MUTED, lw=0.7, ls="--", zorder=0,
+                       alpha=0.8)
+            ax.text(period, top, name + " ", fontsize=6, color=MUTED,
+                    va="top", ha="right", rotation=90)
         ax.set_ylabel("%s power" % what, fontsize=8, color=INK)
         ax.legend(fontsize=6.5, frameon=False, loc="lower left",
                   bbox_to_anchor=(0.0, 1.0), ncol=2, borderaxespad=0.2)
@@ -1294,7 +1464,8 @@ def summary_table(star, numbers):
                        number(a["bias_p_positive"])))
         row("jitter beyond LBL's errors (m/s)", "jitter")
     if "berv_binned" in b:
-        row("scatter of BERV-binned medians (m/s)", "berv_binned")
+        row("scatter of $V_\\mathrm{tot}$-binned medians (m/s)",
+            "berv_binned")
     if "d2v_sigma" in b:
         vb, va = b["d2v_sigma"] / 1e3, a["d2v_sigma"] / 1e3
         word = "watch" if verdict(vb, va, tolerance=0.1) != "same" else "same"
@@ -1314,7 +1485,8 @@ def summary_table(star, numbers):
         rows.append("velocity-%s correlation r & %s & %s & & \\muted{activity}"
                     " \\\\" % (name, number(b["dtemp_r"], 3),
                                  number(a["dtemp_r"], 3)))
-        rows.append("scatter of %s's BERV-binned medians (K) & %s & %s & & %s"
+        rows.append("scatter of %s's $V_\\mathrm{tot}$-binned medians (K)"
+                    " & %s & %s & & %s"
                     " \\\\" % (name, number(b["dtemp_berv_binned"]),
                                  number(a["dtemp_berv_binned"]),
                                  mark(verdict(b["dtemp_berv_binned"],
@@ -1345,6 +1517,53 @@ def summary_table(star, numbers):
             " nights.}\\\\\n\\toprule\n & delivered & corrected & gain & \\\\\n"
             "\\midrule\n\\endhead\n%s\n\\bottomrule\n\\end{longtable}\n"
             % (tex(star), numbers["n"], numbers["nights"], "\n".join(rows)))
+
+
+def observations_table(star, numbers):
+    """What was observed, from the headers: the table before the numbers."""
+    o = numbers.get("observations")
+    if not o:
+        return ""
+    rows = ["exposures (both series) & %d \\\\" % o["n"],
+            "nights & %d \\\\" % o["nights"],
+            "first and last observation (UT) & %s to %s, %s d \\\\"
+            % (o["first"], o["last"], number(o["span"], 0))]
+    if "snr" in o:
+        rows.append("median SNR (%s) & %s \\\\" % (tex(o["snr_name"]),
+                                                   number(o["snr"], 1)))
+    if "berv" in o:
+        rows.append("BERV (km/s) & %s to %s \\\\"
+                    % (signed(o["berv"][0]), signed(o["berv"][1])))
+    if "vtot" in o:
+        rows.append("systemic velocity, median vrad (km/s) & %s \\\\"
+                    % signed(o["systemic"], 3))
+        rows.append("$V_\\mathrm{tot}$ = vrad $-$ BERV (km/s) & %s to %s"
+                    " \\\\" % (signed(o["vtot"][0]), signed(o["vtot"][1])))
+        limit = "%g" % bervbias.CLOSE_KMS
+        if o["close"]:
+            stretches = ["%s%s%s" % (first, "" if first == last
+                                     else " to " + last,
+                                     "" if dates == 1
+                                     else " (%d dates)" % dates)
+                         for first, last, _n, dates in o["close"]]
+            said = ("%d exposures on %d dates: %s"
+                    % (o["close_n"], o["close_dates"], "; ".join(stretches)))
+        else:
+            said = ("none: $V_\\mathrm{tot}$ never comes within %s km/s of"
+                    " zero" % limit)
+        rows.append("dates with $|V_\\mathrm{tot}| < %s$ km/s (UT), the star's"
+                    " lines on the tellurics & %s \\\\" % (limit, said))
+    return ("\\begin{longtable}{p{0.36\\linewidth}p{0.58\\linewidth}}\n"
+            "\\caption{%s: the observations, from the headers.}\\\\\n"
+            "\\toprule\n\\endhead\n%s\n\\bottomrule\n\\end{longtable}\n"
+            % (tex(star), "\n".join(rows)))
+
+
+def signed(value, digits=1):
+    """'+2.6' or '-23.2', with a minus sign LaTeX sets as one."""
+    if not np.isfinite(value):
+        return "n/a"
+    return ("$%+.*f$" % (digits, value))
 
 
 def bias_verdict(b, a):
@@ -1385,7 +1604,7 @@ def verdict_lines(numbers):
                            ("median_error", "LBL's error bars", "lower"),
                            ("jitter", "the jitter beyond LBL's errors",
                             "lower"),
-                           ("berv_binned", "the structure against BERV",
+                           ("berv_binned", "the structure against $V_\\mathrm{tot}$",
                             "lower")):
         if key not in b:
             continue
@@ -1403,7 +1622,7 @@ def verdict_lines(numbers):
         word = verdict(b["dtemp_berv_binned"], a["dtemp_berv_binned"],
                        tolerance=0.05)
         (better if word == "gain" else worse if word == "loss"
-         else []).append("%s's structure against BERV" % tex(b["dtemp_name"]))
+         else []).append("%s's structure against $V_\\mathrm{tot}$" % tex(b["dtemp_name"]))
     if "d2v_sigma" in b and verdict(b["d2v_sigma"], a["d2v_sigma"],
                                     tolerance=0.1) != "same":
         moved.append("d2v's scatter (%.0f to %.0f, in $10^3$ m$^2$/s$^2$)"
@@ -1486,21 +1705,28 @@ def velocity_section(star, before, after, numbers, folder, stale):
         (figure_time(before, after, os.path.join(figures, base + "-time.pdf")),
          "%s: the velocities over the campaign" % name,
          "The velocities over the campaign, delivered above and corrected"
-         " below, on the same scale. %s; no line joins them."
+         " below, on the same scale, each less its own median, which its"
+         " axis gives. %s; no line joins them."
          % ("Small points are exposures, large ones the weighted nightly"
             " means" if numbers["nights"] < 0.8 * numbers["n"]
             else "One point per exposure, about one a night")),
         (figure_berv(before, after, os.path.join(figures, base + "-berv.pdf")),
          "%s: the BERV bias, fitted" % name,
-         "The velocities against the barycentric velocity, with the bias a"
+         "The velocities against the total velocity"
+         " $V_\\mathrm{tot} = v_\\mathrm{rad} - \\mathrm{BERV}$, the star's"
+         " velocity in the telluric frame (the systemic velocity less the"
+         " BERV, composed relativistically), with the bias a"
          " telluric line blended with the stellar lines produces, fitted by"
-         " MCMC: $v = c + a\\,B\\,e^{-B^2/2\\sigma^2}$, with a jitter added"
+         " MCMC: $v = c + a\\,V_\\mathrm{tot}\\,"
+         "e^{-V_\\mathrm{tot}^2/2\\sigma^2}$, with a jitter added"
          " to LBL's error bars, a flat prior on $a$ and a"
          " log-uniform one on $\\sigma$ between 1 and 60 km/s. The line is the posterior median, the band its"
          " 1$\\sigma$ envelope (the band alone for a bias that is not"
-         " detected); squares are medians in 2 km/s bins. Above,"
+         " detected); squares are medians in 2 km/s bins, and the grey band"
+         " is $|V_\\mathrm{tot}| < 4$ km/s, where the star's lines sit on the"
+         " tellurics. Above,"
          " each series less its fitted offset; below, both envelopes on one"
-         " axis. The peak is the bias at $B = \\pm\\sigma$,"
+         " axis. The peak is the bias at $V_\\mathrm{tot} = \\pm\\sigma$,"
          " $a\\sigma e^{-1/2}$; below 3$\\sigma$ from zero, only an upper"
          " limit on it is quoted."),
         (figure_corner(before, after, os.path.join(figures, base + "-corner.pdf")),
@@ -1527,22 +1753,29 @@ def velocity_section(star, before, after, numbers, folder, stale):
          "LBL's projection of every line's residual on the temperature"
          " gradient of the model nearest the star's Teff, delivered and"
          " corrected, on one scale. Above, over the campaign; below, against"
-         " BERV, with medians in 2 km/s bins. The star's temperature is not"
+         " $V_\\mathrm{tot}$, with medians in 2 km/s bins. The star's temperature is not"
          " the observer frame's business: a scatter that changes is a"
          " correction reaching into the star, and a structure against BERV"
-         " that goes away is a telluric residual DTEMP had picked up."),
+         " that goes away is a telluric residual DTEMP had picked up."
+         " The grey band is $|V_\\mathrm{tot}| < 4$ km/s."),
         (figure_change(before, after, os.path.join(figures, base + "-change.pdf")),
          "%s: what the correction moved" % name,
          "What the correction changed, exposure by exposure: the corrected"
-         " velocity less the delivered one, over time and against BERV."),
+         " velocity less the delivered one, over time and against"
+         " $V_\\mathrm{tot}$, the grey band being"
+         " $|V_\\mathrm{tot}| < 4$ km/s."),
         (figure_periodograms(before, after, numbers["planet_periods"],
                              os.path.join(figures, base + "-periods.pdf")),
          "%s: periodograms of the velocity and its indicators" % name,
          "Lomb-Scargle periodograms of the velocity, of d2v%s, delivered and"
          " corrected. Each curve's"
          " highest peak is marked by a triangle, with a line at its level and"
-         " its period and power beside it. Grey lines are a year, half a year"
-         " and a lunar month; black ones, when there are any, the known"
+         " its period and power beside it. Dashed grey lines, named, are a"
+         " year, half and a third of a year, and a synodic month (29.53 d);"
+         " dotted grey ones, the power a peak needs for a false-alarm"
+         " probability of 1\\%%, 0.1\\%% and $10^{-4}$ (Baluev's approximation"
+         " over the periods shown, the higher of the two series' levels);"
+         " black ones, when there are any, the known"
          " planets. A known planet should keep its peak; a peak at a"
          " year or its harmonics is the Earth's; one shared with d2v or the"
          " temperature is the star's activity."
@@ -1807,6 +2040,7 @@ def render(outdir, config=None, lbl_dir=None, out=None, stars=None):
             if items:
                 body.append("\\begin{itemize}\n%s\n\\end{itemize}\n"
                             % "\n".join(items))
+            body.append(observations_table(star, numbers))
             body.append(summary_table(star, numbers))
     for star, why in missing:
         body.append("\\muted{%s: no velocities to compare yet (%s).}\n\n"
@@ -1842,12 +2076,17 @@ def render(outdir, config=None, lbl_dir=None, out=None, stars=None):
 
     with open(TEMPLATE) as handle:
         document = handle.read()
+    now = datetime.datetime.now().astimezone()
     fill = {
         "TITLE": tex(" + ".join(stars)),
         "SUBTITLE": tex("pca2d-preclean run %s%s" % (
             tag, ", %s" % run_name.lstrip("_") if run_name.startswith("_")
             else "")),
-        "DATE": tex(datetime.date.today().isoformat()),
+        # the date, and under it the time to the second: two reports of one
+        # day are told apart by it
+        "DATE": "%s\\\\\n{\\small written at %s}" % (
+            tex(now.date().isoformat()),
+            tex(now.strftime("%H:%M:%S %Z (UTC%z)"))),
         "RUNHEAD": tex("%s, %s" % (" + ".join(stars), tag)),
         "ABSTRACT": "\n\n".join(abstract),
         "BODY": "".join(body),

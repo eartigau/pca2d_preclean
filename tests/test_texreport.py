@@ -7,6 +7,7 @@ fit, and that nothing about it can stop a run.
 """
 
 import os
+import re
 
 import matplotlib
 matplotlib.use("Agg")
@@ -161,7 +162,8 @@ def test_an_old_bound_pdf_is_cut_along_its_bookmarks(tmp_path):
 # ------------------------------------------------------- the document ---
 def write_rdb(path, t, v, e, berv, d2v, dtemp=None):
     table = Table({"rjd": t, "vrad": v, "svrad": e, "d2v": d2v,
-                   "sd2v": np.full_like(d2v, 1e4), "BERV": berv})
+                   "sd2v": np.full_like(d2v, 1e4), "BERV": berv,
+                   "EXTSN060": np.full_like(t, 80.0)})
     if dtemp is not None:
         table["DTEMP3500"] = dtemp
         table["sDTEMP3500"] = np.full_like(dtemp, 2.0)
@@ -235,7 +237,15 @@ def test_a_run_with_velocities_becomes_a_document(tmp_path):
     assert "older than this run" not in tex
     # the temperature projection, both ways, and what the correction did to it
     assert r"DTEMP3500 robust sigma (K)" in tex
-    assert "DTEMP3500's structure against BERV" in tex
+    assert "DTEMP3500's structure against $V_\\mathrm{tot}$" in tex
+    # what was observed, from the headers, before the numbers
+    assert r"TOI\_756: the observations, from the headers." in tex
+    assert r"median SNR (EXTSN060) & 80.0" in tex
+    assert r"dates with $|V_\mathrm{tot}| < 4$ km/s (UT)" in tex
+    assert r"median = " not in tex, "the median is on the figure's axis"
+    # the date, and the time the PDF was written under it
+    assert re.search(r"\\date\{\d{4}-\d{2}-\d{2}\\\\\n\{\\small written at"
+                     r" \d{2}:\d{2}:\d{2} ", tex)
     assert "No temperature projection" not in tex
 
 
@@ -421,3 +431,56 @@ def test_the_minus_signs_are_in_the_figures_text(tmp_path):
     assert "-10" in text and "+10" in text
     fonts = PdfReader(path).pages[0]["/Resources"]["/Font"]
     assert all(f.get_object()["/Subtype"] != "/Type3" for f in fonts.values())
+
+
+def test_the_bias_is_fitted_against_the_total_velocity():
+    """V_tot = vrad/1000 - BERV: a star at +30 km/s whose velocities carry a
+    bias in V_tot has it found there, and none of its exposures are listed
+    as close to the tellurics, since V_tot never comes near zero."""
+    from pca2d import bervbias
+
+    r = np.random.default_rng(21)
+    t = np.sort(60000 + r.uniform(0, 700, 200))
+    berv = 25 * np.sin(2 * np.pi * (t - 60000) / 365.25)
+    e = np.full(t.size, 2.0)
+    vtot = 30.0 - berv
+    v = 30000.0 + bervbias.shape(vtot, -3.0, 40.0) + r.normal(0, 2, t.size)
+    before = series(t, v, e, berv, None, "delivered")
+    after = series(t, 30000.0 + r.normal(0, 2, t.size), e, berv, None,
+                   "corrected")
+    assert np.allclose(tr.vtot_of(before), v / 1000.0 - berv, atol=1e-6)
+    numbers = tr.star_numbers(before, after)
+    o = numbers["observations"]
+    assert o["systemic"] == pytest.approx(30.0, abs=0.01)
+    assert o["vtot"][0] > 4.0 and o["close"] == [] and o["close_n"] == 0
+    assert o["first"] <= o["last"] and o["nights"] == numbers["nights"]
+    table = tr.observations_table("X", numbers)
+    assert "never comes within 4 km/s of zero" in table
+    assert "median SNR" not in table, "no SNR column, no SNR row"
+    assert numbers["before"]["bias_detected"]
+
+
+def test_close_passages_are_the_stretches_near_zero():
+    vtot = np.array([10, 3, -2, 8, 1, 1, 9, 0.5])
+    dates = np.array(["2024-01-%02d" % d for d in (1, 2, 3, 4, 5, 5, 6, 7)])
+    assert tr.close_passages(vtot, dates) == [
+        ("2024-01-02", "2024-01-03", 2, 2),
+        ("2024-01-05", "2024-01-05", 2, 1),
+        ("2024-01-07", "2024-01-07", 1, 1)]
+
+
+def test_the_periodograms_name_the_year_its_harmonics_and_the_month():
+    periods = dict((name, p) for p, name in tr.REFERENCE_PERIODS)
+    assert periods == pytest.approx({"1 yr": 365.25, "1/2 yr": 182.625,
+                                     "1/3 yr": 121.75, "month": 29.53})
+
+
+def test_the_periodogram_gives_the_power_of_each_false_alarm_level():
+    r = np.random.default_rng(3)
+    t = np.sort(60000 + r.uniform(0, 500, 150))
+    y = r.normal(0, 1, t.size)
+    found = tr.periodogram(t, y, np.ones_like(t))
+    levels = found[5]
+    assert len(levels) == len(tr.FAP_LEVELS) == 3
+    assert np.all(np.diff(levels) > 0), "rarer false alarms need more power"
+    assert 0 < levels[0] < levels[-1] < 1

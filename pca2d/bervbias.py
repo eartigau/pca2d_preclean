@@ -1,20 +1,30 @@
-"""The velocity bias that follows BERV, fitted by MCMC.
+"""The velocity bias that follows BERV, fitted by MCMC against V_tot.
 
 A telluric line blended with a stellar line pulls the velocity measured on it
-by an amount that depends on how far apart the two are, which is the BERV.
-Superposed, the blend is symmetric and nothing moves; far apart, nothing is
+by an amount that depends on how far apart the two are. That separation is
+the star's velocity in the telluric frame, the systemic velocity less the
+BERV:
+
+    V_tot = vrad / 1000 - BERV        (km/s; vrad from LBL in m/s)
+
+and not the BERV alone, which is V_tot only for a star at rest (asked for on
+2026-09-16: on SMETHELLS_20, at +2.6 km/s, it hardly matters; a star at
++-30 km/s may never bring its lines onto the tellurics at all). Superposed,
+V_tot = 0, the blend is symmetric and nothing moves; far apart, nothing is
 blended; in between, the pull is the derivative of a Gaussian:
 
-    v(BERV) = c + amp * BERV * exp(-0.5 * (BERV / sigma)**2)
+    v(V_tot) = c + amp * V_tot * exp(-0.5 * (V_tot / sigma)**2)
 
-odd in BERV, zero at 0, extreme at BERV = +-sigma, where it is worth
+odd in V_tot, zero at 0, extreme at V_tot = +-sigma, where it is worth
 
     peak = amp * sigma * exp(-1/2)
 
 (written `amp*np.exp(-0.5*BERV/sigma)*BERV` when it was asked for, on
 2026-09-16: the square is what makes the bias die away on both sides; taken
-as written it grows without bound for negative BERV). A straight line against
+as written it grows without bound on one side). A straight line against
 BERV, which the report drew before, has no such shape and no meaning here.
+The functions below take V_tot, from `total_velocity`, wherever they say
+`berv`: the shape is the same whatever the axis is called.
 
 `amp` is signed, and the fit explores both signs: its prior is symmetric and
 half the walkers start on each side. `amp` and `sigma` are what the fit is
@@ -39,8 +49,9 @@ pipeline's environment, and four parameters do not need it.
               any blend of two lines can be at a resolution of 70 000 to
               80 000 (a 4 km/s FWHM): allowed, the few points within +-sigma
               let amp run to hundreds and the upper limit on a bias that is
-              not there doubles. Above 60, with BERV within +-30, the
-              Gaussian is a straight line the data cannot tell apart
+              not there doubles. Above 60, with V_tot spanning the +-30 of
+              the BERV, the Gaussian is a straight line the data cannot tell
+              apart
     c         uniform, m/s
     jitter    log-uniform over 1e-3 to 1e4 m/s
 """
@@ -58,6 +69,23 @@ NAMES = ("amp", "sigma", "c", "jitter")
 #: would describe the prior; an upper limit on the peak is what is said then
 DETECTED = 3.0
 UNITS = ("(m/s)/(km/s)", "km/s", "m/s", "m/s")
+C_KMS = 299792.458
+#: |V_tot| below which the star's lines sit on the telluric lines, within
+#: about one resolution element: the exposures the report lists by date
+CLOSE_KMS = 4.0
+
+
+def total_velocity(vrad, berv):
+    """V_tot in km/s, the star's velocity in the telluric frame.
+
+    vrad / 1000 - BERV, `vrad` in m/s (LBL's) and `berv` in km/s, composed
+    relativistically: the wavelength ratios multiply, so the rapidities
+    subtract. With +30 and -30 km/s that differs from the plain difference
+    by 6e-7 km/s, far below anything the bias's width can see.
+    """
+    vrad = np.asarray(vrad, float) / 1000.0
+    berv = np.asarray(berv, float)
+    return C_KMS * np.tanh(np.arctanh(vrad / C_KMS) - np.arctanh(berv / C_KMS))
 
 
 def shape(berv, amp, sigma):
