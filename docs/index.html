@@ -742,8 +742,9 @@ pca2d-gui                            # the same, in a window</code></pre>
         MCMC (Goodman and Weare's stretch move, in a few lines of numpy):
         <em>a</em> and <em>&sigma;</em>, with the velocities' offset
         <em>c</em> and a jitter beside LBL's error bars marginalised. <em>a</em>
-        has a modified Jeffreys prior, 1/(|<em>a</em>|&nbsp;+&nbsp;<em>a</em><sub>0</sub>),
-        with its knee at the noise level; <em>&sigma;</em> is log-uniform from
+        is signed and has a modified Jeffreys prior on both sides,
+        1/(|<em>a</em>|&nbsp;+&nbsp;<em>a</em><sub>0</sub>), with its knee at the
+        noise level, and half the walkers start on each sign; <em>&sigma;</em> is log-uniform from
         1&nbsp;km/s, narrower than any blend can be at a resolution of 75&nbsp;000,
         to 60&nbsp;km/s, beyond which the Gaussian is a straight line within
         the BERV any star reaches. Below 3&sigma; from zero only an upper limit
@@ -760,13 +761,13 @@ pca2d-gui                            # the same, in a window</code></pre>
         <table>
           <thead>
             <tr><th>velocities</th><th>bias at its peak</th><th>width &sigma;</th>
-                <th>a&ndash;ln&nbsp;&sigma; correlation</th><th>jitter</th><th>rms</th></tr>
+                <th>a&ndash;ln&nbsp;&sigma; correlation</th><th>P(a&nbsp;&gt;&nbsp;0)</th><th>jitter</th><th>rms</th></tr>
           </thead>
           <tbody>
-            <tr><td>as delivered</td><td>&minus;68.4 &plusmn; 9.9 m/s (6.9&sigma;)</td>
-                <td>6.8 &plusmn; 0.6 km/s</td><td>0.79</td><td>47.2 m/s</td><td>61.7 m/s</td></tr>
-            <tr><td>corrected, 0-3</td><td>none detected, &lt; 25.3 m/s</td>
-                <td>unconstrained</td><td>0.11</td><td>41.2 m/s</td><td>44.1 m/s</td></tr>
+            <tr><td>as delivered</td><td>&minus;68.7 &plusmn; 9.8 m/s (7.0&sigma;)</td>
+                <td>6.8 &plusmn; 0.6 km/s</td><td>0.78</td><td>0.00</td><td>47.1 m/s</td><td>61.7 m/s</td></tr>
+            <tr><td>corrected, 0-3</td><td>none detected, &lt; 24.9 m/s</td>
+                <td>unconstrained</td><td>0.01</td><td>0.15</td><td>41.1 m/s</td><td>44.1 m/s</td></tr>
           </tbody>
         </table>
       </div>
@@ -785,7 +786,8 @@ pca2d-gui                            # the same, in a window</code></pre>
         <img src="figures/berv_bias_smethells-20_posterior.svg" alt="Joint posterior of the bias amplitude and width, delivered and corrected, on the same axes" />
         <figcaption>
           The joint posterior of <em>a</em> and <em>&sigma;</em>, on the same
-          axes for both, with its 1 and 2&sigma; contours and both marginals.
+          axes for both, the amplitude's symmetric about zero, with its 1 and
+          2&sigma; contours and both marginals.
           Delivered, a compact ellipse: the two trade against each other, a
           narrower bias needing a larger amplitude to reach the same points.
           Corrected, <em>a</em> sits at zero and <em>&sigma;</em> fills its

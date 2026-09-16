@@ -16,7 +16,9 @@ odd in BERV, zero at 0, extreme at BERV = +-sigma, where it is worth
 as written it grows without bound for negative BERV). A straight line against
 BERV, which the report drew before, has no such shape and no meaning here.
 
-`amp` and `sigma` are what the fit is for; `c`, the velocities' arbitrary
+`amp` is signed, and the fit explores both signs: its prior is symmetric and
+half the walkers start on each side. `amp` and `sigma` are what the fit is
+for; `c`, the velocities' arbitrary
 zero, and `jitter`, the scatter LBL's error bars do not account for, are
 fitted beside them and marginalised. Without the jitter the posterior would be
 as narrow as LBL's error bars are optimistic: 13 m/s against 44 m/s of scatter
@@ -163,6 +165,12 @@ def fit(berv, v, e, walkers=32, steps=2500, burn=1000, seed=0):
     scale = np.array([max(abs(centre[0]) * 0.1, 1e-2), 0.1,
                       max(np.std(v) * 0.01, 1e-2), 0.1])
     start = centre + scale * rng.normal(size=(walkers, 4))
+    # half the walkers start on the other sign: a bias pulls either way, and
+    # an ensemble that starts on one side only explores the other if it
+    # happens to wander there. On SMETHELLS_20 the mirrored half rejoins the
+    # delivered bias's negative mode within 500 steps, and the corrected
+    # posterior keeps both signs, P(amp > 0) = 0.15 either way
+    start[walkers // 2:, 0] *= -1
     start[:, 1] = np.clip(start[:, 1], np.log(SIGMA_MIN) + 1e-3,
                           np.log(SIGMA_MAX) - 1e-3)
     chain, acceptance = stretch(
@@ -183,6 +191,7 @@ def fit(berv, v, e, walkers=32, steps=2500, burn=1000, seed=0):
                            if np.std(peaks) > 0 else 0.0)
     out["amp_sigma_r"] = float(np.corrcoef(samples[:, 0],
                                            np.log(samples[:, 1]))[0, 1])
+    out["p_positive"] = float(np.mean(samples[:, 0] > 0))
     # what can be said when nothing is seen: the bias is below this
     out["upper"] = float(np.percentile(np.abs(peaks), 95))
     out["detected"] = out["significance"] >= DETECTED

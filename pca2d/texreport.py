@@ -410,6 +410,7 @@ def bias_row(fitted):
             "bias_width_err": float(0.5 * (fitted["sigma"][2]
                                            - fitted["sigma"][1])),
             "bias_amp_sigma_r": fitted["amp_sigma_r"],
+            "bias_p_positive": fitted["p_positive"],
             "jitter": float(fitted["jitter"][0])}
 
 
@@ -648,9 +649,10 @@ def amp_range(*fits):
     """
     ends = np.array([np.percentile(f["samples"][:, 0], [0.5, 99.5])
                      for f in fits])
-    lo, hi = float(ends[:, 0].min()), float(ends[:, 1].max())
-    pad = 0.05 * (hi - lo) if hi > lo else 1.0
-    return lo - pad, hi + pad
+    # symmetric about zero: amp is signed, and the sign is part of the answer
+    reach = 1.08 * float(np.max(np.abs(ends)))
+    reach = reach if reach > 0 else 1.0
+    return -reach, reach
 
 
 def _corner(fig, cell, fitted, colour, title, arange):
@@ -693,8 +695,8 @@ def _corner(fig, cell, fitted, colour, title, arange):
         ax.set_yticks([]) if ax is top else ax.set_xticks([])
         plt.setp(ax.get_xticklabels() if ax is top else ax.get_yticklabels(),
                  visible=False)
-    top.set_title("%s\ncorrelation of amp and ln sigma: %.2f"
-                  % (title, fitted["amp_sigma_r"]),
+    top.set_title("%s\nr(amp, ln sigma) %.2f, P(amp > 0) %.2f"
+                  % (title, fitted["amp_sigma_r"], fitted["p_positive"]),
                   fontsize=7, color=INK, loc="left")
     for ax in (joint, top, side):
         _style(ax)
@@ -1275,6 +1277,9 @@ def summary_table(star, numbers):
         rows.append("amp-sigma correlation (posterior) & %s & %s & & \\\\"
                     % (number(b["bias_amp_sigma_r"]),
                        number(a["bias_amp_sigma_r"])))
+        rows.append("P(amp $>$ 0) (posterior) & %s & %s & & \\\\"
+                    % (number(b["bias_p_positive"]),
+                       number(a["bias_p_positive"])))
         row("jitter beyond LBL's errors (m/s)", "jitter")
     if "berv_binned" in b:
         row("scatter of BERV-binned medians (m/s)", "berv_binned")
@@ -1490,7 +1495,10 @@ def velocity_section(star, before, after, numbers, folder, stale):
          "%s: the covariance of amp and sigma" % name,
          "The joint posterior of the bias's amplitude $a$ and width"
          " $\\sigma$, delivered and corrected, on the same axes, with its 1"
-         " and 2$\\sigma$ contours and both marginals. The two trade against each other,"
+         " and 2$\\sigma$ contours and both marginals. $a$ is signed: its"
+         " prior, $1/(|a| + a_0)$, is the same on both sides, half the"
+         " walkers start on each, and the amp axis is symmetric about zero;"
+         " P($a > 0$) is the posterior's share on the positive side. The two trade against each other,"
          " since a narrower bias needs a larger amplitude to reach the same"
          " points; a posterior filling the width's prior is a bias that is"
          " not there."),

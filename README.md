@@ -241,12 +241,13 @@ v(B) = c + a * B * exp(-B**2 / (2 sigma**2))     peak a * sigma * exp(-1/2) at B
 ```
 
 fitted by MCMC (Goodman and Weare's stretch move) to the delivered and to the
-corrected velocities: `a` with a modified Jeffreys prior, 1/(|a| + a0), its
-knee at the noise level; `sigma` log-uniform over 1 to 60 km/s; the offset `c`
+corrected velocities: `a`, signed, with a modified Jeffreys prior on both
+sides, 1/(|a| + a0), its knee at the noise level, and half the walkers
+starting on each sign; `sigma` log-uniform over 1 to 60 km/s; the offset `c`
 and a jitter beside LBL's error bars marginalised. Below 3 sigma from zero only
 an upper limit on the peak is quoted. On SMETHELLS 20 (NIRPS, 127 exposures,
-0-3): -68.4 +- 9.9 m/s at sigma = 6.8 km/s delivered, none detected
-(< 25.3 m/s) corrected; `docs/make_figures.py --only berv --run <folder>` draws
+0-3): -68.7 +- 9.8 m/s at sigma = 6.8 km/s delivered (P(a > 0) = 0.00), none
+detected (< 24.9 m/s, P(a > 0) = 0.15) corrected; `docs/make_figures.py --only berv --run <folder>` draws
 the page's figures of it with the report's own code.
 
 **DTEMP.** LBL projects every line's residual on the temperature gradient of

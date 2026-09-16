@@ -100,3 +100,17 @@ def test_amp_has_a_modified_jeffreys_prior():
     assert np.isfinite(bb.log_probability(
         np.array([[0.0, np.log(5.0), 0.0, 0.0]]), berv, v, e)[0]), \
         "no divergence at zero"
+
+
+def test_both_signs_are_explored_and_found():
+    """A bias pulls either way: a positive one is found positive, a negative
+    one negative, whichever side the walkers started on."""
+    for amp, expect in ((10.0, 1.0), (-10.0, 0.0)):
+        berv, v, e = a_campaign(amp=amp, sigma=6.0, seed=11)
+        fitted = bb.fit(berv, v, e, seed=12)
+        assert fitted["detected"]
+        assert fitted["p_positive"] == pytest.approx(expect, abs=0.01)
+        assert np.sign(fitted["peak"][0]) == np.sign(amp)
+    berv, v, e = a_campaign(amp=0.0, sigma=6.0, seed=13)
+    nothing = bb.fit(berv, v, e, seed=14)
+    assert 0.05 < nothing["p_positive"] < 0.95, "no bias, no preferred sign"
