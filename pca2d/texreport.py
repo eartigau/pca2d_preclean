@@ -795,6 +795,219 @@ def newest_input(outdir, star, joint):
     return max(times) if times else None
 
 
+# ============================================================== the stars ===
+def first_header(config, star):
+    """What one of this star's spectra says of it, as a dictionary, or {}.
+
+    The primary header, and over it the first extension that carries APERO's
+    PP_ keys: the object as APERO's database has it, each value with its
+    source. PP_RV is in m/s whatever its comment says: NIRPS files label it
+    [km/s] and hold GJ 1 at 25534 and Proxima at -22400, which are SIMBAD's
+    25.534 and -22.4 km/s. It is given in km/s as PP_RV_KMS.
+    """
+    from astropy.io import fits
+
+    from .config import spectra_dir
+
+    root = (config.get("input") or {}).get("directory") or ""
+    for folder in (os.path.join(root, star), spectra_dir(config)):
+        files = sorted(glob.glob(os.path.join(folder, "*.fits")))
+        files = [f for f in files if not os.path.basename(f).startswith(".")]
+        if not files:
+            continue
+        try:
+            with fits.open(files[0]) as hdulist:
+                out = dict(hdulist[0].header)
+                for hdu in hdulist[1:]:
+                    if "PP_OBJN" in hdu.header:
+                        out.update(dict(hdu.header))
+                        rv = hdu.header.get("PP_RV")
+                        if isinstance(rv, (int, float)):
+                            out["PP_RV_KMS"] = rv / 1000.0
+                        break
+            return out
+        except Exception:                                      # noqa: BLE001
+            return {}
+    return {}
+
+
+def star_facts(star, config, folder):
+    """SIMBAD's view of one star, kept beside the report for next time."""
+    from . import simbad
+
+    header = first_header(config, star)
+    kept = os.path.join(folder, "simbad_%s.json" % slug(star))
+    facts = simbad.star(star, header)
+    if facts.get("ok"):
+        with open(kept, "w") as handle:
+            json.dump(facts, handle, indent=1)
+    elif os.path.exists(kept):
+        with open(kept) as handle:
+            facts = json.load(handle)
+        facts["stale"] = True
+    facts["header"] = {k: header.get(k) for k in header
+                       if (k.startswith("PP_") or k in (
+                           "OBJECT", "DRSOBJN", "ESO OCS TARG SPTYPE",
+                           "ESO OCS TARG JMAG", "OBJTEMP", "OBJMAG"))
+                       and not isinstance(header.get(k), bytes)}
+    return facts
+
+
+def _sexa(value, hours):
+    if value is None:
+        return "n/a"
+    value = value / 15.0 if hours else value
+    sign = "-" if value < 0 else ("" if hours else "+")
+    value = abs(value)
+    d = int(value)
+    m = int((value - d) * 60)
+    sec = (value - d - m / 60.0) * 3600
+    return "%s%02d %02d %0*.*f" % (sign, d, m, 5 if hours else 4,
+                                   2 if hours else 1, sec)
+
+
+def distance_text(facts):
+    plx, err = facts.get("plx_value"), facts.get("plx_err")
+    if not plx or plx <= 0:
+        return "n/a"
+    text = "%.3f mas" % plx
+    if err:
+        text += " $\\pm$ %.3f" % err
+    return text + ", %.2f pc" % (1000.0 / plx)
+
+
+def _pp(header, key, fmt="%s", unit=""):
+    """An APERO value with its source, or ''."""
+    value = header.get(key)
+    if value in (None, "", "None"):
+        return ""
+    text = (fmt % value) if not isinstance(value, str) else value
+    source = header.get(key + "S")
+    return tex(text + (" " + unit if unit else "")) + (
+        " \\muted{(%s)}" % tex(source)
+        if source not in (None, "", "None") else "")
+
+
+def star_table(star, facts, planets):
+    """One star, SIMBAD's description beside the one APERO worked with."""
+    header = facts.get("header") or {}
+    rows = []
+
+    def add(what, simbad_text, apero_text=""):
+        rows.append((what, simbad_text, apero_text))
+
+    apero_name = header.get("PP_OBJN") or header.get("DRSOBJN")
+    add("APERO name", "", "\\textbf{%s}%s" % (
+        tex(apero_name), " \\muted{(PP\\_OBJN)}" if header.get("PP_OBJN")
+        else " \\muted{(DRSOBJN)}") if apero_name else "n/a")
+    ok = facts.get("ok")
+    if ok:
+        add("name", "%s \\muted{(%s)}" % (
+            tex(facts["main_id"].replace("NAME ", "")), tex(facts.get("otype"))),
+            _pp(header, "PP_OBJNS"))
+        found = "from %s" % tex(facts.get("resolved_from"))
+        if facts.get("offset") is not None:
+            found += (", %.1f arcsec from %s position at %.1f"
+                      % (facts["offset"], facts.get("offset_from", "the"),
+                         facts.get("offset_epoch", 2000)))
+        add("found", found)
+        if facts.get("ids"):
+            add("identifiers", tex_break(", ".join(facts["ids"])))
+    else:
+        add("SIMBAD", "\\watch{not reached: %s}"
+            % tex(facts.get("error") or "no answer"))
+        add("name in the headers", tex(header.get("OBJECT", "n/a")))
+    ra_apero = header.get("PP_RA")
+    add("position (deg)",
+        "%.6f, %+.6f \\muted{(ICRS, J2000)}" % (facts["ra"], facts["dec"])
+        if ok and facts.get("ra") is not None else "",
+        ("%.6f, %+.6f" % (ra_apero, header.get("PP_DEC"))
+         + (" \\muted{(%s, JD %.1f)}" % (tex(header.get("PP_RAS")),
+                                           header.get("PP_EPOCH"))
+            if header.get("PP_EPOCH") else ""))
+        if isinstance(ra_apero, (int, float)) else "")
+    if ok:
+        sptype = tex(facts.get("sp_type") or "n/a")
+    else:
+        sptype = tex(header.get("ESO OCS TARG SPTYPE", ""))
+    add("spectral type", sptype, _pp(header, "PP_SPT"))
+    add("parallax, distance", distance_text(facts) if ok else "",
+        _pp(header, "PP_PLX", "%.3f", "mas") + (
+            ", %.2f pc" % (1000.0 / header["PP_PLX"])
+            if isinstance(header.get("PP_PLX"), (int, float))
+            and header["PP_PLX"] > 0 else ""))
+    add("proper motion (mas/yr)",
+        "%+.2f, %+.2f" % (facts["pmra"], facts.get("pmdec") or 0.0)
+        if ok and facts.get("pmra") is not None else "",
+        ("%+.2f, %+.2f" % (header["PP_PMRA"], header.get("PP_PMDE", 0.0))
+         + (" \\muted{(%s)}" % tex(header.get("PP_PMRAS"))
+            if header.get("PP_PMRAS") else ""))
+        if isinstance(header.get("PP_PMRA"), (int, float)) else "")
+    rv = facts.get("rvz_radvel") if ok else None
+    rv_apero = header.get("PP_RV_KMS")
+    add("systemic velocity (km/s)",
+        ("%.3f" % rv + (" $\\pm$ %.3f" % facts["rvz_err"]
+                        if facts.get("rvz_err") else ""))
+        if rv is not None else ("not in SIMBAD" if ok else ""),
+        ("%.3f" % rv_apero + (" \\muted{(%s)}" % tex(header.get("PP_RVS"))
+                              if header.get("PP_RVS") not in (None, "None")
+                              else " \\muted{(no source: a placeholder)}"
+                              if rv_apero == 0 else ""))
+        if isinstance(rv_apero, (int, float)) else "")
+    teff_simbad = ""
+    measures = facts.get("teff") or [] if ok else []
+    if measures:
+        latest = measures[0]
+        teff_simbad = "%.0f K" % latest["teff"]
+        if latest.get("log_g") is not None:
+            teff_simbad += ", log g %.2f" % latest["log_g"]
+        if latest.get("fe_h") is not None:
+            teff_simbad += ", [Fe/H] %+.2f" % latest["fe_h"]
+        teff_simbad += " \\muted{(%s)}" % tex(latest["bibcode"])
+        if len(measures) > 1:
+            values = [m["teff"] for m in measures]
+            teff_simbad += ("; %d values, %.0f to %.0f K"
+                            % (len(values), min(values), max(values)))
+    elif header.get("OBJTEMP"):
+        teff_simbad = "%s K \\muted{(OBJTEMP)}" % tex(header["OBJTEMP"])
+    add("Teff, latest", teff_simbad, _pp(header, "PP_TEFF", "%.0f", "K"))
+    mags = (facts.get("mags") or {}) if ok else {}
+    shown = ["%s %.2f" % (band, mags[band]) for band in
+             ("B", "V", "G", "J", "H", "K") if mags.get(band) is not None]
+    add("magnitudes", ", ".join(shown) or (
+        "J %s \\muted{(headers)}" % tex(header["ESO OCS TARG JMAG"])
+        if header.get("ESO OCS TARG JMAG") else "n/a"))
+    add("known planets", ", ".join("%s %.6g d" % (letter, p) for letter, p in
+                                   zip("bcdefgh", planets))
+        or "none given in the configuration")
+    add("read on", tex(facts.get("retrieved", "")) + (
+        " \\watch{(kept from an earlier report: SIMBAD did not answer this"
+        " time)}" if facts.get("stale") else ""),
+        tex(str(header.get("PP_DDATE", ""))[:10]) + (
+            " \\muted{(APERO's database)}" if header.get("PP_DDATE") else ""))
+    body = "\n".join("%s & %s & %s \\\\" % (tex(what), a, b)
+                     for what, a, b in rows)
+    ragged = ">{\\raggedright\\arraybackslash}"
+    columns = "".join(ragged + "p{%s\\linewidth}" % w
+                      for w in ("0.2", "0.43", "0.3"))
+    return ("\\subsection{%s}\n\\begin{longtable}{%s}\n\\toprule\n"
+            " & SIMBAD & APERO (PP\\_ keys) \\\\\n\\midrule\n"
+            "%s\n\\bottomrule\n\\end{longtable}\n"
+            % (tex(star), columns, body))
+
+
+def star_label(facts):
+    """'Smethells 20, M1Ve, 50.7 pc' for the abstract, or ''."""
+    if not facts.get("ok"):
+        return ""
+    parts = [facts["main_id"].replace("NAME ", "")]
+    if facts.get("sp_type"):
+        parts.append(facts["sp_type"])
+    if facts.get("plx_value"):
+        parts.append("%.1f pc" % (1000.0 / facts["plx_value"]))
+    return ", ".join(parts)
+
+
 # ============================================================== sections ===
 def figure_block(path, caption, short=None, label=None, width=r"\linewidth",
                  page=None):
@@ -1213,7 +1426,15 @@ def render(outdir, config=None, lbl_dir=None, out=None, stars=None):
         sections.append(velocity_section(star, before, after, numbers, folder,
                                          stale))
 
-    body = ["\\section{Summary}\n"]
+    facts = {star: star_facts(star, config, folder) for star in stars}
+    body = ["\\section{The star%s}\n" % ("s" if len(stars) > 1 else "")]
+    body.append("As SIMBAD describes %s, found from the names in the"
+                " spectra's headers and the folder's own.\n"
+                % ("them" if len(stars) > 1 else "it"))
+    for star in stars:
+        body.append(star_table(star, facts[star],
+                               planets_of(outdir, config, star, joint)))
+    body.append("\\section{Summary}\n")
     if results:
         body.append("One table per star: the delivered and corrected velocities"
                     " LBL measured, on the exposures both have. The last"
@@ -1257,8 +1478,10 @@ def render(outdir, config=None, lbl_dir=None, out=None, stars=None):
             % (tw.get("n_star", 0), tw.get("n_earth", 0),
                "one observer basis for %s" % ", ".join(stars)
                if len(stars) > 1 else "on %s alone" % stars[0]))
+    named = ["%s (%s)" % (star, star_label(facts[star]))
+             if star_label(facts[star]) else star for star in stars]
     abstract = [tex("Two-frame PCA correction of %s: %s."
-                    % (" and ".join(stars), what))]
+                    % (" and ".join(named), what))]
     abstract.extend(star_headline(star, numbers) for star, numbers, _ in results)
     if not results:
         abstract.append("LBL has not measured this run yet, so the report"

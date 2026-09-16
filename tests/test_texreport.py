@@ -21,6 +21,19 @@ from pca2d import texreport as tr
 HAVE_TEX = tr.find_pdflatex() is not None
 
 
+@pytest.fixture(autouse=True)
+def no_simbad(monkeypatch, tmp_path):
+    """No network in a test: SIMBAD is 'not reached', and nothing is cached
+    where a real report would find it."""
+    from pca2d import simbad
+
+    def offline(*_args, **_kw):
+        raise OSError("no network in the tests")
+
+    monkeypatch.setattr(simbad, "_get", offline)
+    monkeypatch.setattr(simbad, "CACHE", str(tmp_path / "simbad_cache"))
+
+
 # ----------------------------------------------------------------- text ---
 def test_every_character_a_run_name_can_hold_prints():
     assert tr.tex("SMETHELLS_20") == r"SMETHELLS\_20"
