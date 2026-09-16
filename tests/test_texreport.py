@@ -241,7 +241,9 @@ def test_a_run_with_velocities_becomes_a_document(tmp_path):
     # what was observed, from the headers, before the numbers
     assert r"TOI\_756: the observations, from the headers." in tex
     assert r"median SNR (EXTSN060) & 80.0" in tex
-    assert r"dates with $|V_\mathrm{tot}| < 4$ km/s (UT)" in tex
+    assert r"calendar dates with $|V_\mathrm{tot}| < 4$ km/s, every year" in tex
+    assert re.search(r"& \d+ [A-Z][a-z]{2} to \d+ [A-Z][a-z]{2}[^:&]*: \d+ of the"
+                     r" 120 exposures \(\d+\.\d\\%\) fall on these dates", tex)
     assert r"median = " not in tex, "the median is on the figure's axis"
     # the date, and the time the PDF was written under it
     assert re.search(r"\\date\{\d{4}-\d{2}-\d{2}\\\\\n\{\\small written at"
@@ -452,7 +454,7 @@ def test_the_bias_is_fitted_against_the_total_velocity():
     numbers = tr.star_numbers(before, after)
     o = numbers["observations"]
     assert o["systemic"] == pytest.approx(30.0, abs=0.01)
-    assert o["vtot"][0] > 4.0 and o["close"] == [] and o["close_n"] == 0
+    assert o["vtot"][0] > 4.0 and o["windows"] == [] and o["close_n"] == 0
     assert o["first"] <= o["last"] and o["nights"] == numbers["nights"]
     table = tr.observations_table("X", numbers)
     assert "never comes within 4 km/s of zero" in table
@@ -460,13 +462,18 @@ def test_the_bias_is_fitted_against_the_total_velocity():
     assert numbers["before"]["bias_detected"]
 
 
-def test_close_passages_are_the_stretches_near_zero():
-    vtot = np.array([10, 3, -2, 8, 1, 1, 9, 0.5])
-    dates = np.array(["2024-01-%02d" % d for d in (1, 2, 3, 4, 5, 5, 6, 7)])
-    assert tr.close_passages(vtot, dates) == [
-        ("2024-01-02", "2024-01-03", 2, 2),
-        ("2024-01-05", "2024-01-05", 2, 1),
-        ("2024-01-07", "2024-01-07", 1, 1)]
+def test_the_close_dates_are_calendar_windows_every_year_alike():
+    dates = np.array(["2023-06-26", "2023-06-28", "2024-06-17", "2025-07-02",
+                      "2024-12-28", "2025-01-04", "2024-02-29"])
+    windows = tr.calendar_windows(dates)
+    assert [(tr.calendar_day(a), tr.calendar_day(b)) for a, b in windows] == \
+        [("28 Dec", "4 Jan"), ("28 Feb", "28 Feb"), ("17 Jun", "2 Jul")], \
+        "the year left out, a window across the new year kept whole"
+    everything = np.array(["2026-06-20", "2022-01-02", "2024-03-15",
+                           "2023-12-30", "2024-07-03"])
+    assert list(tr.in_windows(everything, windows)) == \
+        [True, True, False, True, False]
+    assert tr.calendar_windows(np.array([], str)) == []
 
 
 def test_the_periodograms_name_the_year_its_harmonics_and_the_month():

@@ -555,24 +555,58 @@ def utc_dates(run):
                            format="jd").isot.astype("U10"))
 
 
-def close_passages(vtot, dates, limit=bervbias.CLOSE_KMS):
-    """The stretches of the campaign with |V_tot| < limit, in time order.
+def day_of_year(dates):
+    """Day of a common year, 1 to 365, of 'YYYY-MM-DD' dates; 29 Feb is 28."""
+    out = []
+    for date in dates:
+        month, day = int(date[5:7]), int(date[8:10])
+        if (month, day) == (2, 29):
+            day = 28
+        out.append(datetime.date(2001, month, day).timetuple().tm_yday)
+    return np.asarray(out, int)
 
-    A stretch is a run of consecutive exposures all inside the limit, so one
-    that is interrupted by an exposure outside it is two. Each is (first
-    date, last date, exposures, dates).
+
+def calendar_windows(dates, gap=15):
+    """The calendar dates, year left out, that `dates` fall on, as windows.
+
+    V_tot follows the BERV, which repeats every year, so the dates a star's
+    lines sit on the tellurics are the same every year. The days of the year
+    are joined into one window unless `gap` days or more separate them, and
+    a window may run across the new year. Each is (first day, last day), as
+    days of a common year.
     """
-    inside = np.abs(np.asarray(vtot, float)) < limit
-    out, start = [], None
-    for i, flag in enumerate(list(inside) + [False]):
-        if flag and start is None:
-            start = i
-        elif not flag and start is not None:
-            span = dates[start:i]
-            out.append((str(span[0]), str(span[-1]), i - start,
-                        int(np.unique(span).size)))
-            start = None
-    return out
+    days = np.unique(day_of_year(dates))
+    if days.size == 0:
+        return []
+    # start after the widest gap around the year, so a window running
+    # through 31 December is one window
+    following = np.roll(days, -1)
+    gaps = (following - days) % 365
+    gaps[gaps == 0] = 365                          # one day only
+    widest = int(np.argmax(gaps))
+    order = np.roll(days, -(widest + 1))
+    windows, first = [], order[0]
+    for previous, day in zip(order[:-1], order[1:]):
+        if (day - previous) % 365 >= gap:
+            windows.append((int(first), int(previous)))
+            first = day
+    windows.append((int(first), int(order[-1])))
+    return windows
+
+
+def in_windows(dates, windows):
+    """Whether each date's day of the year is inside one of the windows."""
+    days = day_of_year(dates)
+    inside = np.zeros(days.size, bool)
+    for first, last in windows:
+        inside |= ((days - first) % 365) <= ((last - first) % 365)
+    return inside
+
+
+def calendar_day(day):
+    """'17 Jun' for a day of a common year."""
+    return (datetime.date(2001, 1, 1)
+            + datetime.timedelta(days=int(day) - 1)).strftime("%-d %b")
 
 
 def observations(before, after, nights):
@@ -592,10 +626,12 @@ def observations(before, after, nights):
     if vtot is not None:
         out["systemic"] = float(np.median(after["v"]) / 1000.0)
         out["vtot"] = (float(np.nanmin(vtot)), float(np.nanmax(vtot)))
-        out["close"] = close_passages(vtot, dates)
-        out["close_n"] = int(np.sum(np.abs(vtot) < bervbias.CLOSE_KMS))
-        out["close_dates"] = int(np.unique(
-            dates[np.abs(vtot) < bervbias.CLOSE_KMS]).size)
+        close = np.abs(vtot) < bervbias.CLOSE_KMS
+        out["close_n"] = int(close.sum())
+        # the calendar dates, every year alike, and every exposure that
+        # falls on them, whatever its own V_tot
+        out["windows"] = calendar_windows(dates[close])
+        out["window_n"] = int(in_windows(dates, out["windows"]).sum())
     return out
 
 
@@ -1540,19 +1576,21 @@ def observations_table(star, numbers):
         rows.append("$V_\\mathrm{tot}$ = vrad $-$ BERV (km/s) & %s to %s"
                     " \\\\" % (signed(o["vtot"][0]), signed(o["vtot"][1])))
         limit = "%g" % bervbias.CLOSE_KMS
-        if o["close"]:
-            stretches = ["%s%s%s" % (first, "" if first == last
-                                     else " to " + last,
-                                     "" if dates == 1
-                                     else " (%d dates)" % dates)
-                         for first, last, _n, dates in o["close"]]
-            said = ("%d exposures on %d dates: %s"
-                    % (o["close_n"], o["close_dates"], "; ".join(stretches)))
+        if o["windows"]:
+            spans = ["%s%s" % (calendar_day(first), "" if first == last
+                               else " to " + calendar_day(last))
+                     for first, last in o["windows"]]
+            said = ("%s: %d of the %d exposures (%.1f\\%%) fall on these"
+                    " dates, %d of them within %s km/s"
+                    % ("; ".join(spans), o["window_n"], o["n"],
+                       100.0 * o["window_n"] / max(o["n"], 1), o["close_n"],
+                       limit))
         else:
             said = ("none: $V_\\mathrm{tot}$ never comes within %s km/s of"
                     " zero" % limit)
-        rows.append("dates with $|V_\\mathrm{tot}| < %s$ km/s (UT), the star's"
-                    " lines on the tellurics & %s \\\\" % (limit, said))
+        rows.append("calendar dates with $|V_\\mathrm{tot}| < %s$ km/s, every"
+                    " year (UT), the star's lines on the tellurics & %s \\\\"
+                    % (limit, said))
     return ("\\begin{longtable}{p{0.36\\linewidth}p{0.58\\linewidth}}\n"
             "\\caption{%s: the observations, from the headers.}\\\\\n"
             "\\toprule\n\\endhead\n%s\n\\bottomrule\n\\end{longtable}\n"
