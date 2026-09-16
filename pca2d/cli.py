@@ -828,7 +828,7 @@ def say_lbl_tree(plan, dry_run=False):
         log("the spectra go into it as %ss" % mode, "info")
 
 
-def warn_if_run_exists(plan):
+def warn_if_run_exists(plan, wanted=STAGES):
     """Say so when this run's folder already holds a fit.
 
     Not a refusal: re-running is how a fit is redone with a changed setting,
@@ -838,6 +838,10 @@ def warn_if_run_exists(plan):
     """
     fit = os.path.join(plan["outdir"], "fit.npz")
     if not os.path.exists(fit):
+        return False
+    # only the stages that write over it: resuming LBL on a finished fit is
+    # what the stages are skippable for, and "overwrites it" would be untrue
+    if not {"fit", "correct"} & set(wanted):
         return False
     import datetime as _dt
     when = _dt.datetime.fromtimestamp(os.path.getmtime(fit))
@@ -1118,8 +1122,36 @@ def run_lbl(plan):
     log("or set lbl.run: true in the config, or pass --run-lbl", "info")
 
 
+def say_if_code_moved(snapshot, stage_name, said):
+    """Once per run: the package's code changed on disk since the run began.
+
+    What the run does itself is safe from that (provenance.freeze loaded it all
+    at the start). What it starts as another process is not: the figures are
+    scripts and LBL is a script, and a new process reads the files as they are.
+    """
+    from . import provenance as _provenance
+
+    if said:
+        return
+    moved = _provenance.drift(snapshot)
+    if not moved:
+        return
+    said.append(stage_name)
+    log("the code of this package changed on disk while this run was going"
+        " (%s%s). Everything this run does itself keeps the version it started"
+        " with; the figure scripts and LBL are processes of their own, and from"
+        " %s on they run the new one"
+        % (", ".join(moved[:4]), ", ..." if len(moved) > 4 else "", stage_name),
+        "warn")
+
+
 def main(argv=None):
     args = parse_args(argv)
+    # One version of the code for the whole run: every module now, not each
+    # when its stage starts, hours later and perhaps after an edit
+    from . import provenance as _provenance
+    snapshot = _provenance.freeze()
+    moved_said = []
     wanted = [s.strip() for s in args.stages.split(",") if s.strip()]
     unknown = [s for s in wanted if s not in STAGES]
     if unknown:
@@ -1141,7 +1173,7 @@ def main(argv=None):
     else:
         plan = resolve(args)
     announce(args, plan)
-    warn_if_run_exists(plan)
+    warn_if_run_exists(plan, wanted)
     from . import storage as _storage
     where = _storage.check(plan["config"], dry_run=args.dry_run)
     if where:
@@ -1213,6 +1245,7 @@ def main(argv=None):
         if name not in wanted:
             log("stage %s: skipped" % name, "warn")
             continue
+        say_if_code_moved(snapshot, "stage " + name, moved_said)
         # between two stages a cache can be emptied, and the second of them
         # would open a cube that was there when the first one ended
         if name in NEEDS_CUBE:

@@ -45,3 +45,65 @@ def stamp(version=None):
     if not v["commit"]:
         return "unknown"
     return v["commit"][:12] + ("+" if v["dirty"] else "")
+
+
+#: modules a run never needs: the command itself, which is already running, and
+#: the window, which would bring tkinter into a run that has no screen
+NOT_A_STAGE = ("pca2d.cli", "pca2d.gui", "pca2d.__main__")
+
+
+def freeze(package="pca2d", skip=NOT_A_STAGE):
+    """Load every module of the package NOW. Returns the source fingerprint.
+
+    A stage imports what it needs when it starts, and a run lasts hours. On
+    2026-09-16 the code was edited while a joint run was fitting: config.py had
+    been loaded at 10:06, lbl.py was loaded for the first time at 10:52, and
+    the new lbl.py asked the old config.py for a function it did not have. The
+    run died at the LBL stage with a traceback whose lines did not match its
+    line numbers, since Python prints the file as it is on disk NOW.
+
+    Loaded together at the start, the run is one version of the code from its
+    first line to its last, whatever happens on disk meanwhile. About a second
+    for the package's forty modules. A module that fails to load here is left
+    to fail where it is used, as it did before.
+    """
+    import importlib
+
+    # the files, not pkgutil: figures/ has no __init__.py, so pkgutil never
+    # walks into it, and figures.bundle is exactly what a later stage imports
+    for path in sorted(fingerprint()):
+        parts = path[:-len(".py")].split(os.sep)
+        if parts[-1] == "__init__":
+            parts = parts[:-1]
+        name = ".".join([package] + parts)
+        if name in skip or name == package:
+            continue
+        try:
+            importlib.import_module(name)
+        except Exception:                                       # noqa: BLE001
+            pass
+    return fingerprint()
+
+
+def fingerprint(root=HERE):
+    """{path under `root`: (size, mtime)} of every Python source in it."""
+    out = {}
+    for base, dirs, names in os.walk(root):
+        dirs[:] = [d for d in dirs if d != "__pycache__"]
+        for name in names:
+            if not name.endswith(".py"):
+                continue
+            full = os.path.join(base, name)
+            try:
+                stat = os.stat(full)
+            except OSError:
+                continue
+            out[os.path.relpath(full, root)] = (stat.st_size, stat.st_mtime_ns)
+    return out
+
+
+def drift(snapshot, root=HERE):
+    """The sources that changed, appeared or went since `snapshot`, sorted."""
+    now = fingerprint(root)
+    return sorted(path for path in set(snapshot) | set(now)
+                  if snapshot.get(path) != now.get(path))
