@@ -66,12 +66,8 @@ def test_two_periods_are_one_peak_within_a_resolution_element():
     assert not tr.same_period(None, 5.0, 900.0)
 
 
-def test_a_slope_against_berv_is_found_and_outliers_do_not_scale_d2v():
+def test_outliers_do_not_scale_d2v():
     r = np.random.default_rng(3)
-    berv = np.linspace(-20, 20, 200)
-    y = 0.5 * berv + r.normal(0, 1, berv.size)
-    slope, err, _ = tr.weighted_line(berv, y, np.ones_like(y))
-    assert slope == pytest.approx(0.5, abs=5 * err)
     x = r.normal(0, 1, 500)
     x[:5] = 1e6
     assert tr.inliers(x).sum() == 495
@@ -85,7 +81,9 @@ def series(t, v, e, berv=None, d2v=None, label="x"):
     return run
 
 
-def test_the_numbers_of_a_correction_that_removed_a_berv_trend():
+def test_the_numbers_of_a_correction_that_removed_a_berv_bias():
+    from pca2d import bervbias
+
     r = np.random.default_rng(5)
     t = np.sort(60000 + r.uniform(0, 600, 240))
     berv = 25 * np.sin(2 * np.pi * (t - 60000) / 365.25)
@@ -93,17 +91,23 @@ def test_the_numbers_of_a_correction_that_removed_a_berv_trend():
     noise = r.normal(0, 2, t.size)
     e = np.full(t.size, 2.0)
     d2v = r.normal(0, 3e4, t.size)
-    before = series(t, planet + noise + 0.4 * berv, e, berv, d2v, "delivered")
+    bias = bervbias.shape(berv, -3.0, 6.0)
+    before = series(t, planet + noise + bias, e, berv, d2v, "delivered")
     after = series(t, planet + noise, e, berv, d2v, "corrected")
     numbers = tr.star_numbers(before, after, planets=[7.3])
     b, a = numbers["before"], numbers["after"]
     assert b["rms"] > a["rms"] and np.isfinite(numbers["removed"])
-    assert abs(b["berv_r"]) > 0.5 > abs(a["berv_r"])
+    assert b["bias_detected"] and not a["bias_detected"]
+    assert b["bias_width"] == pytest.approx(6.0, abs=1.5)
+    assert "berv_r" not in b and "berv_slope" not in b, \
+        "no straight line against BERV: it has no meaning here"
     assert a["planets"][0][0] == pytest.approx(5.0, abs=1.0), \
         "the planet is still there afterwards"
     better, worse, moved = tr.verdict_lines(numbers)
-    assert "rms" in better and "the correlation with BERV" in better
+    assert "rms" in better and "the fitted BERV bias" in better
     assert not moved, "d2v and the planet were left alone"
+    table = tr.summary_table("X", numbers)
+    assert "BERV bias at its peak" in table and "slope" not in table
 
 
 # ------------------------------------------------------ whose planets ---
@@ -216,9 +220,9 @@ def test_a_run_with_velocities_becomes_a_document(tmp_path):
         assert said in tex, said
     # every figure has a short name for the list, not its whole caption
     assert tex.count(r"\begin{figure}") == tex.count(r"\caption[")
-    assert r"\caption[TOI\_756: the velocities against BERV]" in tex
+    assert r"\caption[TOI\_756: the BERV bias, fitted]" in tex
     assert "<<" not in tex, "every placeholder of the template is filled"
-    for kind in ("time", "berv", "d2v", "change", "periods"):
+    for kind in ("time", "berv", "corner", "d2v", "change", "periods"):
         assert (run / "report" / "figures" / ("rv-toi-756-%s.pdf" % kind)).exists()
     assert "older than this run" not in tex
 

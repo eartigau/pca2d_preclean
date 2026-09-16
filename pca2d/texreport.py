@@ -49,6 +49,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import yaml
 
+from . import bervbias
 from .lblscan import AFTER, BEFORE, amplitude_at, nightly, rdb_rows, velocity_stats
 from .logger import log
 
@@ -349,24 +350,6 @@ def pearson(x, y):
     return float(np.corrcoef(x[ok], y[ok])[0, 1])
 
 
-def weighted_line(x, y, e):
-    """(slope, its error, intercept) of y against x, weighted by 1/e^2.
-
-    The error is scaled up by the reduced chi2 when that is above one: LBL's
-    error bars are known to be optimistic against the scatter of a night.
-    """
-    x, y, e = (np.asarray(a, float) for a in (x, y, e))
-    ok = np.isfinite(x) & np.isfinite(y) & np.isfinite(e) & (e > 0)
-    if ok.sum() < 4 or np.ptp(x[ok]) == 0:
-        return np.nan, np.nan, np.nan
-    w = 1.0 / e[ok] ** 2
-    A = np.column_stack([np.ones(ok.sum()), x[ok]])
-    cov = np.linalg.inv(A.T @ (A * w[:, None]))
-    p = cov @ ((A * w[:, None]).T @ y[ok])
-    chi2r = float(np.sum(w * (y[ok] - A @ p) ** 2) / max(ok.sum() - 2, 1))
-    return float(p[1]), float(np.sqrt(cov[1, 1] * max(chi2r, 1.0))), float(p[0])
-
-
 def binned(x, y, width=2.0, least=3):
     """(centres, medians, errors of the medians) of y in bins of x."""
     x, y = np.asarray(x, float), np.asarray(y, float)
@@ -408,7 +391,24 @@ def periodogram(t, y, e, pmin=1.1, samples=6000):
     return 1.0 / freq, power, float(1.0 / freq[best]), float(power[best]), fap
 
 
-def star_numbers(before, after, planets=()):
+def bias_row(fitted):
+    """The table's view of one BERV-bias fit."""
+    if fitted is None:
+        return {}
+    peak, lo, hi = fitted["peak"]
+    return {"bias": fitted, "bias_peak": float(peak),
+            "bias_err": float(0.5 * (hi - lo)),
+            "bias_significance": fitted["significance"],
+            "bias_detected": fitted["detected"],
+            "bias_upper": fitted["upper"],
+            "bias_width": float(fitted["sigma"][0]),
+            "bias_width_err": float(0.5 * (fitted["sigma"][2]
+                                           - fitted["sigma"][1])),
+            "bias_amp_sigma_r": fitted["amp_sigma_r"],
+            "jitter": float(fitted["jitter"][0])}
+
+
+def star_numbers(before, after, planets=(), seed=0):
     """Everything the summary table says about one star, both ways."""
     out = {"n": int(before["t"].size),
            "nights": int(velocity_stats(after["t"], after["v"],
@@ -419,13 +419,13 @@ def star_numbers(before, after, planets=()):
                "nightly_rms": s["nightly_rms"],
                "median_error": s["median_error"]}
         if run.get("berv") is not None:
-            slope, err, _ = weighted_line(run["berv"], run["v"], run["e"])
             _, medians, _ = binned(run["berv"],
                                    run["v"] - np.median(run["v"]))
-            row.update(berv_r=pearson(run["berv"], run["v"]),
-                       berv_slope=slope, berv_slope_err=err,
-                       berv_binned=float(np.std(medians))
+            row.update(berv_binned=float(np.std(medians))
                        if medians.size >= 3 else np.nan)
+            # the bias's own shape, by MCMC; a straight line has no meaning
+            row.update(bias_row(bervbias.fit(run["berv"], run["v"], run["e"],
+                                             seed=seed)))
         if run.get("d2v") is not None:
             good = inliers(run["d2v"])
             row.update(d2v_sigma=robust_sigma(run["d2v"]),
@@ -546,38 +546,142 @@ def figure_time(before, after, path):
     return _save(fig, path)
 
 
+def _bias_band(ax, fitted, grid, colour, label=None, offset=0.0):
+    """The fitted bias: the band its 16th-84th percentiles span over `grid`,
+    and its median when the bias is detected.
+
+    Not the median of one that is not: the median of curves of every width
+    the prior allows is a spike nobody fitted, and it reads as a feature.
+    """
+    lo, mid, hi = bervbias.envelope(fitted, grid)
+    ax.fill_between(grid, lo + offset, hi + offset, color=colour,
+                    alpha=0.22 if fitted["detected"] else 0.14, lw=0,
+                    zorder=3, label=None if fitted["detected"] else label)
+    if fitted["detected"]:
+        ax.plot(grid, mid + offset, color=colour, lw=1.6, zorder=4,
+                label=label)
+
+
 def figure_berv(before, after, path):
-    if before.get("berv") is None or after.get("berv") is None:
+    """The velocities against BERV with the fitted bias and its 1 sigma
+    envelope, each series on its own, then both envelopes on one axis."""
+    fb = (before.get("fits") or {})
+    if before.get("berv") is None or after.get("berv") is None \
+            or fb.get("before") is None or fb.get("after") is None:
         return None
-    fig, axes = plt.subplots(1, 2, figsize=(WIDTH, 3.4), sharex=True,
-                             sharey=True)
-    lim = _limits(before["v"] - np.median(before["v"]),
-                  after["v"] - np.median(after["v"]))
-    for ax, run, colour in zip(axes, (before, after), (BEFORE, AFTER)):
-        y = run["v"] - np.median(run["v"])
-        _points(ax, run["berv"], y, run["e"], colour, "exposures", alpha=0.45)
+    fits = {"before": fb["before"], "after": fb["after"]}
+    fig = plt.figure(figsize=(WIDTH, 6.4))
+    grid_spec = fig.add_gridspec(2, 2, height_ratios=[1.0, 0.9])
+    top = [fig.add_subplot(grid_spec[0, 0])]
+    top.append(fig.add_subplot(grid_spec[0, 1], sharex=top[0], sharey=top[0]))
+    both = fig.add_subplot(grid_spec[1, :], sharex=top[0])
+    span = np.concatenate([before["berv"], after["berv"]])
+    grid = np.linspace(np.nanmin(span), np.nanmax(span), 300)
+    residuals = []
+    for ax, run, key, colour in zip(top, (before, after), ("before", "after"),
+                                    (BEFORE, AFTER)):
+        fitted = fits[key]
+        y = run["v"] - fitted["c"][0]
+        residuals.append(y)
+        _points(ax, run["berv"], y, run["e"], colour, "exposures", alpha=0.4)
         centres, medians, errors = binned(run["berv"], y)
         if centres.size:
             ax.errorbar(centres, medians, yerr=errors, fmt="s", ls="none",
-                        ms=5, mfc="white", mec=INK, mew=0.9, ecolor=INK,
-                        elinewidth=0.8, capsize=0, zorder=4,
+                        ms=4.5, mfc="white", mec=INK, mew=0.8, ecolor=INK,
+                        elinewidth=0.7, capsize=0, zorder=5,
                         label="2 km/s bins, median")
-        slope, err, intercept = weighted_line(run["berv"], y, run["e"])
-        if np.isfinite(slope):
-            xs = np.array([np.nanmin(run["berv"]), np.nanmax(run["berv"])])
-            ax.plot(xs, intercept + slope * xs, color=INK, lw=1.0, zorder=5,
-                    label="weighted line")
-        ax.set_title("%s\nslope %.2f $\\pm$ %.2f (m/s)/(km/s), r = %.2f"
-                     % (run["label"], slope, err,
-                        pearson(run["berv"], run["v"])),
-                     fontsize=7.5, color=INK, loc="left")
+        _bias_band(ax, fitted, grid, INK, label="fitted bias, 1$\\sigma$")
+        ax.set_title("%s\n%s" % (run["label"], bervbias.summary(fitted)),
+                     fontsize=7, color=INK, loc="left")
         ax.axhline(0, color=MUTED, lw=0.6)
         ax.set_xlabel("BERV (km/s)", fontsize=8, color=INK)
-        ax.set_ylim(*lim)
         _style(ax)
-    axes[0].set_ylabel("velocity - median (m/s)", fontsize=8, color=INK)
-    axes[0].legend(fontsize=6.5, frameon=False, loc="upper left")
+    lim = _limits(*residuals)
+    top[0].set_ylim(*lim)
+    top[0].set_ylabel("velocity - fitted offset (m/s)", fontsize=8, color=INK)
+    top[0].legend(fontsize=6, frameon=False, loc="upper left")
+    for run, key, colour in ((before, "before", BEFORE),
+                             (after, "after", AFTER)):
+        fitted = fits[key]
+        centres, medians, errors = binned(run["berv"],
+                                          run["v"] - fitted["c"][0])
+        if centres.size:
+            both.errorbar(centres, medians, yerr=errors, fmt="s", ls="none",
+                          ms=4.5, mfc="white", mec=colour, mew=0.9,
+                          ecolor=colour, elinewidth=0.7, capsize=0, zorder=5)
+        _bias_band(both, fitted, grid, colour,
+                   label="%s: %s" % (run["label"], bervbias.summary(fitted)))
+    both.axhline(0, color=MUTED, lw=0.6)
+    both.set_xlabel("BERV (km/s)", fontsize=8, color=INK)
+    both.set_ylabel("fitted bias (m/s)", fontsize=8, color=INK)
+    both.set_title("both fits, 1$\\sigma$ envelopes, over the binned medians",
+                   fontsize=7.5, color=INK, loc="left")
+    both.legend(fontsize=6.5, frameon=False, loc="lower left",
+                bbox_to_anchor=(0.0, 1.06), ncol=1, borderaxespad=0.0)
+    _style(both)
     fig.tight_layout()
+    return _save(fig, path)
+
+
+def _corner(fig, cell, fitted, colour, title):
+    """amp against sigma for one fit: the joint posterior and both
+    marginals, with 1 and 2 sigma contours."""
+    inner = cell.subgridspec(2, 2, width_ratios=[1.0, 0.35],
+                             height_ratios=[0.35, 1.0], wspace=0.05,
+                             hspace=0.05)
+    joint = fig.add_subplot(inner[1, 0])
+    top = fig.add_subplot(inner[0, 0], sharex=joint)
+    side = fig.add_subplot(inner[1, 1], sharey=joint)
+    amp = fitted["samples"][:, 0]
+    lsig = np.log10(fitted["samples"][:, 1])
+    alo, ahi = np.percentile(amp, [0.5, 99.5])
+    pad = 0.05 * (ahi - alo) if ahi > alo else 1.0
+    arange = (alo - pad, ahi + pad)
+    srange = (np.log10(bervbias.SIGMA_MIN), np.log10(bervbias.SIGMA_MAX))
+    counts, xe, ye = np.histogram2d(lsig, amp, bins=45, range=[srange, arange])
+    ordered = np.sort(counts.ravel())[::-1]
+    cumulative = np.cumsum(ordered) / ordered.sum()
+    # the densities enclosing 39% and 86% of the mass: 1 and 2 sigma in 2D
+    levels = sorted({float(ordered[np.searchsorted(cumulative, q)])
+                     for q in (0.865, 0.393)})
+    joint.imshow(counts.T, origin="lower", aspect="auto", cmap="Greys",
+                 extent=[xe[0], xe[-1], ye[0], ye[-1]], alpha=0.55)
+    if len(levels) >= 1 and levels[-1] > 0:
+        joint.contour(0.5 * (xe[1:] + xe[:-1]), 0.5 * (ye[1:] + ye[:-1]),
+                      counts.T, levels=levels, colors=[colour],
+                      linewidths=[0.9, 1.4][:len(levels)])
+    joint.axhline(0, color=MUTED, lw=0.6)
+    joint.set_xlabel("sigma (km/s)", fontsize=7.5, color=INK)
+    joint.set_ylabel("amp ((m/s)/(km/s))", fontsize=7.5, color=INK)
+    ticks = [t for t in (1, 2, 5, 10, 20, 50)
+             if srange[0] <= np.log10(t) <= srange[1]]
+    joint.set_xticks(np.log10(ticks))
+    joint.set_xticklabels(["%g" % t for t in ticks])
+    joint.set_xlim(*srange)
+    joint.set_ylim(*arange)
+    top.hist(lsig, bins=45, range=srange, color=colour, alpha=0.7)
+    side.hist(amp, bins=45, range=arange, color=colour, alpha=0.7,
+              orientation="horizontal")
+    for ax in (top, side):
+        ax.set_yticks([]) if ax is top else ax.set_xticks([])
+        plt.setp(ax.get_xticklabels() if ax is top else ax.get_yticklabels(),
+                 visible=False)
+    top.set_title("%s\ncorrelation of amp and ln sigma: %.2f"
+                  % (title, fitted["amp_sigma_r"]),
+                  fontsize=7, color=INK, loc="left")
+    for ax in (joint, top, side):
+        _style(ax)
+
+
+def figure_corner(before, after, path):
+    fb = (before.get("fits") or {})
+    if fb.get("before") is None or fb.get("after") is None:
+        return None
+    fig = plt.figure(figsize=(WIDTH, 3.6))
+    cells = fig.add_gridspec(1, 2, wspace=0.35)
+    _corner(fig, cells[0], fb["before"], BEFORE, before["label"])
+    _corner(fig, cells[1], fb["after"], AFTER, after["label"])
+    fig.subplots_adjust(left=0.1, right=0.98, bottom=0.14, top=0.84)
     return _save(fig, path)
 
 
@@ -651,8 +755,8 @@ def figure_change(before, after, path):
                         ms=5, mfc="white", mec=INK, mew=0.9, ecolor=INK,
                         elinewidth=0.8, capsize=0, zorder=4)
         ax.set_xlabel("BERV (km/s)", fontsize=8, color=INK)
-        ax.set_title("against BERV: r = %.2f" % pearson(before["berv"], change),
-                     fontsize=8, color=INK, loc="left")
+        ax.set_title("against BERV, 2 km/s bins", fontsize=8, color=INK,
+                     loc="left")
         ax.axhline(0, color=MUTED, lw=0.6)
         _style(ax)
     fig.tight_layout()
@@ -1045,11 +1149,24 @@ def summary_table(star, numbers):
     row("robust sigma (m/s)", "robust")
     row("nightly rms (m/s)", "nightly_rms")
     row("median error (m/s)", "median_error")
-    if "berv_r" in b:
-        row("velocity-BERV correlation r", "berv_r", digits=3, better="zero",
-            tolerance=0.05)
-        row("velocity-BERV slope (m/s per km/s)", "berv_slope", digits=3,
-            better="zero", tolerance=0.02)
+    if "bias_peak" in b:
+        def said(side):
+            if side["bias_detected"]:
+                return "%.1f $\\pm$ %.1f (%.1f$\\sigma$)" % (
+                    side["bias_peak"], side["bias_err"],
+                    side["bias_significance"])
+            return "$<$ %.1f" % side["bias_upper"]
+        rows.append("BERV bias at its peak (m/s) & %s & %s & & %s \\\\"
+                    % (said(b), said(a), mark(bias_verdict(b, a))))
+        rows.append("its width sigma (km/s) & %s & %s & & \\\\" % tuple(
+            ("%.1f $\\pm$ %.1f" % (side["bias_width"], side["bias_width_err"])
+             if side["bias_detected"] else "\\muted{unconstrained}")
+            for side in (b, a)))
+        rows.append("amp-sigma correlation (posterior) & %s & %s & & \\\\"
+                    % (number(b["bias_amp_sigma_r"]),
+                       number(a["bias_amp_sigma_r"])))
+        row("jitter beyond LBL's errors (m/s)", "jitter")
+    if "berv_binned" in b:
         row("scatter of BERV-binned medians (m/s)", "berv_binned")
     if "d2v_sigma" in b:
         vb, va = b["d2v_sigma"] / 1e3, a["d2v_sigma"] / 1e3
@@ -1085,6 +1202,34 @@ def summary_table(star, numbers):
             % (tex(star), numbers["n"], numbers["nights"], "\n".join(rows)))
 
 
+def bias_verdict(b, a):
+    """gain, loss or same for the fitted BERV bias.
+
+    Measured against the errors, not a fixed tolerance: a bias that was
+    detected and is gone is a gain, one that appeared is a loss, and two
+    detections are compared by their difference in units of its error.
+    """
+    if not ("bias_detected" in b and "bias_detected" in a):
+        return "same"
+    if b["bias_detected"] and not a["bias_detected"]:
+        return "gain"
+    if a["bias_detected"] and not b["bias_detected"]:
+        return "loss"
+    if not b["bias_detected"]:
+        return "same"
+    change = abs(b["bias_peak"]) - abs(a["bias_peak"])
+    error = np.hypot(b["bias_err"], a["bias_err"])
+    return "gain" if change > error else "loss" if -change > error else "same"
+
+
+def bias_words(side):
+    if side.get("bias_detected"):
+        return "%.0f $\\pm$ %.0f m/s" % (side["bias_peak"], side["bias_err"])
+    if "bias_upper" in side:
+        return "none detected ($<$ %.0f m/s)" % side["bias_upper"]
+    return "not fitted"
+
+
 def verdict_lines(numbers):
     """(better, worse, moved) as lists of what, for the summary's bullets."""
     b, a = numbers["before"], numbers["after"]
@@ -1093,7 +1238,8 @@ def verdict_lines(numbers):
                            ("robust", "robust sigma", "lower"),
                            ("nightly_rms", "nightly rms", "lower"),
                            ("median_error", "LBL's error bars", "lower"),
-                           ("berv_r", "the correlation with BERV", "zero"),
+                           ("jitter", "the jitter beyond LBL's errors",
+                            "lower"),
                            ("berv_binned", "the structure against BERV",
                             "lower")):
         if key not in b:
@@ -1101,6 +1247,9 @@ def verdict_lines(numbers):
         word = verdict(b[key], a[key], how, 0.05 if how == "zero" else 0.02)
         (better if word == "gain" else worse if word == "loss"
          else []).append(what)
+    word = bias_verdict(b, a)
+    (better if word == "gain" else worse if word == "loss"
+     else []).append("the fitted BERV bias")
     if "d2v_sigma" in b and verdict(b["d2v_sigma"], a["d2v_sigma"],
                                     tolerance=0.1) != "same":
         moved.append("d2v's scatter (%.0f to %.0f, in $10^3$ m$^2$/s$^2$)"
@@ -1134,9 +1283,8 @@ def star_headline(star, numbers):
                 ("%.2f times lower" % ratio) if ratio >= 1
                 else ("%.2f times higher" % (1 / ratio)),
                 b["nightly_rms"], a["nightly_rms"]))
-    if "berv_r" in b:
-        words += ", correlation with BERV r = %.2f to %.2f" % (b["berv_r"],
-                                                               a["berv_r"])
+    if "bias_peak" in b:
+        words += ", BERV bias %s to %s" % (bias_words(b), bias_words(a))
     words += "."
     _better, _worse, moved = verdict_lines(numbers)
     if moved:
@@ -1153,9 +1301,9 @@ def star_sentence(star, numbers):
                 ("%.2f times lower" % ratio) if ratio >= 1
                 else ("%.2f times higher" % (1 / ratio)),
                 b["nightly_rms"], a["nightly_rms"]))
-    if "berv_r" in b:
-        words += (" The correlation of the velocity with BERV goes from"
-                  " r = %.2f to r = %.2f." % (b["berv_r"], a["berv_r"]))
+    if "bias_peak" in b:
+        words += (" The bias that follows BERV, fitted, goes from %s to %s."
+                  % (bias_words(b), bias_words(a)))
     for letter, period, kb, ka in zip("bcdefgh", numbers["planet_periods"],
                                       b["planets"], a["planets"]):
         words += (" At the %.4g d period of planet %s, K goes from %.2f to"
@@ -1184,11 +1332,25 @@ def velocity_section(star, before, after, numbers, folder, stale):
             " means" if numbers["nights"] < 0.8 * numbers["n"]
             else "One point per exposure, about one a night")),
         (figure_berv(before, after, os.path.join(figures, base + "-berv.pdf")),
-         "%s: the velocities against BERV" % name,
-         "The same velocities against the barycentric velocity. What the"
-         " observer frame leaves in the velocities follows BERV, so a slope or"
-         " a structure in the binned medians is telluric or instrumental, and"
-         " the correction should remove it."),
+         "%s: the BERV bias, fitted" % name,
+         "The velocities against the barycentric velocity, with the bias a"
+         " telluric line blended with the stellar lines produces, fitted by"
+         " MCMC: $v = c + a\\,B\\,e^{-B^2/2\\sigma^2}$, with a jitter added"
+         " to LBL's error bars. The line is the posterior median, the band its"
+         " 1$\\sigma$ envelope (the band alone for a bias that is not"
+         " detected); squares are medians in 2 km/s bins. Above,"
+         " each series less its fitted offset; below, both envelopes on one"
+         " axis. The peak is the bias at $B = \\pm\\sigma$,"
+         " $a\\sigma e^{-1/2}$; below 3$\\sigma$ from zero, only an upper"
+         " limit on it is quoted."),
+        (figure_corner(before, after, os.path.join(figures, base + "-corner.pdf")),
+         "%s: the covariance of amp and sigma" % name,
+         "The joint posterior of the bias's amplitude $a$ and width"
+         " $\\sigma$, delivered and corrected, with its 1 and 2$\\sigma$"
+         " contours and both marginals. The two trade against each other,"
+         " since a narrower bias needs a larger amplitude to reach the same"
+         " points; a posterior filling the width's prior is a bias that is"
+         " not there."),
         (figure_d2v(before, after, os.path.join(figures, base + "-d2v.pdf")),
          "%s: d2v, the activity indicator" % name,
          "d2v, LBL's second-derivative term, which follows the line width and"
@@ -1419,7 +1581,11 @@ def render(outdir, config=None, lbl_dir=None, out=None, stars=None):
             missing.append((star, "fewer than four exposures in common"))
             continue
         planets = planets_of(outdir, config, star, joint)
-        numbers = star_numbers(before, after, planets)
+        import zlib
+        numbers = star_numbers(before, after, planets,
+                               seed=zlib.crc32(star.encode()) & 0xffffffff)
+        before["fits"] = {"before": numbers["before"].get("bias"),
+                          "after": numbers["after"].get("bias")}
         newest = newest_input(outdir, star, joint)
         stale = newest is not None and after["mtime"] < newest
         results.append((star, numbers, stale))
