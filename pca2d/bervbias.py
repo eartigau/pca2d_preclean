@@ -26,13 +26,15 @@ on SMETHELLS_20. The sampler is Goodman and Weare's affine-invariant stretch
 move, emcee's algorithm, in a few lines of numpy: emcee is not in the
 pipeline's environment, and four parameters do not need it.
 
-    amp       modified Jeffreys, p(amp) ~ 1 / (|amp| + a0), (m/s)/(km/s),
-              within +-1e4 (asked for on 2026-09-16). Scale-invariant above
-              the knee a0, flat below it, and signed, since a bias pulls
-              either way; 1/|amp| itself has no normalisation at zero.
-              The knee is the noise level (Gregory 2005, ApJ 631, 1198, for
-              RV amplitudes): the amp whose peak, at the prior's median
-              width sqrt(1 * 60) km/s, is the median error over sqrt(N)
+    amp       uniform within +-1e4 (m/s)/(km/s), signed, since a bias pulls
+              either way. A flat prior, asked for on 2026-09-16 in place of
+              the modified Jeffreys 1/(|amp| + a0) it had until then: the
+              Jeffreys one favours small amplitudes, and so the narrow widths
+              whose bias would need a large one. On SMETHELLS_20 the delivered
+              bias barely moves (-68.7 to -70.9 m/s, 7.0 to 7.2 sigma) and the
+              corrected upper limit rises from 24.9 to 33.6 m/s (32.3 to 33.6
+              over three seeds, 33.0 on a chain of 12 000 steps): what the
+              data say, without the prior's pull toward zero
     sigma     log-uniform over 1 to 60 km/s. Below 1 km/s is narrower than
               any blend of two lines can be at a resolution of 70 000 to
               80 000 (a 4 km/s FWHM): allowed, the few points within +-sigma
@@ -69,14 +71,13 @@ def peak(amp, sigma):
     return amp * sigma * np.exp(-0.5)
 
 
-def amp_knee(e, n):
-    """The modified Jeffreys prior's knee, from the data's own noise."""
-    width = np.sqrt(SIGMA_MIN * SIGMA_MAX)
-    return float(np.median(e) / np.sqrt(max(n, 1)) / (width * np.exp(-0.5)))
+def log_probability(theta, berv, v, e):
+    """ln posterior of (amp, ln sigma, c, ln jitter), one row per walker.
 
-
-def log_probability(theta, berv, v, e, knee=None):
-    """ln posterior of (amp, ln sigma, c, ln jitter), one row per walker."""
+    The priors are all flat in these variables, so within their bounds the
+    posterior is the likelihood: flat in amp and c, log-uniform in sigma and
+    the jitter.
+    """
     theta = np.atleast_2d(theta)
     amp, lsig, c, ljit = theta.T
     inside = ((np.abs(amp) < AMP_MAX)
@@ -91,9 +92,6 @@ def log_probability(theta, berv, v, e, knee=None):
     var = e[None, :] ** 2 + np.exp(2 * ljit[inside])[:, None]
     out[inside] = -0.5 * np.sum((v[None, :] - model) ** 2 / var + np.log(var),
                                 axis=1)
-    if knee is None:
-        knee = amp_knee(e, e.size)
-    out[inside] -= np.log(np.abs(amp[inside]) + knee)
     return out
 
 
@@ -160,7 +158,6 @@ def fit(berv, v, e, walkers=32, steps=2500, burn=1000, seed=0):
         return None
     berv, v, e = berv[ok], v[ok], e[ok]
     rng = np.random.default_rng(seed)
-    knee = amp_knee(e, e.size)
     centre = starting_point(berv, v, e)
     scale = np.array([max(abs(centre[0]) * 0.1, 1e-2), 0.1,
                       max(np.std(v) * 0.01, 1e-2), 0.1])
@@ -174,13 +171,12 @@ def fit(berv, v, e, walkers=32, steps=2500, burn=1000, seed=0):
     start[:, 1] = np.clip(start[:, 1], np.log(SIGMA_MIN) + 1e-3,
                           np.log(SIGMA_MAX) - 1e-3)
     chain, acceptance = stretch(
-        lambda theta: log_probability(theta, berv, v, e, knee), start,
+        lambda theta: log_probability(theta, berv, v, e), start,
         steps, rng)
     flat = chain[burn:].reshape(-1, 4)
     samples = np.column_stack([flat[:, 0], np.exp(flat[:, 1]), flat[:, 2],
                                np.exp(flat[:, 3])])
-    out = {"samples": samples, "acceptance": acceptance, "n": int(ok.sum()),
-           "knee": knee}
+    out = {"samples": samples, "acceptance": acceptance, "n": int(ok.sum())}
     for i, name in enumerate(NAMES):
         out[name] = np.percentile(samples[:, i], [50, 16, 84])
     peaks = peak(samples[:, 0], samples[:, 1])

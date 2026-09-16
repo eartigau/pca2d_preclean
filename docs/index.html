@@ -743,9 +743,9 @@ pca2d-gui                            # the same, in a window</code></pre>
         MCMC (Goodman and Weare's stretch move, in a few lines of numpy):
         <em>a</em> and <em>&sigma;</em>, with the velocities' offset
         <em>c</em> and a jitter beside LBL's error bars marginalised. <em>a</em>
-        is signed and has a modified Jeffreys prior on both sides,
-        1/(|<em>a</em>|&nbsp;+&nbsp;<em>a</em><sub>0</sub>), with its knee at the
-        noise level, and half the walkers start on each sign; <em>&sigma;</em> is log-uniform from
+        is signed and has a flat prior, the same on both sides, within
+        &plusmn;10<sup>4</sup>&nbsp;(m/s)/(km/s), and half the walkers start on
+        each sign; <em>&sigma;</em> is log-uniform from
         1&nbsp;km/s, narrower than any blend can be at a resolution of 75&nbsp;000,
         to 60&nbsp;km/s, beyond which the Gaussian is a straight line within
         the BERV any star reaches. Below 3&sigma; from zero only an upper limit
@@ -765,10 +765,10 @@ pca2d-gui                            # the same, in a window</code></pre>
                 <th>a&ndash;ln&nbsp;&sigma; correlation</th><th>P(a&nbsp;&gt;&nbsp;0)</th><th>jitter</th><th>rms</th></tr>
           </thead>
           <tbody>
-            <tr><td>as delivered</td><td>&minus;68.7 &plusmn; 9.8 m/s (7.0&sigma;)</td>
-                <td>6.8 &plusmn; 0.6 km/s</td><td>0.78</td><td>0.00</td><td>47.1 m/s</td><td>61.7 m/s</td></tr>
-            <tr><td>corrected, 0-3</td><td>none detected, &lt; 24.9 m/s</td>
-                <td>unconstrained</td><td>0.01</td><td>0.15</td><td>41.1 m/s</td><td>44.1 m/s</td></tr>
+            <tr><td>as delivered</td><td>&minus;70.9 &plusmn; 9.7 m/s (7.2&sigma;)</td>
+                <td>6.7 &plusmn; 0.6 km/s</td><td>0.79</td><td>0.00</td><td>47.3 m/s</td><td>61.7 m/s</td></tr>
+            <tr><td>corrected, 0-3</td><td>none detected, &lt; 33.6 m/s</td>
+                <td>unconstrained</td><td>0.02</td><td>0.13</td><td>41.3 m/s</td><td>44.1 m/s</td></tr>
           </tbody>
         </table>
       </div>
@@ -791,8 +791,11 @@ pca2d-gui                            # the same, in a window</code></pre>
           2&sigma; contours and both marginals.
           Delivered, a compact ellipse: the two trade against each other, a
           narrower bias needing a larger amplitude to reach the same points.
-          Corrected, <em>a</em> sits at zero and <em>&sigma;</em> fills its
-          prior, which is what a bias that is not there looks like. The same
+          Corrected, <em>a</em> sits near zero and <em>&sigma;</em> is not
+          pinned down: a weak mode near 6&nbsp;km/s, where the delivered bias
+          was, and a tail toward the narrowest widths, where a flat prior lets
+          a large amplitude fall between the points. That tail is what sets
+          the upper limit. The same
           run's rms falls from 61.7 to 44.1&nbsp;m/s; what is left is largely
           the star, whose strongest velocity period, 5.38&nbsp;d, is also its
           d2v's.

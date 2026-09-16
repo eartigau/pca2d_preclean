@@ -81,25 +81,23 @@ def test_the_envelope_holds_the_truth():
     assert inside.mean() > 0.9
 
 
-def test_amp_has_a_modified_jeffreys_prior():
+def test_amp_has_a_flat_prior():
     """With no BERV there is nothing for amp to change in the likelihood, so
-    two amplitudes differ by the prior alone: log((|a2| + a0)/(|a1| + a0)),
-    the same for either sign."""
+    two amplitudes differ by the prior alone, and a flat prior makes them
+    equal, on either sign, up to the bound and not beyond it."""
     berv = np.zeros(20)
     v = np.zeros(20)
     e = np.full(20, 2.0)
-    knee = bb.amp_knee(e, e.size)
-    assert knee == pytest.approx(2.0 / np.sqrt(20)
-                                 / (np.sqrt(60.0) * np.exp(-0.5)))
-    theta = np.array([[1.0, np.log(5.0), 0.0, 0.0],
+    theta = np.array([[0.0, np.log(5.0), 0.0, 0.0],
+                      [1.0, np.log(5.0), 0.0, 0.0],
                       [3.0, np.log(5.0), 0.0, 0.0],
-                      [-3.0, np.log(5.0), 0.0, 0.0]])
+                      [-3.0, np.log(5.0), 0.0, 0.0],
+                      [0.99 * bb.AMP_MAX, np.log(5.0), 0.0, 0.0],
+                      [1.01 * bb.AMP_MAX, np.log(5.0), 0.0, 0.0]])
     lp = bb.log_probability(theta, berv, v, e)
-    assert lp[0] - lp[1] == pytest.approx(np.log((3.0 + knee) / (1.0 + knee)))
-    assert lp[1] == pytest.approx(lp[2])
-    assert np.isfinite(bb.log_probability(
-        np.array([[0.0, np.log(5.0), 0.0, 0.0]]), berv, v, e)[0]), \
-        "no divergence at zero"
+    assert np.all(np.isfinite(lp[:5]))
+    assert np.allclose(lp[:5], lp[0], rtol=0, atol=1e-12)
+    assert lp[5] == -np.inf
 
 
 def test_both_signs_are_explored_and_found():
