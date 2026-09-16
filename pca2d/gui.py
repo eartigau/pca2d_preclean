@@ -4115,7 +4115,7 @@ class App:
         if not self._ask_delete(self.t("clean_confirm_title"),
                                 self.t("clean_confirm")
                                 % (human(freed), len(going),
-                                   self._listed(going))):
+                                   self._as_lines(going))):
             return
         self._delete(going)
 
@@ -4144,13 +4144,20 @@ class App:
                 self.t("clean_confirm_pick_title"),
                 self.t("clean_confirm_pick")
                 % (human(sum(it["bytes"] for it in going)), len(going),
-                   self._listed(going), self.t(cost))):
+                   self._as_lines(going), self.t(cost))):
             return
         self._delete(going)
 
     @staticmethod
-    def _listed(items):
-        """What is about to go, one line each, biggest first."""
+    def _as_lines(items):
+        """What is about to go, one line each, biggest first.
+
+        Not `_listed`: that name belongs to the scan's, which fills the table
+        from the folder listing, and two methods of one class under one name
+        means the second is the only one there is. The queue then handed the
+        scan's counts to this one, and a launch died on `it["bytes"]` with a
+        string in `it`.
+        """
         from .housekeeping import human
         return "\n".join("  %s   %s" % (human(it["bytes"]), it["name"])
                           for it in sorted(items, key=lambda it: -it["bytes"]))

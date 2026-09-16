@@ -1063,3 +1063,23 @@ def test_the_proposed_name_follows_the_targets_and_a_typed_one_does_not():
     picked[:] = ["GJ1", "PROXIMA"]
     w._follow_name()
     assert w.vars["run_name"].get() == suggested_run_name(w.state())
+
+
+def test_the_scan_listing_and_the_clean_listing_are_two_methods():
+    """Both were called _listed, so the second was the only one there was: the
+    queue handed the scan's {name: count} to the housekeeping formatter and a
+    launch died in it on `it["bytes"]`, with a name in `it`."""
+    from pca2d.gui import App
+
+    window = App.__new__(App)
+    filled = []
+    window.index = {"version": 1, "objects": {}}
+    window._fill = lambda rows: filled.append(rows)
+    window._listed({"GL205": 3, "PROXIMA": 7})
+    assert [row["object"] for row in filled[0]] == ["GL205", "PROXIMA"]
+    assert [row["files"] for row in filled[0]] == [3, 7], \
+        "the folder listing is the truth for the count"
+
+    lines = App._as_lines([{"bytes": 2048, "name": "cube"},
+                           {"bytes": 4096, "name": "corrected"}])
+    assert lines.splitlines()[0].endswith("corrected"), "biggest first"
