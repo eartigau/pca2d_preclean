@@ -2036,6 +2036,9 @@ class App:
                   background=[("pressed", "#08557f"), ("active", "#0d7cc2"),
                               ("disabled", "#9dbdd4")],
                   foreground=[("disabled", "#eef4f8")])
+        # the language buttons: a flag and two letters, as small as a button
+        # can be and still be clicked
+        style.configure("Lang.TButton", font=(body, 10), padding=(3, 0))
         style.configure("TNotebook", background=BG, borderwidth=0,
                         bordercolor=BG, lightcolor=BG, darkcolor=BG,
                         tabmargins=(2, 4, 2, 0))
@@ -2238,9 +2241,11 @@ class App:
         for code in LANGUAGES:
             if code == self.lang:
                 continue
-            button = self.ttk.Button(bar, text=TEXTS[code]["lang"],
+            flag = TEXTS[code]["lang"].split()[0]
+            button = self.ttk.Button(bar, text="%s %s" % (flag, code.upper()),
+                                     style="Lang.TButton",
                                      command=lambda c=code: self.set_language(c))
-            button.pack(side="left", padx=(0, 4))
+            button.pack(side="left", padx=(0, 2))
             self._tip(button, "help_lang")
 
     def set_language(self, lang):
@@ -2292,8 +2297,8 @@ class App:
         quit_button.pack(side="right")
         self._register(quit_button, "quit")
         self._tip(quit_button, "help_quit_button")
-        # every other language, flag and name, one click each: with four a
-        # button that flips between two no longer reaches them all
+        # every other language, a small flag and its two letters, one click
+        # each: with four a button that flips between two reaches none of them
         self.lang_bar = ttk.Frame(frame)
         self.lang_bar.pack(side="right", padx=(0, 6))
         self._draw_languages()

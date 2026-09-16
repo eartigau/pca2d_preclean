@@ -93,8 +93,8 @@ def test_the_buttons_are_the_other_languages():
             return list(made)
 
     class Button:
-        def __init__(self, parent, text, command):
-            self.text, self.command = text, command
+        def __init__(self, parent, text, command, style=None):
+            self.text, self.command, self.style = text, command, style
             made.append(self)
 
         def pack(self, **_kwargs):
@@ -111,11 +111,14 @@ def test_the_buttons_are_the_other_languages():
     window.lang_bar = Bar()
     window._tip = lambda widget, key: None
     window._draw_languages()
-    assert [b.text for b in made] == [EN["lang"], FR["lang"], PT["lang"]]
-    french = next(b for b in made if b.text == FR["lang"])
+    # small: the flag and two letters, in the compact style
+    assert [b.text for b in made] == [FLAGS["en"] + " EN", FLAGS["fr"] + " FR",
+                                      FLAGS["pt"] + " PT"]
+    assert {b.style for b in made} == {"Lang.TButton"}
+    french = next(b for b in made if b.text.endswith("FR"))
     french.command()
     assert window.lang == "fr"
-    assert [b.text for b in made] == [EN["lang"], ES["lang"], PT["lang"]], \
+    assert [b.text[-2:] for b in made] == ["EN", "ES", "PT"], \
         "drawn again: the others are now English, Spanish and Portuguese"
 
 
