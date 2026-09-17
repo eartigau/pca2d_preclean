@@ -180,3 +180,25 @@ def test_the_width_is_a_fwhm_with_a_gaussian_prior():
     fitted = bb.fit(berv, v, e, seed=42)
     assert np.median(fitted["samples"][:, 1]) == pytest.approx(5.0, abs=1.5)
     assert np.std(fitted["samples"][:, 1]) == pytest.approx(1.5, abs=0.5)
+
+
+def test_a_drifting_dc_level_is_not_a_bias():
+    """V_tot following the season, velocities drifting over the years and no
+    bias: with the DC level held constant the drift can pass for a bias;
+    free to drift, it does not, and a bias that is there is still found."""
+    r = np.random.default_rng(51)
+    t = np.sort(60000 + r.uniform(0, 1500, 300))
+    vtot = 1.0 + 3.0 * np.sin(2 * np.pi * (t - 60000) / 365.25)
+    e = np.full(t.size, 2.0)
+    drift = 1000.0 + 5.0 * (t - 60750.0) / 365.25
+    v = drift + r.normal(0, 2, t.size)
+    free = bb.fit(vtot, v, e, t=t, seed=52)
+    assert free["drift"] and not free["detected"]
+    assert free["delta_bic"] < 0
+    assert free["slope"][0] == pytest.approx(5.0, abs=0.3)
+    assert free["c"][0] == pytest.approx(1000.0, abs=0.5)
+    biased = bb.fit(vtot, v + bb.shape(vtot, -3.0, SIGMA5), e, t=t, seed=53)
+    assert biased["detected"] and biased["delta_bic"] > 10
+    assert biased["fwhm"][0] == pytest.approx(5.0, abs=1.0)
+    constant = bb.fit(vtot, v, e, seed=54)
+    assert not constant["drift"] and np.all(constant["samples"][:, 4] == 0)

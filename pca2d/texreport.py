@@ -484,6 +484,11 @@ def bias_row(fitted):
                                           - fitted["fwhm"][1])),
             "bias_amp_fwhm_r": fitted["amp_fwhm_r"],
             "bias_p_positive": fitted["p_positive"],
+            "bias_c": float(fitted["c"][0]),
+            "bias_slope": float(fitted["slope"][0]),
+            "bias_slope_err": float(0.5 * (fitted["slope"][2]
+                                           - fitted["slope"][1])),
+            "bias_drift": bool(fitted.get("drift")),
             "bias_delta_bic": fitted.get("delta_bic", np.nan),
             "jitter": float(fitted["jitter"][0])}
 
@@ -507,8 +512,9 @@ def star_numbers(before, after, planets=(), seed=0):
             row.update(berv_binned=float(np.std(medians))
                        if medians.size >= 3 else np.nan)
             # the bias's own shape, by MCMC; a straight line has no meaning
+            # the DC level free, and free to drift over the campaign
             row.update(bias_row(bervbias.fit(vtot, run["v"], run["e"],
-                                             seed=seed)))
+                                             t=run["t"], seed=seed)))
             row["bias_near"] = int(np.sum(np.abs(vtot) < bervbias.FWHM_MAX))
         if run.get("d2v") is not None:
             good = inliers(run["d2v"])
@@ -759,6 +765,14 @@ def _close_band(ax):
                lw=0, zorder=0)
 
 
+def without_dc(run, fitted):
+    """The velocities less the fitted DC level, drift included."""
+    if fitted.get("drift"):
+        tau = (np.asarray(run["t"], float) - fitted["t_mid"]) / 365.25
+        return run["v"] - (fitted["c"][0] + fitted["slope"][0] * tau)
+    return run["v"] - fitted["c"][0]
+
+
 def figure_berv(before, after, path):
     """The velocities against V_tot with the fitted bias and its 1 sigma
     envelope, each series on its own, then both envelopes on one axis."""
@@ -779,7 +793,7 @@ def figure_berv(before, after, path):
     for ax, run, x, key, colour in zip(top, (before, after), (vb, va),
                                        ("before", "after"), (BEFORE, AFTER)):
         fitted = fits[key]
-        y = run["v"] - fitted["c"][0]
+        y = without_dc(run, fitted)
         residuals.append(y)
         _close_band(ax)
         _points(ax, x, y, run["e"], colour, "exposures", alpha=0.4)
@@ -798,13 +812,14 @@ def figure_berv(before, after, path):
         _style(ax)
     lim = _limits(*residuals)
     top[0].set_ylim(*lim)
-    top[0].set_ylabel("velocity - fitted offset (m/s)", fontsize=8, color=INK)
+    top[0].set_ylabel("velocity - fitted DC level (m/s)", fontsize=8,
+                      color=INK)
     top[0].legend(fontsize=6, frameon=False, loc="upper left")
     _close_band(both)
     for run, x, key, colour in ((before, vb, "before", BEFORE),
                                 (after, va, "after", AFTER)):
         fitted = fits[key]
-        centres, medians, errors = binned(x, run["v"] - fitted["c"][0])
+        centres, medians, errors = binned(x, without_dc(run, fitted))
         if centres.size:
             both.errorbar(centres, medians, yerr=errors, fmt="s", ls="none",
                           ms=4.5, mfc="white", mec=colour, mew=0.9,
@@ -1521,6 +1536,11 @@ def summary_table(star, numbers):
                            mark(bic_verdict(b["bias_delta_bic"],
                                             a["bias_delta_bic"]))))
         row("jitter beyond LBL's errors (m/s)", "jitter")
+        if b.get("bias_drift"):
+            rows.append("DC level, its drift (m/s/yr) & %s & %s & & \\\\"
+                        % tuple("%s $\\pm$ %.2f" % (tex("%+.2f" % side["bias_slope"]),
+                                                   side["bias_slope_err"])
+                                for side in (b, a)))
     if "berv_binned" in b:
         row("scatter of $V_\\mathrm{tot}$-binned medians (m/s)",
             "berv_binned")
@@ -1807,8 +1827,12 @@ def velocity_section(star, before, after, numbers, folder, stale):
          " velocity in the telluric frame (the systemic velocity less the"
          " BERV, composed relativistically), with the bias a"
          " telluric line blended with the stellar lines produces, fitted by"
-         " MCMC: $v = c + a\\,V_\\mathrm{tot}\\,"
-         "e^{-V_\\mathrm{tot}^2/2\\sigma^2}$, with a jitter added"
+         " MCMC: $v = c + s\\,(t - t_\\mathrm{mid}) + a\\,V_\\mathrm{tot}\\,"
+         "e^{-V_\\mathrm{tot}^2/2\\sigma^2}$, the DC level $c$ free and free"
+         " to drift by $s$ over the campaign (the zero of the velocities is"
+         " not their median when the exposures sit more on one side of"
+         " $V_\\mathrm{tot} = 0$, and a drift passes for a bias when"
+         " $V_\\mathrm{tot}$ follows the season), with a jitter added"
          " to LBL's error bars, a flat prior on $a$ and a Gaussian one on the"
          " Gaussian's FWHM, $2\\sqrt{2\\ln 2}\\,\\sigma$, of $5 \\pm 1.5$ km/s"
          " within 1 to 10 km/s. The line is the posterior median, the band"
@@ -1817,9 +1841,11 @@ def velocity_section(star, before, after, numbers, folder, stale):
          " detected); squares are medians in 2 km/s bins, and the grey band"
          " is $|V_\\mathrm{tot}| < 4$ km/s, where the star's lines sit on the"
          " tellurics. Above,"
-         " each series less its fitted offset; below, both envelopes on one"
+         " each series less its fitted DC level, drift included; below,"
+         " both envelopes on one"
          " axis. $\\Delta$BIC is BIC(no bias) $-$ BIC(bias), $k \\ln n - 2\\ln"
-         " L_\\mathrm{max}$ with $k = 2$ (offset, jitter) against 4, the"
+         " L_\\mathrm{max}$ with $k = 3$ (DC level, its drift, jitter)"
+         " against 5, the"
          " likelihood maximised with the FWHM free within 1 to 10 km/s:"
          " positive when the data prefer the bias, above 2, 6 and 10 positive,"
          " strong and very strong evidence for it (Kass \\& Raftery 1995); it"

@@ -56,7 +56,15 @@ pipeline's environment, and four parameters do not need it.
               bias that is not there hide in the narrowest widths with a
               large amplitude, and let a slow drift of the velocities pass
               for a bias tens of km/s wide (GL725B: sigma 33 km/s)
-    c         uniform, m/s
+    c         uniform, m/s: the DC level, the velocity far from the tellurics,
+              which is not the median when the exposures sit more on one side
+              of V_tot = 0 than the other
+    slope     uniform within +-1e3 m/s per year: the DC level's drift over
+              the campaign, c + slope * (t - t_mid), when the times are given
+              (asked for on 2026-09-17). V_tot follows the season, and on a
+              star whose V_tot spans a few km/s a drift of the velocities
+              passes for a bias: GL725B corrected, Delta BIC +8.4 with the
+              DC level held constant, -5.2 with it drifting
     jitter    log-uniform over 1e-3 to 1e4 m/s
 """
 
@@ -71,7 +79,9 @@ FWHM_MIN, FWHM_MAX = 1.0, 10.0
 SIGMA_PER_FWHM = 1.0 / (2.0 * np.sqrt(2.0 * np.log(2.0)))
 JITTER_MIN, JITTER_MAX = 1e-3, 1e4
 AMP_MAX = 1e4
-NAMES = ("amp", "fwhm", "c", "jitter")
+#: bound on the DC level's drift, m/s per year
+SLOPE_MAX = 1e3
+NAMES = ("amp", "fwhm", "c", "jitter", "slope")
 #: exposures with |V_tot| < FWHM_MAX a fit needs: the bias dies away beyond
 #: that, and a star whose lines never come near the tellurics has no bias to
 #: measure, only an amplitude the prior bounds
@@ -116,19 +126,38 @@ def peak(amp, sigma):
     return amp * sigma * np.exp(-0.5)
 
 
-def log_likelihood(theta, berv, v, e):
-    """ln L of (amp, fwhm, c, ln jitter), one row per walker, -inf outside
-    the priors' bounds (the 2 pi left out)."""
+def _columns(theta):
+    """(amp, fwhm, c, ln jitter, slope) of rows that may lack the slope."""
     theta = np.atleast_2d(theta)
-    amp, fwhm, c, ljit = theta.T
+    slope = theta[:, 4] if theta.shape[1] > 4 else np.zeros(theta.shape[0])
+    return theta[:, 0], theta[:, 1], theta[:, 2], theta[:, 3], slope
+
+
+def dc_level(c, slope, tau):
+    """The velocity with no bias: c, drifting by `slope` m/s per year over
+    `tau`, the years from the campaign's middle (None: no drift)."""
+    if tau is None:
+        return np.asarray(c, float)[..., None]
+    return np.asarray(c, float)[..., None] \
+        + np.asarray(slope, float)[..., None] * np.asarray(tau, float)
+
+
+def log_likelihood(theta, berv, v, e, tau=None):
+    """ln L of (amp, fwhm, c, ln jitter[, slope]), one row per walker, -inf
+    outside the priors' bounds (the 2 pi left out). `tau`, years from the
+    campaign's middle, lets the DC level drift; without it there is no
+    slope."""
+    amp, fwhm, c, ljit, slope = _columns(theta)
     inside = ((np.abs(amp) < AMP_MAX)
               & (fwhm > FWHM_MIN) & (fwhm < FWHM_MAX)
+              & (np.abs(slope) < SLOPE_MAX)
               & (ljit > np.log(JITTER_MIN)) & (ljit < np.log(JITTER_MAX)))
-    out = np.full(theta.shape[0], -np.inf)
+    out = np.full(amp.size, -np.inf)
     if not inside.any():
         return out
     sigma = sigma_of(fwhm[inside])[:, None]
-    model = c[inside][:, None] + amp[inside][:, None] * berv[None, :] \
+    model = dc_level(c[inside], slope[inside], tau) \
+        + amp[inside][:, None] * berv[None, :] \
         * np.exp(-0.5 * (berv[None, :] / sigma) ** 2)
     var = e[None, :] ** 2 + np.exp(2 * ljit[inside])[:, None]
     out[inside] = -0.5 * np.sum((v[None, :] - model) ** 2 / var + np.log(var),
@@ -144,9 +173,10 @@ def log_prior(theta):
     return -0.5 * ((theta[:, 1] - mean) / width) ** 2
 
 
-def log_probability(theta, berv, v, e):
-    """ln posterior of (amp, fwhm, c, ln jitter), one row per walker."""
-    return log_likelihood(theta, berv, v, e) + log_prior(theta)
+def log_probability(theta, berv, v, e, tau=None):
+    """ln posterior of (amp, fwhm, c, ln jitter[, slope]), one row per
+    walker."""
+    return log_likelihood(theta, berv, v, e, tau) + log_prior(theta)
 
 
 #: Kass and Raftery (1995, JASA 90, 773) on a Bayes factor, read on the BIC's
@@ -156,17 +186,19 @@ BIC_WORDS = ((10.0, "very strong"), (6.0, "strong"), (2.0, "positive"),
              (0.0, "not worth a mention"))
 
 
-def log_likelihood_null(v, e):
-    """ln L of (c, ln jitter), no bias, one row per walker, as
+def log_likelihood_null(v, e, tau=None):
+    """ln L of (c, ln jitter[, slope]), no bias, one row per walker, as
     log_likelihood counts it (the 2 pi left out of both)."""
     def lnl(theta):
         theta = np.atleast_2d(theta)
-        c, ljit = theta.T
+        c, ljit = theta[:, 0], theta[:, 1]
+        slope = theta[:, 2] if theta.shape[1] > 2 else np.zeros(c.size)
         var = e[None, :] ** 2 + np.exp(2 * ljit)[:, None]
-        out = -0.5 * np.sum((v[None, :] - c[:, None]) ** 2 / var
+        out = -0.5 * np.sum((v[None, :] - dc_level(c, slope, tau)) ** 2 / var
                             + np.log(var), axis=1)
         return np.where((ljit > np.log(JITTER_MIN))
-                        & (ljit < np.log(JITTER_MAX)), out, -np.inf)
+                        & (ljit < np.log(JITTER_MAX))
+                        & (np.abs(slope) < SLOPE_MAX), out, -np.inf)
     return lnl
 
 
@@ -189,12 +221,13 @@ def maximum(lnl, starts, bounds):
     return best
 
 
-def delta_bic(berv, v, e, chain_samples=None, chain_lp=None):
+def delta_bic(berv, v, e, chain_samples=None, chain_lp=None, tau=None):
     """(Delta BIC, ln L with the bias, ln L without), Delta BIC being
     BIC(no bias) - BIC(bias): positive when the data prefer the bias.
 
     BIC = k ln n - 2 ln L_max, with k = 4 (amp, fwhm, c, jitter) against 2
-    (c, jitter). The maxima are of the likelihood alone, the FWHM within its
+    (c, jitter), one more on each side with `tau`, the DC level's drift. The
+    maxima are of the likelihood alone, the FWHM within its
     prior's bounds, and the FWHM is counted as free although its prior pins
     it: the conservative count. Each maximum is found from several starts:
     the best of the posterior's samples when there are some, and a grid of
@@ -207,24 +240,29 @@ def delta_bic(berv, v, e, chain_samples=None, chain_lp=None):
     n = v.size
     excess = max(float(np.var(v - np.median(v)) - np.median(e) ** 2), 1.0)
     jit_bounds = (np.log(JITTER_MIN), np.log(JITTER_MAX))
-    null, _ = maximum(log_likelihood_null(v, e),
-                      [(np.median(v), 0.5 * np.log(excess)),
-                       (np.mean(v), 0.5 * np.log(excess) + 1.0),
-                       (np.mean(v), 0.0)],
-                      [(float(np.min(v)), float(np.max(v))), jit_bounds])
+    drift = tau is not None
+    reach = float(np.max(np.abs(v - np.median(v)))) + 1.0
+    c_bounds = (float(np.min(v)) - reach, float(np.max(v)) + reach)
+    extra = [(-SLOPE_MAX, SLOPE_MAX)] if drift else []
+    line = starting_line(v, e, tau)
+    null, _ = maximum(log_likelihood_null(v, e, tau),
+                      [[line[0], 0.5 * np.log(excess)] + line[1:],
+                       [np.median(v), 0.5 * np.log(excess) + 1.0]
+                       + [0.0] * drift,
+                       [np.mean(v), 0.0] + line[1:]],
+                      [c_bounds, jit_bounds] + extra)
     starts = []
     if chain_samples is not None and len(chain_samples):
         best = chain_samples[int(np.argmax(chain_lp))]
         starts.append(best)
-    centre = starting_point(berv, v, e)
+    centre = starting_point(berv, v, e, tau)
     starts.append(centre)
     for fwhm in np.linspace(FWHM_MIN * 1.2, FWHM_MAX * 0.95, 6):
-        starts.append([centre[0], fwhm, centre[2], centre[3]])
-    reach = float(np.max(np.abs(v - np.median(v)))) + 1.0
+        starts.append([centre[0], fwhm] + list(centre[2:]))
     bias, _ = maximum(
-        lambda theta: log_likelihood(theta, berv, v, e), starts,
-        [(-AMP_MAX, AMP_MAX), (FWHM_MIN, FWHM_MAX),
-         (float(np.min(v)) - reach, float(np.max(v)) + reach), jit_bounds])
+        lambda theta: log_likelihood(theta, berv, v, e, tau), starts,
+        [(-AMP_MAX, AMP_MAX), (FWHM_MIN, FWHM_MAX), c_bounds, jit_bounds]
+        + extra)
     value = 2.0 * (bias - null) - (4 - 2) * np.log(n)
     return float(value), float(bias), float(null)
 
@@ -267,34 +305,58 @@ def stretch(log_prob, start, steps, rng, a=2.0):
     return chain, accepted / float(steps * walkers)
 
 
-def starting_point(berv, v, e):
-    """The best (amp, fwhm, c, ln jitter) on a grid of FWHM.
+def starting_line(v, e, tau=None):
+    """[c] or [c, slope]: the DC level, weighted, and its drift."""
+    excess = max(float(np.var(v - np.median(v)) - np.median(e) ** 2), 1.0)
+    w = 1.0 / (e ** 2 + excess)
+    if tau is None:
+        return [float(np.sum(w * v) / np.sum(w))]
+    A = np.column_stack([np.ones_like(v), tau])
+    coef, *_ = np.linalg.lstsq(A * np.sqrt(w)[:, None], v * np.sqrt(w),
+                               rcond=None)
+    return [float(coef[0]),
+            float(np.clip(coef[1], -0.5 * SLOPE_MAX, 0.5 * SLOPE_MAX))]
 
-    For each width the model is linear in (c, amp), so it is solved rather
-    than searched; the jitter is the scatter the error bars leave over.
+
+def starting_point(berv, v, e, tau=None):
+    """The best (amp, fwhm, c, ln jitter[, slope]) on a grid of FWHM.
+
+    For each width the model is linear in (c, amp[, slope]), so it is solved
+    rather than searched; the jitter is the scatter the error bars leave
+    over.
     """
     excess = max(float(np.var(v - np.median(v)) - np.median(e) ** 2), 1.0)
     w = 1.0 / (e ** 2 + excess)
     best = None
     for fwhm in np.linspace(FWHM_MIN * 1.05, FWHM_MAX * 0.98, 40):
-        A = np.column_stack([np.ones_like(berv),
-                             shape(berv, 1.0, sigma_of(fwhm))])
+        columns = [np.ones_like(berv), shape(berv, 1.0, sigma_of(fwhm))]
+        if tau is not None:
+            columns.append(tau)
+        A = np.column_stack(columns)
         coef, *_ = np.linalg.lstsq(A * np.sqrt(w)[:, None], v * np.sqrt(w),
                                    rcond=None)
         chi2 = float(np.sum(w * (v - A @ coef) ** 2))
         if best is None or chi2 < best[0]:
-            best = (chi2, coef[1], fwhm, coef[0])
-    _, amp, fwhm, c = best
+            best = (chi2, fwhm, coef)
+    _, fwhm, coef = best
     # a width whose bias no point reaches solves for any amplitude at all;
     # the walkers must start inside the prior's bounds
-    amp = float(np.clip(amp, -0.01 * AMP_MAX, 0.01 * AMP_MAX))
-    return np.array([amp, fwhm, c, 0.5 * np.log(excess)])
+    amp = float(np.clip(coef[1], -0.01 * AMP_MAX, 0.01 * AMP_MAX))
+    out = [amp, fwhm, float(coef[0]), 0.5 * np.log(excess)]
+    if tau is not None:
+        out.append(float(np.clip(coef[2], -0.5 * SLOPE_MAX, 0.5 * SLOPE_MAX)))
+    return np.array(out)
 
 
-def fit(berv, v, e, walkers=32, steps=2500, burn=1000, seed=0):
+def fit(berv, v, e, t=None, walkers=32, steps=2500, burn=1000, seed=0):
     """Posterior of the BERV bias of one velocity series.
 
-    Returns a dictionary: `samples` (n, 4) in (amp, fwhm, c, jitter),
+    `t`, the times in days, lets the DC level drift linearly over the
+    campaign (`slope`, m/s per year, about `t_mid`, the middle of the span);
+    without it the level is a constant.
+
+    Returns a dictionary: `samples` (n, 5) in (amp, fwhm, c, jitter, slope),
+    the slope 0 without `t`,
     `acceptance`, and for each of amp, fwhm, c, jitter and peak its median
     and 16th and 84th percentiles, plus the amp-FWHM correlation of the
     posterior. None when there are too few points to fit four parameters,
@@ -302,16 +364,27 @@ def fit(berv, v, e, walkers=32, steps=2500, burn=1000, seed=0):
     """
     berv, v, e = (np.asarray(x, float) for x in (berv, v, e))
     ok = np.isfinite(berv) & np.isfinite(v) & np.isfinite(e) & (e > 0)
+    if t is not None:
+        t = np.asarray(t, float)
+        ok &= np.isfinite(t)
     if ok.sum() < 12 or np.ptp(berv[ok]) < FWHM_MIN:
         return None
     if np.sum(np.abs(berv[ok]) < FWHM_MAX) < MIN_NEAR:
         return None
     berv, v, e = berv[ok], v[ok], e[ok]
+    tau, t_mid = None, np.nan
+    if t is not None and np.ptp(t[ok]) > 0:
+        t = t[ok]
+        t_mid = 0.5 * float(t.min() + t.max())
+        tau = (t - t_mid) / 365.25
+    ndim = 4 if tau is None else 5
     rng = np.random.default_rng(seed)
-    centre = starting_point(berv, v, e)
+    centre = starting_point(berv, v, e, tau)
     scale = np.array([max(abs(centre[0]) * 0.1, 1e-2), 0.3,
-                      max(np.std(v) * 0.01, 1e-2), 0.1])
-    start = centre + scale * rng.normal(size=(walkers, 4))
+                      max(np.std(v) * 0.01, 1e-2), 0.1]
+                     + ([max(abs(centre[-1]) * 0.1, 0.1)] if tau is not None
+                        else []))
+    start = centre + scale * rng.normal(size=(walkers, ndim))
     # half the walkers start on the other sign: a bias pulls either way, and
     # an ensemble that starts on one side only explores the other if it
     # happens to wander there. On SMETHELLS_20 the mirrored half rejoins the
@@ -320,17 +393,20 @@ def fit(berv, v, e, walkers=32, steps=2500, burn=1000, seed=0):
     start[walkers // 2:, 0] *= -1
     start[:, 1] = np.clip(start[:, 1], FWHM_MIN + 1e-3, FWHM_MAX - 1e-3)
     chain, acceptance = stretch(
-        lambda theta: log_probability(theta, berv, v, e), start,
+        lambda theta: log_probability(theta, berv, v, e, tau), start,
         steps, rng)
-    flat = chain[burn:].reshape(-1, 4)
+    flat = chain[burn:].reshape(-1, ndim)
     # the best of the posterior's samples starts the maximum the BIC needs
     thin = flat[::max(1, flat.shape[0] // 4000)]
     dbic, lnl_bias, lnl_null = delta_bic(
-        berv, v, e, thin, log_probability(thin, berv, v, e))
+        berv, v, e, thin, log_probability(thin, berv, v, e, tau), tau)
     samples = np.column_stack([flat[:, 0], flat[:, 1], flat[:, 2],
-                               np.exp(flat[:, 3])])
+                               np.exp(flat[:, 3]),
+                               flat[:, 4] if ndim == 5
+                               else np.zeros(flat.shape[0])])
     out = {"samples": samples, "acceptance": acceptance, "n": int(ok.sum()),
-           "delta_bic": dbic, "lnl_bias": lnl_bias, "lnl_null": lnl_null}
+           "delta_bic": dbic, "lnl_bias": lnl_bias, "lnl_null": lnl_null,
+           "t_mid": t_mid, "drift": tau is not None}
     for i, name in enumerate(NAMES):
         out[name] = np.percentile(samples[:, i], [50, 16, 84])
     peaks = peak(samples[:, 0], sigma_of(samples[:, 1]))
