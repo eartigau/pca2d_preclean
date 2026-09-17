@@ -1173,18 +1173,20 @@ def figure_dtemp(before, after, path):
     return _save(fig, path)
 
 
-def _mark_peak(ax, periods, power, colour, label, above):
-    """The highest peak of one curve: where, and how high, said on the plot."""
+def _mark_peak(ax, periods, power, colour, label, above, fap=np.nan):
+    """The highest peak of one curve: a marker on it, and beside it its
+    period, its power and its false-alarm probability. No line across the
+    panel at its level: it ran through the other curve and the FAP levels."""
     best = int(np.nanargmax(power))
     period, level = periods[best], power[best]
-    ax.axhline(level, color=colour, lw=0.7, alpha=0.7, zorder=1)
     ax.plot([period], [level], marker="v", ms=7, mfc=colour, mec="white",
             mew=0.8, ls="none", zorder=6)
     # on the side with room: a peak in the right third of a log axis is
     # labelled leftwards, or the label runs off the figure
     lo, hi = np.log10(np.nanmin(periods)), np.log10(np.nanmax(periods))
     right = (np.log10(period) - lo) > 0.66 * (hi - lo)
-    ax.annotate("%s %.3g d, %.2f" % (label, period, level),
+    ax.annotate("%s %.5g d, power %.2f, FAP %.2g"
+                % (label, period, level, fap),
                 (period, level), xytext=(-5 if right else 5,
                                          6 if above else -12),
                 textcoords="offset points", fontsize=6.5, color=INK,
@@ -1226,16 +1228,17 @@ def figure_periodograms(before, after, planets, path):
             # see-through, both: the two series overlap nearly everywhere,
             # and at full ink the one drawn last hid the other
             ax.plot(periods, power, color=colour, lw=0.9, alpha=0.55,
-                    label="%s: peak %.3g d at %.2f, FAP %.2g"
+                    label="%s: peak %.5g d at %.2f, FAP %.2g"
                           % (run["label"], best, level, fap))
-            found_both.append((periods, power, colour, run["label"]))
+            found_both.append((periods, power, colour, run["label"], fap))
         # each curve's highest peak, where it is and how high, the higher
         # one's label above its marker and the other's below, so they part
         order = sorted(range(len(found_both)),
                        key=lambda i: -np.nanmax(found_both[i][1]))
         for rank, i in enumerate(order):
-            periods, power, colour, label = found_both[i]
-            _mark_peak(ax, periods, power, colour, label, above=rank == 0)
+            periods, power, colour, label, fap = found_both[i]
+            _mark_peak(ax, periods, power, colour, label, above=rank == 0,
+                       fap=fap)
         # the power a peak needs for each false-alarm probability: the two
         # series share their dates, so their levels agree to a fraction of a
         # per cent, and the higher of the two is drawn once
@@ -2026,8 +2029,8 @@ def velocity_section(star, before, after, numbers, folder, stale):
          "%s: periodograms of the velocity and its indicators" % name,
          "Lomb-Scargle periodograms of the velocity, of d2v%s, delivered and"
          " corrected. Each curve's"
-         " highest peak is marked by a triangle, with a line at its level and"
-         " its period and power beside it. Dashed grey lines, named, are a"
+         " highest peak is marked by a triangle, with its period, power and"
+         " false-alarm probability beside it. Dashed grey lines, named, are a"
          " year, half and a third of a year, and a synodic month (29.53 d);"
          " dotted grey ones, the power a peak needs for a false-alarm"
          " probability of 1\\%%, 0.1\\%% and $10^{-4}$ (Baluev's approximation"
