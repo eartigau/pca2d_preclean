@@ -58,7 +58,7 @@ PT = {
     "whole": "tudo",
     "min_rjd": "de",
     "max_rjd": "a",
-    "exists": "⚠ esta execução já existe",
+    "exists": "esta execução já existe",
     "help_run_name":
         "Um nome para esta execução. Os seus produtos vão para"
         " <raiz de saída>/_NOME/ e o seu objeto LBL é"
@@ -112,7 +112,7 @@ PT = {
     "none": "nenhum",
     "idle": "em espera",
     "running": "em curso",
-    "lang": "\U0001F1F5\U0001F1F9 Português",
+    "lang": "Português",
     "snr_berv": "relação sinal-ruído em função da velocidade baricêntrica",
     "snr_none": "assinale um alvo para ver onde estão as suas melhores noites",
     "help_snr_berv":

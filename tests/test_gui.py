@@ -1198,12 +1198,12 @@ def test_the_scan_listing_and_the_clean_listing_are_two_methods():
     assert lines.splitlines()[0].endswith("corrected"), "biggest first"
 
 
-def test_the_cleaning_question_wears_a_broom_and_not_the_system_icon():
+def test_the_cleaning_question_is_the_window_s_own_and_says_what_it_asks():
     """macOS draws the application's icon in a messagebox, and this one is a
     python in a conda environment: the question before deleting six gigabytes
-    came up under a generic folder. Same answer as the quit question, which
-    has carried its own face since it was written: a Toplevel, and the emoji
-    drawn where the system icon was."""
+    came up under a generic folder. Same answer as the quit question: a
+    Toplevel of this window's own, with the question in words and the two
+    answers named."""
     import pytest
 
     tk = pytest.importorskip("tkinter")
@@ -1300,7 +1300,6 @@ def test_the_cleaning_question_wears_a_broom_and_not_the_system_icon():
         pytest.skip("this window manager does not show the question: %s"
                     % seen.get("unshown", "it never became visible"))
     assert went is True
-    assert "\U0001F9F9" in seen["labels"], "the broom, where the icon was"
     assert "6.0 GB. On y va ?" in seen["labels"]
     assert seen["buttons"] == ["Garder", "On y va"], \
         "the answers named, not Yes and No"

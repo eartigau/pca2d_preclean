@@ -15,8 +15,9 @@ from pca2d.gui_es import ES
 from pca2d.gui_pt import PT
 
 PLACEHOLDER = re.compile(r"%[-+ 0#]*\d*(?:\.\d+)?[sdfgr%]")
-FLAGS = {"en": "\U0001F1EC\U0001F1E7", "fr": "\U0001F1EB\U0001F1F7",
-         "es": "\U0001F1E8\U0001F1F4", "pt": "\U0001F1F5\U0001F1F9"}
+#: every colour emoji, and the symbols that need a font of their own: none of
+#: them is in this window any more (2026-09-17, after WSL drew none of them)
+EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2190-\u2BFF\uFE0F\u200D]")
 
 
 @pytest.mark.parametrize("name,table", [("es", ES), ("pt", PT)])
@@ -37,19 +38,29 @@ def test_every_english_text_is_translated_with_its_placeholders(name, table):
     assert not any("—" in value for value in table.values()), "no em dash"
 
 
-def test_four_languages_each_named_with_its_own_flag():
+def test_four_languages_each_named_in_its_own_words():
     assert LANGUAGES == ("en", "fr", "es", "pt")
     assert TEXTS == {"en": EN, "fr": FR, "es": ES, "pt": PT}
-    for code in LANGUAGES:
-        assert TEXTS[code]["lang"].startswith(FLAGS[code] + " "), code
-    assert ES["lang"] == "\U0001F1E8\U0001F1F4 Español", "Colombia's flag"
-    assert PT["lang"] == "\U0001F1F5\U0001F1F9 Português", "Portugal's flag"
+    assert [TEXTS[code]["lang"] for code in LANGUAGES] == \
+        ["English", "Français", "Español", "Português"]
     assert text("es", "run") == "Ejecutar" and text("pt", "run") == "Executar"
     assert text("de", "run") == "Run", "an unknown language falls back"
 
 
+def test_no_text_of_the_window_needs_an_emoji_font():
+    """A flag, a broom or a face is a colour emoji: a machine without that
+    font draws a box, or nothing (WSL, 2026-09-17)."""
+    from pca2d.gui import CHECKED, UNCHECKED
+
+    for name, table in (("en", EN), ("fr", FR), ("es", ES), ("pt", PT)):
+        for key, value in table.items():
+            assert not EMOJI.search(value), (name, key, value)
+    assert not EMOJI.search(CHECKED + UNCHECKED), \
+        "the ticks are ASCII too, since they are what the target list is read by"
+
+
 def test_portuguese_is_portugal_s():
-    """ficheiro, not arquivo: the flag on the button is Portugal's."""
+    """ficheiro, not arquivo: it is Portugal's Portuguese."""
     words = set(re.findall(r"\w+", " ".join(PT.values()).lower()))
     assert "ficheiro" in words and "arquivo" not in words
     assert "registo" in words and "tela" not in words
@@ -111,9 +122,8 @@ def test_the_buttons_are_the_other_languages():
     window.lang_bar = Bar()
     window._tip = lambda widget, key: None
     window._draw_languages()
-    # small: the flag and two letters, in the compact style
-    assert [b.text for b in made] == [FLAGS["en"] + " EN", FLAGS["fr"] + " FR",
-                                      FLAGS["pt"] + " PT"]
+    # small: the two letters, in the compact style, and no flag
+    assert [b.text for b in made] == ["EN", "FR", "PT"]
     assert {b.style for b in made} == {"Lang.TButton"}
     french = next(b for b in made if b.text.endswith("FR"))
     french.command()

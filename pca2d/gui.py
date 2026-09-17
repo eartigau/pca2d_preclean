@@ -37,11 +37,10 @@ from . import scan
 from .logger import stamp
 
 HOME_STATE = os.path.expanduser("~/.pca2d_gui.json")
-#: the family that carries the colour emoji here. Tk falls back to the default
-#: font when a family is unknown, so a machine without it shows the character
-#: in black and white rather than failing to draw anything.
-EMOJI_FONT = ("Apple Color Emoji" if sys.platform == "darwin"
-              else "Segoe UI Emoji" if os.name == "nt" else "Noto Color Emoji")
+#: No colour emoji anywhere in this window: a flag, a broom and a face need a
+#: font that carries them, and what a machine without it draws instead ranges
+#: from a black-and-white glyph to an empty box to nothing at all (asked for
+#: on 2026-09-17, after WSL). Words say the same thing everywhere.
 #: EVERY escape sequence, not only the ones this window paints with. LBL
 #: colours its own output (`\033[92;1m` for a bright bold green, `\033[0;0m` to
 #: reset), and a pattern that matched a single number left those on screen as
@@ -137,10 +136,12 @@ LBL_FLAGS = {
     "lbl_template": "--lbl-template", "lbl_steps": "--lbl-steps",
     "lbl_link": "--lbl-link",
 }
-#: a target is run or not run, and the list says which with a box
-CHECKED, UNCHECKED = "☑", "☐"
+#: a target is run or not run, and the list says which. In ASCII, like every
+#: other mark in this window: a ballot box is drawn by one font in three, and
+#: the list is what the targets are chosen in (2026-09-17)
+CHECKED, UNCHECKED = "[x]", "[ ]"
 #: shown where an instrument is not known YET, as against not known at all
-UNREAD = "…"
+UNREAD = "..."
 #: one tint per instrument, on the row's background. A joint fit is one
 #: instrument, so which instrument a target belongs to is the first thing the
 #: list has to make obvious; the colours are pale enough that the ticked box and
@@ -196,7 +197,7 @@ EN = {
     'whole': 'all of it',
     'min_rjd': 'from',
     'max_rjd': 'to',
-    'exists': '⚠ this run already exists',
+    'exists': 'this run already exists',
     'help_run_name': 'A name for this run. Its products go to <output root>/_NAME/ and its LBL object is <object>_PCA2D_<M-N>_NAME, so two runs of the same targets at different settings never write into one folder nor under one LBL name, where LBL would measure the mixture without a word. Empty is the nominal path. It is proposed from the dates when they are set, and can be anything.',
     'help_dates': 'Keep only the exposures between these two dates, in reduced Julian date (BJD - 2400000). What is excluded is neither fitted nor corrected. It is how a campaign is cut to a season, which the barycentric coverage sometimes asks for: two 14-night slices of TOI-4552 at the same signal-to-noise differ by a factor of sixty in coverage and the correction changes sign between them.',
     "berv": "barycentric coverage of the ticked targets",
@@ -228,7 +229,7 @@ EN = {
     "savedefaults": "Save as defaults...",
     "all": "all", "none": "none",
     # the language the window is in, on the button that opens the others
-    "idle": "idle", "running": "running", "lang": "\U0001F1EC\U0001F1E7 English",
+    "idle": "idle", "running": "running", "lang": "English",
     "snr_berv": "signal-to-noise against barycentric velocity",
     "snr_none": "tick a target to see where its best nights sit",
     "help_snr_berv":
@@ -763,7 +764,7 @@ FR = {
     'whole': 'tout',
     'min_rjd': 'du',
     'max_rjd': 'au',
-    'exists': '⚠ ce passage existe déjà',
+    'exists': 'ce passage existe déjà',
     'help_run_name': "Un nom pour ce passage. Ses produits vont dans <racine de sortie>/_NOM/ et son objet LBL est <objet>_PCA2D_<M-N>_NOM, pour que deux passages des mêmes cibles à des réglages différents n'écrivent jamais dans un même dossier ni sous un même nom LBL, où le LBL mesurerait le mélange sans un mot. Vide, c'est le chemin nominal. Il est proposé à partir des dates quand elles sont fixées, et peut être n'importe quoi.",
     'help_dates': "Ne garder que les poses entre ces deux dates, en jour julien réduit (BJD - 2400000). Ce qui est exclu n'est ni ajusté ni corrigé. C'est ainsi qu'on coupe une campagne en saisons, ce que la couverture barycentrique réclame parfois : deux tranches de 14 nuits de TOI-4552 au même SNR diffèrent d'un facteur soixante en couverture, et la correction y change de signe.",
     "berv": "couverture en BERV des cibles cochées",
@@ -797,7 +798,7 @@ FR = {
     "savedefaults": "Enregistrer comme défauts...",
     "all": "tout", "none": "rien",
     "idle": "au repos", "running": "en cours",
-    "lang": "\U0001F1EB\U0001F1F7 Français",
+    "lang": "Français",
     "snr_berv": "rapport signal sur bruit en fonction du BERV",
     "snr_none": "cochez une cible pour voir où sont ses meilleures nuits",
     "help_snr_berv":
@@ -2155,7 +2156,7 @@ class App:
                   background=[("pressed", "#08557f"), ("active", "#0d7cc2"),
                               ("disabled", "#9dbdd4")],
                   foreground=[("disabled", "#eef4f8")])
-        # the language buttons: a flag and two letters, as small as a button
+        # the language buttons: two letters, as small as a button
         # can be and still be clicked
         style.configure("Lang.TButton", font=(body, 10), padding=(3, 0))
         style.configure("TNotebook", background=BG, borderwidth=0,
@@ -2347,10 +2348,12 @@ class App:
         self.set_language(order[(here + 1) % len(order)])
 
     def _draw_languages(self):
-        """A button for each language the window is not in, flag and name.
+        """A button for each language the window is not in: its two letters.
 
         Drawn again at every change, since which languages are "the others"
-        is what changed.
+        is what changed. No flag on them: a flag is a pair of colour emoji,
+        and what a machine without that font draws instead is anybody's
+        guess.
         """
         bar = getattr(self, "lang_bar", None)
         if bar is None:
@@ -2360,8 +2363,7 @@ class App:
         for code in LANGUAGES:
             if code == self.lang:
                 continue
-            flag = TEXTS[code]["lang"].split()[0]
-            button = self.ttk.Button(bar, text="%s %s" % (flag, code.upper()),
+            button = self.ttk.Button(bar, text=code.upper(),
                                      style="Lang.TButton",
                                      command=lambda c=code: self.set_language(c))
             button.pack(side="left", padx=(0, 2))
@@ -2418,7 +2420,7 @@ class App:
         quit_button.pack(side="right")
         self._register(quit_button, "quit")
         self._tip(quit_button, "help_quit_button")
-        # every other language, a small flag and its two letters, one click
+        # every other language, its two letters, one click
         # each: with four a button that flips between two reaches none of them
         self.lang_bar = ttk.Frame(frame)
         self.lang_bar.pack(side="right", padx=(0, 6))
@@ -2895,7 +2897,7 @@ class App:
         for column, key in self.headings:
             arrow = ""
             if column == getattr(self, "sort_column", None):
-                arrow = "  ▼" if self.sort_reverse else "  ▲"
+                arrow = "  v" if self.sort_reverse else "  ^"
             self.tree.heading(column, text=self.t(key) + arrow)
 
     def _sort_by(self, column):
@@ -4476,20 +4478,14 @@ class App:
         return "\n".join("  %s   %s" % (human(it["bytes"]), it["name"])
                           for it in sorted(items, key=lambda it: -it["bytes"]))
 
-    #: what the cleaning question wears. macOS draws the application's own icon
-    #: in a messagebox, and this application is a python in a conda
-    #: environment, so the question before deleting six gigabytes came up under
-    #: a generic folder. The broom is drawn in its place, as the quit question
-    #: draws its face: only these two windows carry one, since only they ask
-    #: something that cannot be taken back.
-    BROOM = "\U0001F9F9"
-
     def _ask_delete(self, title, question):
-        """The cleaning question, in its own window, with a broom on it.
+        """The cleaning question, in its own window.
 
-        True to go ahead. messagebox.askyesno takes no image, so this is a
-        Toplevel, like _ask_quit: the same words, the broom beside them, and
-        the two answers named rather than called Yes and No.
+        True to go ahead. messagebox.askyesno on macOS draws the application's
+        own icon, and this application is a python in a conda environment, so
+        the question before deleting six gigabytes came up under a generic
+        folder. This is a Toplevel instead, like _ask_quit: the same words,
+        and the two answers named rather than called Yes and No.
 
         A run going on this machine is added to the question. It survives its
         folders going, since a stage that finds a cube missing builds it again
@@ -4508,12 +4504,10 @@ class App:
         answer = {"go": False}
         frame = ttk.Frame(win, padding=18)
         frame.pack(fill="both", expand=True)
-        ttk.Label(frame, text=self.BROOM, font=(EMOJI_FONT, 46)).grid(
-            row=0, column=0, rowspan=2, padx=(0, 16), sticky="n")
         ttk.Label(frame, text=question, wraplength=460, justify="left").grid(
-            row=0, column=1, sticky="w")
+            row=0, column=0, sticky="w")
         bar = ttk.Frame(frame)
-        bar.grid(row=1, column=1, sticky="e", pady=(14, 0))
+        bar.grid(row=1, column=0, sticky="e", pady=(14, 0))
 
         def go():
             answer["go"] = True
@@ -4656,16 +4650,11 @@ class App:
                 return
         self._close()
 
-    #: what the quit question wears. A run is an hour of somebody's afternoon,
-    #: and the stage it is in goes with the window; the plain grey line of text
-    #: tkinter offers for that is not the size of what it is asking.
-    STARTLED = "\U0001F633"
-
     def _ask_quit(self):
-        """The quit question, in its own window, with a face on it. True to go.
+        """The quit question, in its own window. True to go.
 
-        messagebox.askyesno takes no image, so this is a Toplevel: the same
-        words, the face beside them, and the two answers named rather than
+        A run is an hour of somebody's afternoon, and the stage it is in goes
+        with the window: a Toplevel, and the two answers named rather than
         called Yes and No, since neither of those is the question.
         """
         tk, ttk = self.tk, self.ttk
@@ -4677,12 +4666,10 @@ class App:
         answer = {"leave": False}
         frame = ttk.Frame(win, padding=18)
         frame.pack(fill="both", expand=True)
-        ttk.Label(frame, text=self.STARTLED, font=(EMOJI_FONT, 46)).grid(
-            row=0, column=0, rowspan=2, padx=(0, 16), sticky="n")
         ttk.Label(frame, text=self.t("quit_running"), wraplength=380,
-                  justify="left").grid(row=0, column=1, sticky="w")
+                  justify="left").grid(row=0, column=0, sticky="w")
         bar = ttk.Frame(frame)
-        bar.grid(row=1, column=1, sticky="e", pady=(14, 0))
+        bar.grid(row=1, column=0, sticky="e", pady=(14, 0))
 
         def leave():
             answer["leave"] = True

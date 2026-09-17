@@ -60,7 +60,7 @@ ES = {
     "whole": "todo",
     "min_rjd": "desde",
     "max_rjd": "hasta",
-    "exists": "⚠ esta ejecución ya existe",
+    "exists": "esta ejecución ya existe",
     "help_run_name":
         "Un nombre para esta ejecución. Sus productos van a"
         " <raíz de salida>/_NOMBRE/ y su objeto LBL es"
@@ -114,7 +114,7 @@ ES = {
     "none": "ninguno",
     "idle": "en espera",
     "running": "en curso",
-    "lang": "\U0001F1E8\U0001F1F4 Español",
+    "lang": "Español",
     "snr_berv": "señal a ruido frente a la velocidad baricéntrica",
     "snr_none": "marque un objetivo para ver dónde están sus mejores noches",
     "help_snr_berv":
