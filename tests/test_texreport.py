@@ -366,6 +366,21 @@ def test_the_two_posteriors_are_drawn_on_the_same_axes(tmp_path):
     assert joints[0].get_ylim() == joints[1].get_ylim()
     assert joints[0].get_xlim() == joints[1].get_xlim()
 
+    # with the times, the DC level drifts, and its slope joins the triangle
+    t = np.sort(60000 + r.uniform(0, 800, 150))
+    fits = {"before": bervbias.fit(berv, bervbias.shape(berv, -10, bervbias.sigma_of(5.0)) + noise,
+                                   e, t=t, seed=1),
+            "after": bervbias.fit(berv, noise, e, t=t, seed=2)}
+    captured.clear()
+    with unittest.mock.patch.object(plt.Figure, "savefig", keep):
+        assert tr.figure_corner({"label": "delivered", "fits": fits}, after,
+                                str(tmp_path / "d.pdf"))
+    drifts = [ax for ax in captured[0].axes
+              if ax.get_ylabel().startswith("drift")]
+    assert len(drifts) == 2 and drifts[0].get_ylim() == drifts[1].get_ylim()
+    assert len(captured[0].axes) == 12, "two triangles of six panels"
+    assert np.isfinite(fits["before"]["amp_slope_r"])
+
 
 @pytest.mark.skipif(not HAVE_TEX, reason="no pdflatex on this machine")
 def test_a_run_without_dtemp_says_so(tmp_path):
@@ -517,3 +532,31 @@ def test_the_snr_quoted_is_the_measured_one_not_the_goal():
     assert name == "EXTSN035" and list(values) == [80.0, 90.0]
     assert tr.snr_column(Table({"SNRGOAL": [150.0]})) == (None, None)
     assert tr.snr_column(Table({"SNR": [42.0]}))[0] == "SNR"
+
+
+def test_the_time_figure_shows_the_spread_with_and_without_the_line(tmp_path):
+    r = np.random.default_rng(12)
+    t = np.sort(60000 + r.uniform(0, 900, 120))
+    e = np.full(t.size, 2.0)
+    drift = 4.0 * (t - 60450) / 365.25
+    before = series(t, 1000 + drift + r.normal(0, 3, t.size), e, None, None,
+                    "delivered")
+    after = series(t, 990 + drift + r.normal(0, 2, t.size), e, None, None,
+                   "corrected")
+    slope, line = tr.straight_line(t, before["v"], e)
+    assert slope == pytest.approx(4.0, abs=1.0)
+    captured = []
+    real = plt.Figure.savefig
+
+    def keep(fig, *args, **kwargs):
+        captured.append(fig)
+        return real(fig, *args, **kwargs)
+
+    import unittest.mock
+    with unittest.mock.patch.object(plt.Figure, "savefig", keep):
+        assert tr.figure_time(before, after, str(tmp_path / "t.pdf"))
+    titles = [ax.get_title(loc="left") for ax in captured[0].axes]
+    assert "as measured, less the median" in titles
+    assert "less the straight line in time" in titles
+    assert any("median = 1000" in ax.get_ylabel() or "median = 99" in
+               ax.get_ylabel() for ax in captured[0].axes)

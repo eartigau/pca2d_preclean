@@ -48,7 +48,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import yaml
-from matplotlib.ticker import FuncFormatter
+from matplotlib.ticker import FuncFormatter, MaxNLocator
 
 from . import bervbias
 from .lblscan import AFTER, BEFORE, amplitude_at, nightly, rdb_rows, velocity_stats
@@ -483,6 +483,7 @@ def bias_row(fitted):
             "bias_fwhm_err": float(0.5 * (fitted["fwhm"][2]
                                           - fitted["fwhm"][1])),
             "bias_amp_fwhm_r": fitted["amp_fwhm_r"],
+            "bias_amp_slope_r": fitted.get("amp_slope_r", np.nan),
             "bias_p_positive": fitted["p_positive"],
             "bias_c": float(fitted["c"][0]),
             "bias_slope": float(fitted["slope"][0]),
@@ -705,11 +706,37 @@ def _save(fig, path):
     return path
 
 
+def straight_line(t, v, e):
+    """(slope in m/s per year, the line at each t): a straight line in time,
+    weighted by the error bars, about the middle of the span."""
+    t, v, e = (np.asarray(x, float) for x in (t, v, e))
+    mid = 0.5 * (t.min() + t.max())
+    tau = (t - mid) / 365.25
+    if np.ptp(tau) <= 0:
+        return 0.0, np.full(t.size, np.median(v))
+    slope, level = np.polyfit(tau, v, 1, w=1.0 / e)
+    return float(slope), level + slope * tau
+
+
+def _histogram(ax, values, bins, colour, label):
+    """One series' spread, as a step outline over a light fill."""
+    ax.hist(values, bins=bins, color=colour, alpha=0.18, lw=0)
+    ax.hist(values, bins=bins, color=colour, histtype="step", lw=1.3,
+            label=label)
+
+
 def figure_time(before, after, path):
-    fig, axes = plt.subplots(2, 1, figsize=(WIDTH, 5.4), sharex=True,
-                             sharey=True)
+    """The velocities over the campaign, each less its median, with the
+    straight line in time drawn over them; below, their spread, delivered
+    against corrected, as they are and with that line taken out."""
+    fig = plt.figure(figsize=(WIDTH, 8.0))
+    cells = fig.add_gridspec(3, 2, height_ratios=[1.0, 1.0, 0.85],
+                             hspace=0.42, wspace=0.08)
+    axes = [fig.add_subplot(cells[0, :])]
+    axes.append(fig.add_subplot(cells[1, :], sharex=axes[0], sharey=axes[0]))
     lim = _limits(before["v"] - np.median(before["v"]),
                   after["v"] - np.median(after["v"]))
+    spreads = []
     for ax, run, colour in zip(axes, (before, after), (BEFORE, AFTER)):
         middle = np.median(run["v"])
         nt = nightly(run["t"], run["v"], run["e"])
@@ -724,6 +751,11 @@ def figure_time(before, after, path):
         ax.errorbar(nt[0], nt[1] - middle, yerr=nt[2], fmt="o", ls="none",
                     ms=5.0, mfc=colour, mec=INK, mew=0.5, ecolor=INK,
                     elinewidth=0.6, capsize=0, label=label, zorder=3)
+        slope, line = straight_line(run["t"], run["v"], run["e"])
+        order = np.argsort(run["t"])
+        ax.plot(run["t"][order], line[order] - middle, color=INK, lw=1.0,
+                ls="--", zorder=4,
+                label="straight line, %+.2f m/s/yr" % slope)
         s = velocity_stats(run["t"], run["v"], run["e"])
         ax.set_title("%s: rms %.2f m/s, nightly rms %.2f m/s, median error"
                      " %.2f m/s" % (run["label"], s["rms"], s["nightly_rms"],
@@ -733,10 +765,37 @@ def figure_time(before, after, path):
         ax.set_ylabel("velocity - median (m/s)\nmedian = %.1f m/s" % middle,
                       fontsize=8, color=INK)
         ax.set_ylim(*lim)
-        ax.legend(fontsize=7, frameon=False, loc="upper right", ncol=2)
+        ax.legend(fontsize=7, frameon=False, loc="upper right", ncol=3)
         _style(ax)
+        spreads.append((run["v"] - middle, run["v"] - line, slope, colour,
+                        run["label"]))
+    plt.setp(axes[0].get_xticklabels(), visible=False)
     axes[-1].set_xlabel("RJD (BJD - 2400000)", fontsize=8, color=INK)
-    fig.tight_layout()
+
+    # the spread, before and after the correction, and before and after the
+    # straight line: one set of bins for all four, so they compare
+    bins = np.linspace(lim[0], lim[1], 41)
+    left = fig.add_subplot(cells[2, 0])
+    right = fig.add_subplot(cells[2, 1], sharex=left, sharey=left)
+    for raw, flat, slope, colour, name in spreads:
+        _histogram(left, raw, bins, colour, "%s: rms %.2f, robust %.2f"
+                   % (name, np.std(raw), robust_sigma(raw)))
+        _histogram(right, flat, bins, colour, "%s: rms %.2f, robust %.2f"
+                   % (name, np.std(flat), robust_sigma(flat)))
+    left.set_title("as measured, less the median", fontsize=8, color=INK,
+                   loc="left")
+    right.set_title("less the straight line in time", fontsize=8, color=INK,
+                    loc="left")
+    left.set_ylabel("exposures", fontsize=8, color=INK)
+    for ax in (left, right):
+        ax.axvline(0, color=MUTED, lw=0.6)
+        ax.set_xlabel("velocity (m/s)", fontsize=8, color=INK)
+        ax.set_xlim(*lim)
+        ax.set_ylim(0, ax.get_ylim()[1] * 1.35)
+        ax.legend(fontsize=6.5, frameon=False, loc="upper left")
+        _style(ax)
+    plt.setp(right.get_yticklabels(), visible=False)
+    fig.subplots_adjust(left=0.1, right=0.98, bottom=0.07, top=0.96)
     return _save(fig, path)
 
 
@@ -856,69 +915,127 @@ def amp_range(*fits):
     return -reach, reach
 
 
-def _corner(fig, cell, fitted, colour, title, arange):
-    """amp against the FWHM for one fit: the joint posterior and both
-    marginals, with 1 and 2 sigma contours, on the amp axis given, the FWHM
-    from 1 to 10 km/s."""
-    inner = cell.subgridspec(2, 2, width_ratios=[1.0, 0.35],
-                             height_ratios=[0.35, 1.0], wspace=0.05,
-                             hspace=0.05)
-    joint = fig.add_subplot(inner[1, 0])
-    top = fig.add_subplot(inner[0, 0], sharex=joint)
-    side = fig.add_subplot(inner[1, 1], sharey=joint)
-    amp = fitted["samples"][:, 0]
-    width = fitted["samples"][:, 1]
-    srange = (bervbias.FWHM_MIN, bervbias.FWHM_MAX)
-    counts, xe, ye = np.histogram2d(width, amp, bins=45, range=[srange, arange])
+def slope_range(*fits):
+    """One drift axis for every fit shown side by side, m/s per year."""
+    ends = np.array([np.percentile(f["samples"][:, 4], [0.5, 99.5])
+                     for f in fits])
+    lo, hi = float(ends[:, 0].min()), float(ends[:, 1].max())
+    pad = 0.08 * (hi - lo) if hi > lo else 1.0
+    return lo - pad, hi + pad
+
+
+def _joint(ax, x, y, xr, yr, colour):
+    """Two parameters' joint posterior: its density in grey, and the
+    contours holding 39% and 86% of it, 1 and 2 sigma in two dimensions."""
+    counts, xe, ye = np.histogram2d(x, y, bins=40, range=[xr, yr])
     ordered = np.sort(counts.ravel())[::-1]
+    if ordered.sum() <= 0:
+        return
     cumulative = np.cumsum(ordered) / ordered.sum()
-    # the densities enclosing 39% and 86% of the mass: 1 and 2 sigma in 2D
-    levels = sorted({float(ordered[np.searchsorted(cumulative, q)])
+    levels = sorted({float(ordered[min(np.searchsorted(cumulative, q),
+                                       ordered.size - 1)])
                      for q in (0.865, 0.393)})
-    joint.imshow(counts.T, origin="lower", aspect="auto", cmap="Greys",
-                 extent=[xe[0], xe[-1], ye[0], ye[-1]], alpha=0.55)
-    if len(levels) >= 1 and levels[-1] > 0:
-        joint.contour(0.5 * (xe[1:] + xe[:-1]), 0.5 * (ye[1:] + ye[:-1]),
-                      counts.T, levels=levels, colors=[colour],
-                      linewidths=[0.9, 1.4][:len(levels)])
-    joint.axhline(0, color=MUTED, lw=0.6)
-    joint.set_xlabel("FWHM (km/s)", fontsize=7.5, color=INK)
-    joint.set_ylabel("amp ((m/s)/(km/s))", fontsize=7.5, color=INK)
-    joint.set_xticks(np.arange(1, 11))
-    joint.set_xlim(*srange)
-    joint.set_ylim(*arange)
-    joint.yaxis.set_major_formatter(SIGNED)
-    top.hist(width, bins=45, range=srange, color=colour, alpha=0.7)
-    # the prior, scaled to the histogram, for what the data added to it
-    mean, spread = bervbias.FWHM_PRIOR
-    xs = np.linspace(*srange, 200)
-    prior = np.exp(-0.5 * ((xs - mean) / spread) ** 2)
-    top.plot(xs, prior * len(width) * (xe[1] - xe[0])
-             / (spread * np.sqrt(2 * np.pi)), color=MUTED, lw=0.9, ls="--",
-             label="prior")
-    side.hist(amp, bins=45, range=arange, color=colour, alpha=0.7,
-              orientation="horizontal")
-    for ax in (top, side):
-        ax.set_yticks([]) if ax is top else ax.set_xticks([])
-        plt.setp(ax.get_xticklabels() if ax is top else ax.get_yticklabels(),
-                 visible=False)
-    top.set_title("%s\nr(amp, FWHM) %.2f, P(amp > 0) %.2f"
-                  % (title, fitted["amp_fwhm_r"], fitted["p_positive"]),
-                  fontsize=7, color=INK, loc="left")
-    for ax in (joint, top, side):
-        _style(ax)
+    ax.imshow(counts.T, origin="lower", aspect="auto", cmap="Greys",
+              extent=[xe[0], xe[-1], ye[0], ye[-1]], alpha=0.55)
+    levels = [lv for lv in levels if lv > 0]
+    if levels:
+        ax.contour(0.5 * (xe[1:] + xe[:-1]), 0.5 * (ye[1:] + ye[:-1]),
+                   counts.T, levels=levels, colors=[colour],
+                   linewidths=[0.9, 1.4][-len(levels):])
+    ax.set_xlim(*xr)
+    ax.set_ylim(*yr)
+
+
+def _corner(fig, cell, fitted, colour, title, arange, srange=None):
+    """The posterior of one fit as a triangle: the FWHM, the amplitude and,
+    when the DC level drifts, its slope, each against the others with 1 and
+    2 sigma contours, and each alone on the diagonal, the FWHM with its
+    prior. The axes are the ones given, so two triangles side by side are
+    on the same scales."""
+    samples = fitted["samples"]
+    params = [("FWHM (km/s)", samples[:, 1],
+               (bervbias.FWHM_MIN, bervbias.FWHM_MAX)),
+              ("amp ((m/s)/(km/s))", samples[:, 0], arange)]
+    if fitted.get("drift") and srange is not None:
+        params.append(("drift (m/s/yr)", samples[:, 4], srange))
+    n = len(params)
+    inner = cell.subgridspec(n, n, wspace=0.08, hspace=0.08)
+    axes = {}
+    for row in range(n):
+        for col in range(row + 1):
+            ax = fig.add_subplot(inner[row, col])
+            axes[row, col] = ax
+            xname, x, xr = params[col]
+            if row == col:
+                ax.hist(x, bins=40, range=xr, color=colour, alpha=0.7)
+                if col == 0:
+                    # the prior, scaled to the histogram, for what the data
+                    # added to it
+                    mean, spread = bervbias.FWHM_PRIOR
+                    xs = np.linspace(*xr, 200)
+                    step = (xr[1] - xr[0]) / 40.0
+                    ax.plot(xs, np.exp(-0.5 * ((xs - mean) / spread) ** 2)
+                            * len(x) * step / (spread * np.sqrt(2 * np.pi)),
+                            color=MUTED, lw=0.9, ls="--")
+                ax.set_xlim(*xr)
+                ax.set_yticks([])
+            else:
+                yname, y, yr = params[row]
+                _joint(ax, x, y, xr, yr, colour)
+                if yname.startswith("amp"):
+                    ax.axhline(0, color=MUTED, lw=0.6)
+                    ax.yaxis.set_major_formatter(SIGNED)
+                if xname.startswith("amp"):
+                    ax.axvline(0, color=MUTED, lw=0.6)
+                if col == 0:
+                    ax.set_ylabel(yname, fontsize=7, color=INK)
+                else:
+                    plt.setp(ax.get_yticklabels(), visible=False)
+            if row == n - 1:
+                ax.set_xlabel(xname, fontsize=7, color=INK)
+                if xname.startswith("amp"):
+                    ax.xaxis.set_major_formatter(SIGNED)
+            else:
+                plt.setp(ax.get_xticklabels(), visible=False)
+            # few ticks, pruned at the ends: side by side, the panels'
+            # labels otherwise run into each other
+            if xname.startswith("FWHM"):
+                ax.set_xticks([2, 5, 8])
+            else:
+                ax.xaxis.set_major_locator(MaxNLocator(3, prune="both"))
+            if row != col:
+                yname = params[row][0]
+                if yname.startswith("FWHM"):
+                    ax.set_yticks([2, 5, 8])
+                else:
+                    ax.yaxis.set_major_locator(MaxNLocator(3, prune="both"))
+            _style(ax)
+            ax.tick_params(labelsize=6.5)
+    said = ["r(amp, FWHM) %.2f" % fitted["amp_fwhm_r"]]
+    if n == 3:
+        said += ["r(amp, drift) %.2f" % fitted["amp_slope_r"],
+                 "r(FWHM, drift) %.2f" % fitted["fwhm_slope_r"]]
+    axes[0, 0].set_title("%s\n%s\nP(amp > 0) %.2f"
+                         % (title, ", ".join(said[:2]) + (",\n" + said[2]
+                                                          if n == 3 else ""),
+                            fitted["p_positive"]),
+                         fontsize=7, color=INK, loc="left")
 
 
 def figure_corner(before, after, path):
     fb = (before.get("fits") or {})
     if fb.get("before") is None or fb.get("after") is None:
         return None
-    fig = plt.figure(figsize=(WIDTH, 3.6))
-    cells = fig.add_gridspec(1, 2, wspace=0.35)
+    drift = fb["before"].get("drift") and fb["after"].get("drift")
+    fig = plt.figure(figsize=(WIDTH, 4.6 if drift else 3.6))
+    cells = fig.add_gridspec(1, 2, wspace=0.3)
     arange = amp_range(fb["before"], fb["after"])
-    _corner(fig, cells[0], fb["before"], BEFORE, before["label"], arange)
-    _corner(fig, cells[1], fb["after"], AFTER, after["label"], arange)
-    fig.subplots_adjust(left=0.1, right=0.98, bottom=0.14, top=0.84)
+    srange = slope_range(fb["before"], fb["after"]) if drift else None
+    _corner(fig, cells[0], fb["before"], BEFORE, before["label"], arange,
+            srange)
+    _corner(fig, cells[1], fb["after"], AFTER, after["label"], arange, srange)
+    fig.subplots_adjust(left=0.11, right=0.98, bottom=0.11,
+                        top=0.8 if drift else 0.84)
     return _save(fig, path)
 
 
@@ -1523,6 +1640,10 @@ def summary_table(star, numbers):
         rows.append("amp-FWHM correlation (posterior) & %s & %s & & \\\\"
                     % (number(b["bias_amp_fwhm_r"]),
                        number(a["bias_amp_fwhm_r"])))
+        if b.get("bias_drift"):
+            rows.append("amp-drift correlation (posterior) & %s & %s & & \\\\"
+                        % (number(b["bias_amp_slope_r"]),
+                           number(a["bias_amp_slope_r"])))
         rows.append("P(amp $>$ 0) (posterior) & %s & %s & & \\\\"
                     % (number(b["bias_p_positive"]),
                        number(a["bias_p_positive"])))
@@ -1816,7 +1937,12 @@ def velocity_section(star, before, after, numbers, folder, stale):
          "%s: the velocities over the campaign" % name,
          "The velocities over the campaign, delivered above and corrected"
          " below, on the same scale, each less its own median, which its"
-         " axis gives. %s; no line joins them."
+         " axis gives. %s; no line joins them. The dashed line is a straight"
+         " line in time, fitted with the error bars as weights. Below, the"
+         " spread of the exposures, delivered and corrected on the same"
+         " bins: as measured on the left, less that straight line on the"
+         " right, with the rms and the robust sigma (1.4826 MAD) of each, in"
+         " m/s."
          % ("Small points are exposures, large ones the weighted nightly"
             " means" if numbers["nights"] < 0.8 * numbers["n"]
             else "One point per exposure, about one a night")),
@@ -1856,11 +1982,13 @@ def velocity_section(star, before, after, numbers, folder, stale):
          " $a\\sigma e^{-1/2}$; below 3$\\sigma$ from zero, only an upper"
          " limit on it is quoted."),
         (figure_corner(before, after, os.path.join(figures, base + "-corner.pdf")),
-         "%s: the covariance of amp and FWHM" % name,
-         "The joint posterior of the bias's amplitude $a$ and the FWHM of the"
-         " Gaussian whose derivative it is, from 1 to 10 km/s, delivered and"
-         " corrected, on the same axes, with its 1"
-         " and 2$\\sigma$ contours and both marginals. $a$ is signed: its"
+         "%s: the covariance of amp, FWHM and the drift" % name,
+         "The joint posterior of the bias's amplitude $a$, the FWHM of the"
+         " Gaussian whose derivative it is (from 1 to 10 km/s) and the DC"
+         " level's drift $s$, delivered and"
+         " corrected, on the same axes, each pair with its 1"
+         " and 2$\\sigma$ contours, and each parameter alone on the"
+         " diagonal. $a$ is signed: its"
          " prior is flat, the same on both sides, half the"
          " walkers start on each, and the amp axis is symmetric about zero;"
          " P($a > 0$) is the posterior's share on the positive side. The two trade against each other,"

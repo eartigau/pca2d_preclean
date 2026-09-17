@@ -417,6 +417,13 @@ def fit(berv, v, e, t=None, walkers=32, steps=2500, burn=1000, seed=0):
                            if np.std(peaks) > 0 else 0.0)
     out["amp_fwhm_r"] = float(np.corrcoef(samples[:, 0],
                                           samples[:, 1])[0, 1])
+    if ndim == 5:
+        out["amp_slope_r"] = float(np.corrcoef(samples[:, 0],
+                                               samples[:, 4])[0, 1])
+        out["fwhm_slope_r"] = float(np.corrcoef(samples[:, 1],
+                                                samples[:, 4])[0, 1])
+    else:
+        out["amp_slope_r"] = out["fwhm_slope_r"] = np.nan
     out["p_positive"] = float(np.mean(samples[:, 0] > 0))
     # what can be said when nothing is seen: the bias is below this
     out["upper"] = float(np.percentile(np.abs(peaks), 95))
