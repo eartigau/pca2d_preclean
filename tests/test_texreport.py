@@ -336,20 +336,17 @@ def test_an_old_report_rewritten_is_kept_whole_first(tmp_path):
     assert bound.read_bytes() != before
 
 
-def test_the_two_posteriors_are_drawn_on_the_same_axes(tmp_path):
-    """Side by side, they are compared: one amp axis and one FWHM axis for
-    both, whatever each posterior spans."""
+def test_the_two_posteriors_are_laid_over_each_other(tmp_path):
+    """One triangle, both posteriors in it: each joint panel holds the
+    contours of both series, each diagonal both marginals; with the times,
+    the DC level's drift joins the FWHM and the amplitude."""
     from pca2d import bervbias
 
     r = np.random.default_rng(8)
     berv = r.uniform(-25, 25, 150)
     e = np.full(150, 5.0)
     noise = r.normal(0, 5, 150)
-    fits = {"before": bervbias.fit(berv, bervbias.shape(berv, -10, bervbias.sigma_of(5.0)) + noise,
-                                   e, seed=1),
-            "after": bervbias.fit(berv, noise, e, seed=2)}
-    before = {"label": "delivered", "fits": fits}
-    after = {"label": "corrected"}
+    bias = bervbias.shape(berv, -10, bervbias.sigma_of(5.0))
     captured = []
     real = plt.Figure.savefig
 
@@ -358,27 +355,24 @@ def test_the_two_posteriors_are_drawn_on_the_same_axes(tmp_path):
         return real(fig, *args, **kwargs)
 
     import unittest.mock
-    with unittest.mock.patch.object(plt.Figure, "savefig", keep):
-        assert tr.figure_corner(before, after, str(tmp_path / "c.pdf"))
-    joints = [ax for ax in captured[0].axes
-              if ax.get_ylabel().startswith("amp")]
-    assert len(joints) == 2
-    assert joints[0].get_ylim() == joints[1].get_ylim()
-    assert joints[0].get_xlim() == joints[1].get_xlim()
-
-    # with the times, the DC level drifts, and its slope joins the triangle
     t = np.sort(60000 + r.uniform(0, 800, 150))
-    fits = {"before": bervbias.fit(berv, bervbias.shape(berv, -10, bervbias.sigma_of(5.0)) + noise,
-                                   e, t=t, seed=1),
-            "after": bervbias.fit(berv, noise, e, t=t, seed=2)}
-    captured.clear()
-    with unittest.mock.patch.object(plt.Figure, "savefig", keep):
-        assert tr.figure_corner({"label": "delivered", "fits": fits}, after,
-                                str(tmp_path / "d.pdf"))
-    drifts = [ax for ax in captured[0].axes
-              if ax.get_ylabel().startswith("drift")]
-    assert len(drifts) == 2 and drifts[0].get_ylim() == drifts[1].get_ylim()
-    assert len(captured[0].axes) == 12, "two triangles of six panels"
+    for times, panels in ((None, 3), (t, 6)):
+        fits = {"before": bervbias.fit(berv, bias + noise, e, t=times, seed=1),
+                "after": bervbias.fit(berv, noise, e, t=times, seed=2)}
+        captured.clear()
+        with unittest.mock.patch.object(plt.Figure, "savefig", keep):
+            assert tr.figure_corner({"label": "delivered", "fits": fits},
+                                    {"label": "corrected"},
+                                    str(tmp_path / "c.pdf"))
+        axes = captured[0].axes
+        assert len(axes) == panels, "one triangle"
+        joint = [ax for ax in axes if ax.get_ylabel().startswith("amp")][0]
+        colours = {tuple(np.round(c.get_edgecolor()[0][:3], 3))
+                   for c in joint.collections if len(c.get_edgecolor())}
+        assert len(colours) >= 2, "both series in the same panel"
+        legend = axes[0].get_legend()
+        assert {t.get_text() for t in legend.get_texts()} >= \
+            {"delivered", "corrected", "FWHM prior"}
     assert np.isfinite(fits["before"]["amp_slope_r"])
 
 
@@ -448,7 +442,8 @@ def test_the_minus_signs_are_in_the_figures_text(tmp_path):
     assert tr.figure_corner({"label": "delivered", "fits": fits},
                             {"label": "corrected"}, path)
     text = PdfReader(path).pages[0].extract_text()
-    assert "-10" in text and "+10" in text
+    assert re.search(r"(^|\s)-\d", text) and re.search(r"\+\d", text), \
+        "the amp ticks carry their signs, as text"
     fonts = PdfReader(path).pages[0]["/Resources"]["/Font"]
     assert all(f.get_object()["/Subtype"] != "/Type3" for f in fonts.values())
 

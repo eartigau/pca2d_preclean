@@ -924,118 +924,131 @@ def slope_range(*fits):
     return lo - pad, hi + pad
 
 
+#: the posterior mass the shading encloses, 1, 2 and 3 sigma in two
+#: dimensions, and how dark each is: the core darkest, so two posteriors laid
+#: over each other still show where each one is dense
+MASSES = (0.393, 0.865, 0.989)
+SHADES = (0.55, 0.3, 0.12)
+
+
 def _joint(ax, x, y, xr, yr, colour):
-    """Two parameters' joint posterior: its density in grey, and the
-    contours holding 39% and 86% of it, 1 and 2 sigma in two dimensions."""
-    counts, xe, ye = np.histogram2d(x, y, bins=40, range=[xr, yr])
+    """Two parameters' joint posterior, drawn so another can lie over it:
+    filled regions holding 39%, 86% and 99% of it (1, 2 and 3 sigma in two
+    dimensions), lighter outwards, on a histogram smoothed by one bin, and
+    the 1 and 2 sigma outlines."""
+    from scipy.ndimage import gaussian_filter
+
+    counts, xe, ye = np.histogram2d(x, y, bins=50, range=[xr, yr])
+    counts = gaussian_filter(counts, 1.0)
     ordered = np.sort(counts.ravel())[::-1]
     if ordered.sum() <= 0:
         return
     cumulative = np.cumsum(ordered) / ordered.sum()
-    levels = sorted({float(ordered[min(np.searchsorted(cumulative, q),
-                                       ordered.size - 1)])
-                     for q in (0.865, 0.393)})
-    ax.imshow(counts.T, origin="lower", aspect="auto", cmap="Greys",
-              extent=[xe[0], xe[-1], ye[0], ye[-1]], alpha=0.55)
-    levels = [lv for lv in levels if lv > 0]
-    if levels:
-        ax.contour(0.5 * (xe[1:] + xe[:-1]), 0.5 * (ye[1:] + ye[:-1]),
-                   counts.T, levels=levels, colors=[colour],
-                   linewidths=[0.9, 1.4][-len(levels):])
+    levels = [float(ordered[min(np.searchsorted(cumulative, q),
+                                ordered.size - 1)]) for q in MASSES]
+    xc, yc = 0.5 * (xe[1:] + xe[:-1]), 0.5 * (ye[1:] + ye[:-1])
+    top = float(ordered[0]) * 1.01
+    for level, shade in zip(levels, SHADES):
+        if 0 < level < top:
+            ax.contourf(xc, yc, counts.T, levels=[level, top],
+                        colors=[colour], alpha=shade * 0.6)
+    lines = sorted({lv for lv in levels[:2] if 0 < lv < top})
+    if lines:
+        ax.contour(xc, yc, counts.T, levels=lines, colors=[colour],
+                   linewidths=[0.8, 1.3][:len(lines)])
     ax.set_xlim(*xr)
     ax.set_ylim(*yr)
 
 
-def _corner(fig, cell, fitted, colour, title, arange, srange=None):
-    """The posterior of one fit as a triangle: the FWHM, the amplitude and,
-    when the DC level drifts, its slope, each against the others with 1 and
-    2 sigma contours, and each alone on the diagonal, the FWHM with its
-    prior. The axes are the ones given, so two triangles side by side are
-    on the same scales."""
-    samples = fitted["samples"]
-    params = [("FWHM (km/s)", samples[:, 1],
-               (bervbias.FWHM_MIN, bervbias.FWHM_MAX)),
-              ("amp ((m/s)/(km/s))", samples[:, 0], arange)]
-    if fitted.get("drift") and srange is not None:
-        params.append(("drift (m/s/yr)", samples[:, 4], srange))
-    n = len(params)
-    inner = cell.subgridspec(n, n, wspace=0.08, hspace=0.08)
-    axes = {}
-    for row in range(n):
-        for col in range(row + 1):
-            ax = fig.add_subplot(inner[row, col])
-            axes[row, col] = ax
-            xname, x, xr = params[col]
-            if row == col:
-                ax.hist(x, bins=40, range=xr, color=colour, alpha=0.7)
-                if col == 0:
-                    # the prior, scaled to the histogram, for what the data
-                    # added to it
-                    mean, spread = bervbias.FWHM_PRIOR
-                    xs = np.linspace(*xr, 200)
-                    step = (xr[1] - xr[0]) / 40.0
-                    ax.plot(xs, np.exp(-0.5 * ((xs - mean) / spread) ** 2)
-                            * len(x) * step / (spread * np.sqrt(2 * np.pi)),
-                            color=MUTED, lw=0.9, ls="--")
-                ax.set_xlim(*xr)
-                ax.set_yticks([])
-            else:
-                yname, y, yr = params[row]
-                _joint(ax, x, y, xr, yr, colour)
-                if yname.startswith("amp"):
-                    ax.axhline(0, color=MUTED, lw=0.6)
-                    ax.yaxis.set_major_formatter(SIGNED)
-                if xname.startswith("amp"):
-                    ax.axvline(0, color=MUTED, lw=0.6)
-                if col == 0:
-                    ax.set_ylabel(yname, fontsize=7, color=INK)
-                else:
-                    plt.setp(ax.get_yticklabels(), visible=False)
-            if row == n - 1:
-                ax.set_xlabel(xname, fontsize=7, color=INK)
-                if xname.startswith("amp"):
-                    ax.xaxis.set_major_formatter(SIGNED)
-            else:
-                plt.setp(ax.get_xticklabels(), visible=False)
-            # few ticks, pruned at the ends: side by side, the panels'
-            # labels otherwise run into each other
-            if xname.startswith("FWHM"):
-                ax.set_xticks([2, 5, 8])
-            else:
-                ax.xaxis.set_major_locator(MaxNLocator(3, prune="both"))
-            if row != col:
-                yname = params[row][0]
-                if yname.startswith("FWHM"):
-                    ax.set_yticks([2, 5, 8])
-                else:
-                    ax.yaxis.set_major_locator(MaxNLocator(3, prune="both"))
-            _style(ax)
-            ax.tick_params(labelsize=6.5)
-    said = ["r(amp, FWHM) %.2f" % fitted["amp_fwhm_r"]]
-    if n == 3:
-        said += ["r(amp, drift) %.2f" % fitted["amp_slope_r"],
-                 "r(FWHM, drift) %.2f" % fitted["fwhm_slope_r"]]
-    axes[0, 0].set_title("%s\n%s\nP(amp > 0) %.2f"
-                         % (title, ", ".join(said[:2]) + (",\n" + said[2]
-                                                          if n == 3 else ""),
-                            fitted["p_positive"]),
-                         fontsize=7, color=INK, loc="left")
+def _marginal(ax, x, xr, colour, label=None):
+    """One parameter alone: a light fill under a step outline."""
+    ax.hist(x, bins=50, range=xr, color=colour, alpha=0.2, lw=0,
+            density=True)
+    ax.hist(x, bins=50, range=xr, color=colour, histtype="step", lw=1.3,
+            density=True, label=label)
 
 
 def figure_corner(before, after, path):
+    """The two posteriors laid over each other, one triangle: the FWHM, the
+    amplitude and, when the DC level drifts, its slope, each pair's joint
+    posterior below the diagonal and each parameter alone on it, the FWHM
+    with its prior."""
     fb = (before.get("fits") or {})
     if fb.get("before") is None or fb.get("after") is None:
         return None
-    drift = fb["before"].get("drift") and fb["after"].get("drift")
-    fig = plt.figure(figsize=(WIDTH, 4.6 if drift else 3.6))
-    cells = fig.add_gridspec(1, 2, wspace=0.3)
-    arange = amp_range(fb["before"], fb["after"])
-    srange = slope_range(fb["before"], fb["after"]) if drift else None
-    _corner(fig, cells[0], fb["before"], BEFORE, before["label"], arange,
-            srange)
-    _corner(fig, cells[1], fb["after"], AFTER, after["label"], arange, srange)
-    fig.subplots_adjust(left=0.11, right=0.98, bottom=0.11,
-                        top=0.8 if drift else 0.84)
+    fits = [(fb["before"], BEFORE, before["label"]),
+            (fb["after"], AFTER, after["label"])]
+    drift = all(f.get("drift") for f, _c, _l in fits)
+    params = [("FWHM (km/s)", 1, (bervbias.FWHM_MIN, bervbias.FWHM_MAX)),
+              ("amp ((m/s)/(km/s))", 0, amp_range(fb["before"], fb["after"]))]
+    if drift:
+        params.append(("drift (m/s/yr)", 4,
+                       slope_range(fb["before"], fb["after"])))
+    n = len(params)
+    fig = plt.figure(figsize=(WIDTH, 0.86 * WIDTH if n == 3 else 0.62 * WIDTH))
+    cells = fig.add_gridspec(n, n, wspace=0.08, hspace=0.08)
+    for row in range(n):
+        for col in range(row + 1):
+            ax = fig.add_subplot(cells[row, col])
+            xname, xi, xr = params[col]
+            if row == col:
+                for fitted, colour, label in fits:
+                    _marginal(ax, fitted["samples"][:, xi], xr, colour,
+                              label=label)
+                if xi == 1:
+                    # the prior, as a density, for what the data added to it
+                    mean, spread = bervbias.FWHM_PRIOR
+                    xs = np.linspace(*xr, 200)
+                    ax.plot(xs, np.exp(-0.5 * ((xs - mean) / spread) ** 2)
+                            / (spread * np.sqrt(2 * np.pi)), color=MUTED,
+                            lw=1.0, ls="--", label="FWHM prior")
+                ax.set_xlim(*xr)
+                ax.set_yticks([])
+                if row == 0:
+                    ax.legend(fontsize=7.5, frameon=False, loc="upper left",
+                              bbox_to_anchor=(1.1, 1.0))
+            else:
+                yname, yi, yr = params[row]
+                # the wider posterior first, so the narrower lies on top
+                for fitted, colour, _label in sorted(
+                        fits, key=lambda f: -np.std(f[0]["samples"][:, yi])):
+                    _joint(ax, fitted["samples"][:, xi],
+                           fitted["samples"][:, yi], xr, yr, colour)
+                if yi == 0:
+                    ax.axhline(0, color=MUTED, lw=0.6)
+                    ax.yaxis.set_major_formatter(SIGNED)
+                if xi == 0:
+                    ax.axvline(0, color=MUTED, lw=0.6)
+                if col == 0:
+                    ax.set_ylabel(yname, fontsize=8, color=INK)
+                else:
+                    plt.setp(ax.get_yticklabels(), visible=False)
+                if yi == 1:
+                    ax.set_yticks([2, 5, 8])
+                else:
+                    ax.yaxis.set_major_locator(MaxNLocator(4, prune="both"))
+            if xi == 1:
+                ax.set_xticks([2, 5, 8])
+            else:
+                ax.xaxis.set_major_locator(MaxNLocator(4, prune="both"))
+            if row == n - 1:
+                ax.set_xlabel(xname, fontsize=8, color=INK)
+                if xi == 0:
+                    ax.xaxis.set_major_formatter(SIGNED)
+            else:
+                plt.setp(ax.get_xticklabels(), visible=False)
+            _style(ax)
+            ax.tick_params(labelsize=7)
+    # the numbers, in the empty upper right
+    for k, (fitted, colour, label) in enumerate(fits):
+        said = ["r(amp, FWHM) %.2f" % fitted["amp_fwhm_r"]]
+        if drift:
+            said += ["r(amp, drift) %.2f" % fitted["amp_slope_r"],
+                     "r(FWHM, drift) %.2f" % fitted["fwhm_slope_r"]]
+        said.append("P(amp > 0) %.2f" % fitted["p_positive"])
+        fig.text(0.98, 0.72 - 0.13 * k, "%s\n%s" % (label, "\n".join(said)),
+                 ha="right", va="top", fontsize=7.5, color=colour)
+    fig.subplots_adjust(left=0.12, right=0.98, bottom=0.09, top=0.97)
     return _save(fig, path)
 
 
@@ -1989,17 +2002,19 @@ def velocity_section(star, before, after, numbers, folder, stale):
          "The joint posterior of the bias's amplitude $a$, the FWHM of the"
          " Gaussian whose derivative it is (from 1 to 10 km/s) and the DC"
          " level's drift $s$, delivered and"
-         " corrected, on the same axes, each pair with its 1"
-         " and 2$\\sigma$ contours, and each parameter alone on the"
-         " diagonal. $a$ is signed: its"
+         " corrected laid over each other in their colours: below the"
+         " diagonal, each pair's joint posterior, shaded darkest where it"
+         " holds 39\\% of the mass (1$\\sigma$ in two dimensions), lighter"
+         " out to 86\\% and 99\\% (2 and 3$\\sigma$), with the 1 and"
+         " 2$\\sigma$ outlines; on the diagonal, each parameter alone, the"
+         " FWHM with its prior dashed. $a$ is signed: its"
          " prior is flat, the same on both sides, half the"
          " walkers start on each, and the amp axis is symmetric about zero;"
          " P($a > 0$) is the posterior's share on the positive side. The two trade against each other,"
          " since a narrower bias needs a larger amplitude to reach the same"
-         " points. The dashed curve over the FWHM's marginal is its prior,"
-         " $5 \\pm 1.5$ km/s: a marginal that is the prior is a width the"
-         " data said nothing about, which is what a bias that is not there"
-         " looks like."),
+         " points. The FWHM's prior is $5 \\pm 1.5$ km/s: a marginal that is"
+         " the prior is a width the data said nothing about, which is what a"
+         " bias that is not there looks like."),
         (figure_d2v(before, after, os.path.join(figures, base + "-d2v.pdf")),
          "%s: d2v, the activity indicator" % name,
          "d2v, LBL's second-derivative term, which follows the line width and"
