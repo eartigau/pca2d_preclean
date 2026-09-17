@@ -267,12 +267,13 @@ def delta_bic(berv, v, e, chain_samples=None, chain_lp=None, tau=None):
     return float(value), float(bias), float(null)
 
 
-def bic_words(value):
-    """What a Delta BIC says, on Kass and Raftery's scale."""
+def bic_words(value, what="bias"):
+    """What a Delta BIC says, on Kass and Raftery's scale; `what` is the
+    model it is the evidence for, named when the data prefer none."""
     if not np.isfinite(value):
         return "n/a"
     if value < 0:
-        return "no bias preferred"
+        return "no %s preferred" % what
     return next(word for floor, word in BIC_WORDS if value >= floor)
 
 

@@ -688,3 +688,27 @@ def test_the_velocities_are_folded_at_each_known_planet(tmp_path):
     ax = captured[0].axes[0]
     assert ax.get_xlim()[0] < 0.7, "the periodogram reaches the planet"
     assert any(t.get_text().strip() == "b" for t in ax.texts)
+
+
+def test_a_planet_s_delta_bic_prefers_the_sine_only_when_it_is_there():
+    r = np.random.default_rng(41)
+    t = np.sort(60000 + r.uniform(0, 300, 120))
+    e = np.full(t.size, 2.0)
+    noise = r.normal(0, 3, t.size)
+    there = tr.planet_bic(t, 4.0 * np.sin(2 * np.pi * t / 5.3) + noise, e, 5.3)
+    absent = tr.planet_bic(t, noise, e, 5.3)
+    assert there > 10
+    assert -2 * np.log(t.size) - 1e-6 <= absent < 0, \
+        "the sine contains the constant: it can only lose its penalty"
+    # the jitter is free: the same data with error bars a tenth of the
+    # scatter do not make a sine out of noise
+    assert tr.planet_bic(t, noise, e / 10, 5.3) < 2
+    table = tr.summary_table("X", {
+        "before": {"rms": 1, "robust": 1, "nightly_rms": 1, "median_error": 1,
+                   "planets": [(4.0, 0.5)], "planet_bic": [there]},
+        "after": {"rms": 1, "robust": 1, "nightly_rms": 1, "median_error": 1,
+                  "planets": [(0.5, 0.5)], "planet_bic": [absent]},
+        "n": 10, "nights": 10, "planet_periods": [5.3],
+        "planet_names": ["b"], "change_rms": 1.0, "removed": 1.0})
+    row = [line for line in table.splitlines() if "BIC of a sine" in line][0]
+    assert "very strong" in row and r"\loss{loss}" in row

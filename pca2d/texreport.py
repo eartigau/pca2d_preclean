@@ -559,6 +559,8 @@ def star_numbers(before, after, planets=(), seed=0):
                 row.update(d2v_peak_period=spot[2], d2v_peak_fap=spot[4])
         row["planets"] = [amplitude_at(run["t"], for_phase(run, p), run["e"],
                                        p) for p in planets]
+        row["planet_bic"] = [planet_bic(run["t"], for_phase(run, p),
+                                        run["e"], p) for p in planets]
         out[key] = row
     change = after["v"] - before["v"]
     out["change_rms"] = float(np.std(change - np.median(change)))
@@ -1308,6 +1310,46 @@ def sine_fit(phase, y, e):
                     + p[1] * np.sin(2 * np.pi * x) + p[2])
 
 
+def _profile_lnl(A, y, e):
+    """ln L_max of a linear model with a free jitter: for each jitter the
+    weighted least squares, and the jitter that does best (the 2 pi left
+    out, as bervbias counts it)."""
+    from scipy.optimize import minimize_scalar
+
+    from .bervbias import JITTER_MAX, JITTER_MIN
+
+    def minus(ljit):
+        var = e ** 2 + np.exp(2 * ljit)
+        root = 1.0 / np.sqrt(var)
+        coef, *_ = np.linalg.lstsq(A * root[:, None], y * root, rcond=None)
+        resid = y - A @ coef
+        return 0.5 * float(np.sum(resid ** 2 / var + np.log(var)))
+
+    found = minimize_scalar(minus, bounds=(np.log(JITTER_MIN),
+                                           np.log(JITTER_MAX)),
+                            method="bounded", options={"xatol": 1e-4})
+    # the bounded search can miss a minimum at its edge: try both
+    best = min(found.fun, minus(np.log(JITTER_MIN)), minus(np.log(JITTER_MAX)))
+    return -float(best)
+
+
+def planet_bic(t, y, e, period):
+    """Delta BIC of a sine at `period`: BIC(constant) - BIC(constant + sine),
+    both with a free jitter (k = 2 against 4). Positive when the data prefer
+    the sine, on Kass and Raftery's scale as the bias's is."""
+    t, y, e = (np.asarray(x, float) for x in (t, y, e))
+    ok = np.isfinite(t) & np.isfinite(y) & np.isfinite(e) & (e > 0)
+    t, y, e = t[ok], y[ok], e[ok]
+    if t.size < 6:
+        return np.nan
+    ang = 2 * np.pi * t / float(period)
+    ones = np.ones_like(t)
+    null = _profile_lnl(ones[:, None], y, e)
+    sine = _profile_lnl(np.column_stack([ones, np.cos(ang), np.sin(ang)]),
+                        y, e)
+    return float(2.0 * (sine - null) - 2.0 * np.log(t.size))
+
+
 def figure_phase(before, after, planets, path, most=4):
     """The velocities folded at each known planet's period, delivered and
     corrected side by side on one scale, with the sine fitted at that period
@@ -1345,6 +1387,7 @@ def figure_phase(before, after, planets, path, most=4):
                         elinewidth=0.7, capsize=0, zorder=5,
                         label="phase bins, weighted mean")
             k, err, curve = sine_fit(x, y, run["e"])
+            dbic = planet_bic(run["t"], y, run["e"], planet["period"])
             ax.plot(grid, curve(grid), color=colour, lw=1.6, zorder=6,
                     label="sine at P: K = %.2f $\\pm$ %.2f m/s" % (k, err))
             if planet.get("k") and planet.get("t0"):
@@ -1355,8 +1398,10 @@ def figure_phase(before, after, planets, path, most=4):
             ax.axhline(0, color=MUTED, lw=0.6)
             ax.set_ylim(*lim)
             ax.set_xlim(-0.5, 0.5)
-            ax.set_title("%s: K = %.2f $\\pm$ %.2f m/s" % (run["label"], k, err),
-                         fontsize=8, color=INK, loc="left")
+            ax.set_title("%s: K = %.2f $\\pm$ %.2f m/s\n\u0394BIC %+.1f (%s)"
+                         % (run["label"], k, err, dbic,
+                            bervbias.bic_words(dbic, "sine")),
+                         fontsize=7.5, color=INK, loc="left")
             ax.legend(fontsize=6, frameon=False, loc="lower left", ncol=1)
             _style(ax)
         row[0].set_ylabel("%s\nP = %s d\nvelocity (m/s)"
@@ -1942,6 +1987,21 @@ def summary_table(star, numbers):
                        number(kb[1]),
                        number(ka[0]), number(ka[1]),
                        mark("watch" if moved else "same")))
+        bics = (b.get("planet_bic") or [], a.get("planet_bic") or [])
+        index = numbers["planet_periods"].index(period)
+        if index < len(bics[0]) and index < len(bics[1]):
+            vb, va = bics[0][index], bics[1][index]
+            # higher is better here: a correction that took noise away makes
+            # the planet stand out more, one that took the planet makes it less
+            word = ("gain" if va > vb + 2 else "loss" if va < vb - 2
+                    else "same")
+            rows.append("$\\Delta$BIC of a sine at %s d (%s) & %s & %s & & %s"
+                        " \\\\" % (number(period, 4), tex(letter),
+                                    "%s (%s)" % (tex("%+.1f" % vb),
+                                                 bervbias.bic_words(vb, "sine")),
+                                    "%s (%s)" % (tex("%+.1f" % va),
+                                                 bervbias.bic_words(va, "sine")),
+                                    mark(word)))
     rows.append("\\midrule")
     rows.append("rms of corrected - delivered (m/s) & \\multicolumn{2}{c}{%s}"
                 " & & \\\\" % number(numbers["change_rms"]))
@@ -2296,7 +2356,10 @@ def velocity_section(star, before, after, numbers, folder, stale):
          " with the error bars as weights), except at a period of a third of"
          " the campaign or more, where the line would take the planet with"
          " it. The squares are weighted means in tenths of the phase; the"
-         " line is a sine at that period, its amplitude $K$ in the title;"
+         " line is a sine at that period, its amplitude $K$ in the title with"
+         " $\\Delta$BIC = BIC(constant) $-$ BIC(constant + sine), both with a"
+         " free jitter ($k$ = 2 against 4), positive when the data prefer the"
+         " sine (above 2, 6 and 10: positive, strong, very strong);"
          " dashed, where the archive gives a transit time and a"
          " semi-amplitude, the circular orbit they imply. A correction that"
          " left the planet alone keeps $K$."),
