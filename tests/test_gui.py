@@ -853,8 +853,6 @@ def test_the_window_has_a_cleanup_page():
 
 def test_the_purge_button_asks_first_and_takes_no_for_an_answer(monkeypatch,
                                                                 tmp_path):
-    from tkinter import messagebox
-
     from pca2d.gui import App
     from pca2d.housekeeping import survey
 
@@ -869,8 +867,14 @@ def test_the_purge_button_asks_first_and_takes_no_for_an_answer(monkeypatch,
     w._say = lambda key, *a, **k: said.append(key)
     w.measure_disks = lambda: said.append("measured")
     asked = []
-    monkeypatch.setattr(messagebox, "askyesno",
-                        lambda title, body: asked.append(body) and False)
+
+    def refuse(_self, _title, body):
+        asked.append(body)
+        return False
+
+    # the question is this window's own now, with a broom where macOS drew the
+    # application's icon, so it is the method that is stood in for
+    monkeypatch.setattr(App, "_ask_delete", refuse)
 
     App.purge_disks(w)
     assert asked and "5.0 kB" in asked[0], "it says how much before it asks"
@@ -880,8 +884,6 @@ def test_the_purge_button_asks_first_and_takes_no_for_an_answer(monkeypatch,
 
 
 def test_the_purge_button_empties_only_what_can_go(monkeypatch, tmp_path):
-    from tkinter import messagebox
-
     from pca2d.gui import App
     from pca2d.housekeeping import survey
 
@@ -897,7 +899,7 @@ def test_the_purge_button_empties_only_what_can_go(monkeypatch, tmp_path):
     said = []
     w._say = lambda key, *a, **k: said.append((key, a))
     w.measure_disks = lambda: said.append(("remeasured", ()))
-    monkeypatch.setattr(messagebox, "askyesno", lambda *_a: True)
+    monkeypatch.setattr(App, "_ask_delete", lambda *_a: True)
 
     App.purge_disks(w)
     assert not (tmp_path / "cache" / "f.bin").exists()
@@ -908,15 +910,13 @@ def test_the_purge_button_empties_only_what_can_go(monkeypatch, tmp_path):
 
 
 def test_nothing_to_free_says_so_rather_than_asking(monkeypatch, tmp_path):
-    from tkinter import messagebox
-
     from pca2d.gui import App
 
     w = App.__new__(App)
     w.lang, w.clean_items = "en", []
     said = []
     w._say = lambda key, *a, **k: said.append(key)
-    monkeypatch.setattr(messagebox, "askyesno",
+    monkeypatch.setattr(App, "_ask_delete",
                         lambda *_a: pytest.fail("it should not ask"))
     App.purge_disks(w)                       # nothing measured yet
     w.clean_items = [{"name": "results", "kind": "results", "bytes": 10,
@@ -1069,6 +1069,114 @@ def test_the_proposed_name_follows_the_targets_and_a_typed_one_does_not():
     assert w.vars["run_name"].get() == suggested_run_name(w.state())
 
 
+def test_the_report_of_the_run_that_was_launched_is_still_the_report(tmp_path):
+    """The folder is named from the settings, and the proposed name follows the
+    ticks. A run launched as GL406_3b7955 finished into that folder while the
+    window had moved on to SMETHELLS_20_5b5342, so the button computed a path
+    nothing had ever written and said there was no report, twenty seconds after
+    the run had said where it had put one. What was launched is on disk, and is
+    what the button means."""
+    from pca2d.gui import App
+
+    written = tmp_path / "_GL406_3b7955" / "SMETHELLS_20" / "0-3"
+    written.mkdir(parents=True)
+    pdf = written / "SMETHELLS_20_0-3.pdf"
+    pdf.write_text("")
+
+    window = App.__new__(App)
+    said, opened = [], []
+    window.state = lambda: {"objects": ["SMETHELLS_20"], "n_star": 0,
+                            "n_earth": 3, "run_name": "SMETHELLS_20_5b5342"}
+    window._out_root = lambda: str(tmp_path)
+    window._say = lambda key, *a, **k: said.append(key)
+    window._open = lambda path: opened.append(path)
+
+    window.launched_report = str(pdf)
+    window.open_report()
+    assert opened == [str(pdf)], "the run that was launched wrote this one"
+    assert said == ["log_report_launched"], "and the window says it is that one"
+
+    # nothing launched from this window: the warning is still the warning
+    del opened[:], said[:]
+    window.launched_report = None
+    window.open_report()
+    assert opened == [] and said == ["log_no_report"]
+
+    # the settings still name a report that exists: that one, with no remark
+    del opened[:], said[:]
+    here = tmp_path / "_SMETHELLS_20_5b5342" / "SMETHELLS_20" / "0-3"
+    here.mkdir(parents=True)
+    (here / "SMETHELLS_20_0-3.pdf").write_text("")
+    window.launched_report = str(pdf)
+    window.open_report()
+    assert opened == [str(here / "SMETHELLS_20_0-3.pdf")] and said == []
+
+
+def test_a_bar_is_cut_where_it_redraws_itself_and_not_at_every_update():
+    """tqdm writes a bar, a carriage return, the bar again. Read as text,
+    Python turns each of those returns into a newline, and LBL's bars (drawn
+    into a pipe, unlike this package's own) arrived as a column:
+    ' 33%|...| 42/127', ' 35%|...| 45/127', one finished line per update."""
+    from pca2d.gui import cut_output
+
+    segments, rest = cut_output(" 33%|x| 42/127\r 35%|xx| 45/127\r")
+    assert segments == [(" 33%|x| 42/127", True), (" 35%|xx| 45/127", True)]
+    assert rest == "", "a frame is handed on as it is read, not one late"
+
+    # a real line ends with a newline and is not transient
+    segments, rest = cut_output("260915 18:01:04.81 | iter 0\nhalf a li")
+    assert segments == [("260915 18:01:04.81 | iter 0", False)]
+    assert rest == "half a li", "what has no terminator waits for the next chunk"
+
+    # and the chunk boundary falls wherever the pipe filled
+    first, rest = cut_output(" 33%|x| 4")
+    second, rest2 = cut_output(rest + "2/127\rdone\n")
+    assert first == [] and rest == " 33%|x| 4"
+    assert second == [(" 33%|x| 42/127", True), ("done", False)] and rest2 == ""
+
+
+def test_the_reader_marks_what_the_next_line_has_to_replace():
+    """The window's own contract: a line handed over with a carriage return in
+    front of it replaces the line written last (App._write). So every segment
+    that followed a bar frame carries one, and nothing else does."""
+    import queue as _queue
+
+    from pca2d.gui import App
+
+    class Stream:
+        def __init__(self, chunks):
+            self.chunks = list(chunks)
+
+        def read1(self, _n):
+            return self.chunks.pop(0) if self.chunks else b""
+
+    class Proc:
+        def __init__(self, stream):
+            self.stdout = stream
+
+        def wait(self):
+            return 0
+
+    window = App.__new__(App)
+    window.lines = _queue.Queue()
+    window._line = lambda key, *a: "ended"
+    window.proc = Proc(Stream([b" 10%|x| 1/10\r 20%|xx| 2/10\r",
+                               b" 30%|xxx| 3/10\rwriting the RDB\nnext\n"]))
+    window._reader()
+
+    got = []
+    while not window.lines.empty():
+        item = window.lines.get()
+        if isinstance(item, str):
+            got.append(item)
+    assert got == [" 10%|x| 1/10\n",
+                   "\r 20%|xx| 2/10\n",
+                   "\r 30%|xxx| 3/10\n",
+                   "\rwriting the RDB\n",
+                   "next\n"], \
+        "each bar frame replaces the one before it; the line after it too"
+
+
 def test_the_scan_listing_and_the_clean_listing_are_two_methods():
     """Both were called _listed, so the second was the only one there was: the
     queue handed the scan's {name: count} to the housekeeping formatter and a
@@ -1087,3 +1195,102 @@ def test_the_scan_listing_and_the_clean_listing_are_two_methods():
     lines = App._as_lines([{"bytes": 2048, "name": "cube"},
                            {"bytes": 4096, "name": "corrected"}])
     assert lines.splitlines()[0].endswith("corrected"), "biggest first"
+
+
+def test_the_cleaning_question_wears_a_broom_and_not_the_system_icon():
+    """macOS draws the application's icon in a messagebox, and this one is a
+    python in a conda environment: the question before deleting six gigabytes
+    came up under a generic folder. Same answer as the quit question, which
+    has carried its own face since it was written: a Toplevel, and the emoji
+    drawn where the system icon was."""
+    import pytest
+
+    tk = pytest.importorskip("tkinter")
+    try:
+        root = tk.Tk()
+    except Exception:                      # a machine with no screen
+        pytest.skip("no display to open a window on")
+    root.withdraw()
+    from tkinter import ttk
+
+    from pca2d.gui import App
+
+    window = App.__new__(App)
+    window.tk, window.ttk, window.root = tk, ttk, root
+    window.t = lambda key: {"clean_go": "On y va", "clean_keep": "Garder"}[key]
+
+    seen = {}
+
+    def answer(which):
+        """Find the live dialog, read what it shows, press one of its buttons."""
+        tries = []
+        def act():
+            shown = [w for w in root.winfo_children()
+                     if isinstance(w, tk.Toplevel)]
+            tries.append(1)
+            if len(tries) < 100 and not (
+                    shown and shown[0].winfo_viewable()
+                    and int(shown[0].attributes("-topmost"))):
+                # not shown and raised yet: showing it handles events on
+                # macOS, and this can come in the middle of it
+                root.after(20, act)
+                return
+            win = shown[0]
+            labels, buttons = [], []
+            def walk(widget):
+                for child in widget.winfo_children():
+                    if isinstance(child, ttk.Label):
+                        labels.append(child.cget("text"))
+                    if isinstance(child, ttk.Button):
+                        buttons.append(child)
+                    walk(child)
+            walk(win)
+            seen["labels"] = labels
+            seen["buttons"] = [b.cget("text") for b in buttons]
+            # kept above the window it interrupts: on macOS it had dropped
+            # behind it, holding the grab, and nothing answered clicks
+            seen["topmost"] = bool(int(win.attributes("-topmost")))
+            buttons[{"keep": 0, "go": 1}[which]].invoke()
+        return act
+
+    root.after(50, answer("go"))
+    assert window._ask_delete("effacer", "6.0 GB. On y va ?") is True
+    assert "\U0001F9F9" in seen["labels"], "the broom, where the icon was"
+    assert "6.0 GB. On y va ?" in seen["labels"]
+    assert seen["buttons"] == ["Garder", "On y va"], \
+        "the answers named, not Yes and No"
+    assert seen["topmost"]
+
+    root.after(50, answer("keep"))
+    assert window._ask_delete("effacer", "6.0 GB. On y va ?") is False
+    root.destroy()
+
+
+def test_no_tooltip_opens_while_a_question_waits():
+    """A tooltip is a new window, and one opening over the cleaning question
+    is what could send the question behind the main window on macOS."""
+    import pytest
+
+    tk = pytest.importorskip("tkinter")
+    try:
+        root = tk.Tk()
+    except Exception:                      # a machine with no screen
+        pytest.skip("no display to open a window on")
+    from tkinter import ttk
+
+    from pca2d.gui import Tip
+
+    app = type("A", (), {"t": staticmethod(lambda key: key), "fonts": {}})()
+    button = ttk.Button(root, text="purge")
+    button.pack()
+    tip = Tip(app, button, "help_clean_purge")
+    question = tk.Toplevel(root)
+    root.update()
+    question.grab_set()
+    tip.show()
+    assert tip.window is None, "held by a question: no tooltip"
+    question.grab_release()
+    tip.show()
+    assert tip.window is not None, "and one again once it is answered"
+    tip.leave()
+    root.destroy()

@@ -10,19 +10,25 @@ exposures they share and not on whatever each of them happens to have.
 
 import os
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 from astropy.table import Table
 
+from pca2d.lblscan import velocity_stats
 from pca2d.rvpages import (load_series, numbers, on_common, rdb_path,
                            stars_of, velocity_pages)
 
 
-def write_rdb(data_dir, name, rjd, vrad, svrad):
+def write_rdb(data_dir, name, rjd, vrad, svrad, berv=None):
     path = rdb_path(data_dir, name)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     t = Table()
     t["rjd"], t["vrad"], t["svrad"] = rjd, vrad, svrad
+    if berv is not None:
+        t["BERV"] = berv
     t["filename"] = ["%.4f.fits" % x for x in rjd]
     t.write(path, format="ascii.rdb", overwrite=True)
     return path
@@ -159,3 +165,79 @@ def test_the_pages_are_appended_to_the_report_that_is_there(tmp_path):
     assert not os.path.exists(report + ".rv.pdf")
     titles = [it.title for it in r.outline if not isinstance(it, list)]
     assert "The velocities LBL measured" in titles
+
+
+def earth(rjd):
+    """A BERV that goes round once a year, which is what one is."""
+    return 25.0 * np.sin(2 * np.pi * (rjd - 59000.0) / 365.25)
+
+
+def test_the_same_velocities_are_shown_against_berv_as_well(tmp_path):
+    """Time says whether the scatter went down; BERV says whether what is left
+    follows the Earth, which on a time axis hides inside a year."""
+    from pypdf import PdfReader
+
+    plan, data_dir = plan_for(tmp_path, ["GJ1"])
+    rjd, v, e = campaign(1, 8.0)
+    berv = earth(rjd)
+    write_rdb(data_dir, "GJ1", rjd, v + 0.5 * berv, e, berv=berv)
+    write_rdb(data_dir, "GJ1_PCA2D_0-7", rjd, v * 0.4, e, berv=berv)
+
+    out = velocity_pages(plan)
+    pages = PdfReader(out).pages
+    assert len(pages) == 3, "the numbers, the curves in time, the same vs BERV"
+    last = pages[2].extract_text()
+    assert "BERV" in last and "km/s" in last
+    assert "rho with BERV" in last, "the number the page is there for"
+
+
+def test_an_rdb_with_no_berv_column_simply_has_no_berv_page(tmp_path):
+    """Not an error: LBL spells it BERV, a hand-made rdb may not carry it."""
+    from pypdf import PdfReader
+
+    plan, data_dir = plan_for(tmp_path, ["GJ1"])
+    rjd, v, e = campaign(2, 8.0)
+    write_rdb(data_dir, "GJ1", rjd, v, e)
+    write_rdb(data_dir, "GJ1_PCA2D_0-7", rjd, v * 0.4, e)
+    out = velocity_pages(plan)
+    assert len(PdfReader(out).pages) == 2
+
+
+def test_the_berv_of_a_series_is_cut_with_the_rest_of_it(tmp_path):
+    """on_common cuts to shared exposures; a BERV left at full length would be
+    a scatter plot of one series against another series' Earth."""
+    plan, data_dir = plan_for(tmp_path, ["GJ1"])
+    rjd, v, e = campaign(3, 8.0)
+    write_rdb(data_dir, "GJ1", rjd, v, e, berv=earth(rjd))
+    write_rdb(data_dir, "GJ1_PCA2D_0-7", rjd[:30], v[:30], e[:30],
+              berv=earth(rjd[:30]))
+    cut, n_common = on_common([load_series(data_dir, "GJ1", "delivered"),
+                               load_series(data_dir, "GJ1_PCA2D_0-7", "corrected")])
+    assert n_common == 30
+    for run in cut:
+        assert run["berv"].size == run["t"].size == 30
+
+
+def test_nothing_joins_the_points_in_either_plot(tmp_path):
+    """A line between two nightly means draws a slope across a fortnight that
+    nothing measured, and against BERV neighbours are nights apart."""
+    from pca2d.lblscan import berv_figure, compilation_figure
+
+    rjd, v, e = campaign(4, 8.0)
+    berv = earth(rjd)
+    runs = []
+    for label, scale in (("delivered", 1.0), ("corrected", 0.4)):
+        s = {"t": rjd, "v": v * scale, "e": e, "berv": berv, "label": label}
+        s["stats"] = velocity_stats(s["t"], s["v"], s["e"])
+        runs.append(s)
+
+    for fig, n_seq in ((compilation_figure(runs[0], runs[1:]), 2),
+                       (berv_figure(runs[0], runs[1:]), 2)):
+        for ax in fig.axes[:n_seq]:          # the sequences, not hist/periodogram
+            for line in ax.get_lines():
+                if line.get_marker() in ("", "None", None):
+                    continue                 # the zero line, not the data
+                assert (line.get_linestyle() == "None"
+                        or line.get_linewidth() == 0), \
+                    "symbols, and nothing drawn between them"
+        plt.close(fig)

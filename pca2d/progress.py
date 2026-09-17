@@ -10,8 +10,10 @@ Two things, deliberately kept apart:
 
 `bar` is a tqdm with `leave=False`, so a finished loop erases its own bar and
 the scrollback holds the narration rather than a graveyard of completed
-progress bars. It writes to stderr and disables itself when stderr is not a
-terminal, so a log file stays readable.
+progress bars. It writes to stderr, and is drawn wherever a redrawn line means
+something: a terminal, and the window that runs the pipeline. Into a log file
+it would be a mile of half-drawn lines, so there the loop narrates itself
+instead, one line every half minute saying how far it has got.
 
 `log` is that narration: one line per thing that happened, timestamped
 `YYMMDD HH:MM:SS.SS | message` and coloured by role. Green for progress, blue
@@ -23,6 +25,7 @@ run is stopping. `stage` bookends a phase and reports how long it took, because
 from __future__ import annotations
 
 import contextlib
+import os
 import sys
 import time
 
@@ -57,18 +60,98 @@ def _labelled(desc):
     return desc or _label or ""
 
 
+#: how often a loop with no bar to draw says where it has got to
+_SAY_EVERY = 30.0
+
+
+def _drawn():
+    """Whether a bar can be drawn where this run's output is going.
+
+    A terminal, or the window that runs the pipeline: it sets PCA2D_COLOUR, it
+    reads the run through a pipe, and it redraws a carriage-returned line in
+    place (gui.cut_output), so a bar is a bar there too. A log file is neither,
+    and a bar in one is a mile of half-drawn lines.
+    """
+    return sys.stderr.isatty() or os.environ.get("PCA2D_COLOUR") == "1"
+
+
 def bar(iterable=None, total=None, desc="", unit="it", **kwargs):
     """A progress bar that leaves nothing behind when it finishes.
+
+    Where no bar can be drawn, the loop narrates itself instead: one line every
+    half minute saying how far it has got and how long is left. Without it, a
+    run reading three hundred spectra off a shared disk says "cube footprint:
+    2.86 GB" and then nothing at all for minutes, which is the one thing this
+    module exists to prevent.
 
     Falls back to the plain iterable if tqdm is not installed, so nothing here
     is a hard dependency of the science.
     """
+    desc = _labelled(desc)
+    if not _drawn():
+        return _Narrator(iterable, total, desc, unit)
     if _tqdm is None:                                         # pragma: no cover
         return iterable if iterable is not None else _Null()
-    desc = _labelled(desc)
     return _tqdm(iterable, total=total, desc=desc, unit=unit, leave=False,
-                 file=sys.stderr, dynamic_ncols=True,
-                 disable=not sys.stderr.isatty(), **kwargs)
+                 file=sys.stderr, dynamic_ncols=True, **kwargs)
+
+
+class _Narrator:
+    """What a bar becomes when there is no screen to draw it on.
+
+    Same shape as the bar it replaces (iterate it, or update and close it), and
+    it says the same three things a bar says: how far, how fast, how much
+    longer. Every `_SAY_EVERY` seconds and never faster, because the point is a
+    log somebody reads, not a log somebody greps through.
+    """
+
+    def __init__(self, iterable=None, total=None, desc="", unit="it",
+                 every=_SAY_EVERY):
+        self.iterable = iterable
+        self.unit = unit or "it"
+        self.desc = desc or "working"
+        self.every = every
+        if total is None:
+            total = len(iterable) if hasattr(iterable, "__len__") else None
+        self.total = total
+        self.done = 0
+        self.started = self.last = time.time()
+
+    def __iter__(self):
+        for item in self.iterable if self.iterable is not None else ():
+            yield item
+            self.update()
+
+    def update(self, n=1):
+        self.done += n
+        now = time.time()
+        if now - self.last >= self.every:
+            self.last = now
+            self._say(now)
+
+    def _say(self, now):
+        elapsed = now - self.started
+        rate = self.done / elapsed if elapsed > 0 else 0.0
+        where = ("%d/%d" % (self.done, self.total) if self.total
+                 else "%d" % self.done)
+        left = ""
+        if self.total and rate > 0 and self.done < self.total:
+            left = ", about %s left" % human((self.total - self.done) / rate)
+        log("%s: %s %s, %.1f %s/s%s"
+            % (self.desc, where, self.unit + ("s" if self.done != 1 else ""),
+               rate, self.unit, left), "value")
+
+    def set_postfix_str(self, *a, **k):
+        pass
+
+    def close(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
 
 
 class _Null:                                                  # pragma: no cover

@@ -582,8 +582,11 @@ def compilation_figure(original, variants, title=None):
         nt = nightly(run["t"], run["v"], run["e"])
         s = run["stats"]
         first = run is original
-        top.plot(nt[0], nt[1] - np.median(run["v"]), "o-", color=colour,
-                 ms=4.0 if first else 3.2, lw=1.1 if first else 0.8,
+        # points and no line: a line between two nightly means draws a slope
+        # across a gap of a fortnight that nothing measured, and on a campaign
+        # with gaps that is most of what one ends up looking at
+        top.plot(nt[0], nt[1] - np.median(run["v"]), "o", color=colour,
+                 ms=4.0 if first else 3.2, lw=0,
                  alpha=1.0 if first else 0.9, zorder=3 if first else 2,
                  label="%s: rms %.1f, nightly rms %.1f m/s"
                        % (run["label"], s["rms"], s["nightly_rms"]))
@@ -612,6 +615,90 @@ def compilation_figure(original, variants, title=None):
     axes[-1].set_xlabel("rjd (BJD - 2400000)", fontsize=9)
     fig.suptitle(title or "LBL velocities: the original and every variant, on the same"
                  " %d exposures" % original["t"].size, fontsize=10)
+    fig.tight_layout(rect=(0, 0, 1, 0.97))
+    return fig
+
+
+def berv_rho(run):
+    """Spearman rho between a run's velocities and its BERV, or None.
+
+    The number the BERV page exists for: a residual that follows the Earth's
+    own motion is the instrument or the tellurics, not the star.
+    """
+    berv = run.get("berv")
+    if berv is None or np.asarray(berv).size < 3:
+        return None
+    berv = np.asarray(berv, float)
+    good = np.isfinite(berv) & np.isfinite(run["v"])
+    if good.sum() < 3 or np.ptp(berv[good]) == 0:
+        return None
+    return float(spearmanr(run["v"][good], berv[good])[0])
+
+
+def berv_figure(original, variants, title=None):
+    """The same velocities, against BERV instead of time.
+
+    Time says whether a correction removed scatter; BERV says where the scatter
+    came from. A residual that rides the Earth's velocity is telluric or
+    instrumental, and on a time axis it hides inside a year: the same points
+    against BERV put it on a line. Every panel is points alone, no line joining
+    them, since neighbours in BERV are nights apart and a line between them
+    would be a shape nothing measured.
+
+    Returns None when the rdb carried no BERV column, so a caller can simply
+    not add the page.
+    """
+    runs = [original] + list(variants)
+    if any(run.get("berv") is None for run in runs):
+        return None
+    n = len(variants)
+    colours = [ORIGINAL] + [variant_colour(k, n) for k in range(n)]
+    fig = plt.figure(figsize=(11, 3.4 + 1.9 * n))
+    grid = fig.add_gridspec(n + 1, 1, height_ratios=[2.0] + [1.0] * n)
+    axes = [fig.add_subplot(grid[0])]
+    axes += [fig.add_subplot(grid[k + 1], sharex=axes[0]) for k in range(n)]
+    for ax in axes[:-1]:
+        ax.tick_params(labelbottom=False)
+    centred = lambda run: run["v"] - np.median(run["v"])       # noqa: E731
+
+    top = axes[0]
+    for run, colour in zip(runs, colours):
+        rho = berv_rho(run)
+        first = run is original
+        top.errorbar(run["berv"], centred(run), yerr=run["e"], fmt="o",
+                     ms=3.4 if first else 2.8, lw=0.4, color=colour,
+                     ecolor=colour, alpha=0.9 if first else 0.8,
+                     capsize=0, zorder=3 if first else 2,
+                     label="%s: rms %.1f m/s%s"
+                           % (run["label"], run["stats"]["rms"],
+                              "" if rho is None else ", rho with BERV %+.2f" % rho))
+    top.axhline(0, color="0.7", lw=0.6)
+    top.set_ylabel("velocity - median (m/s)", fontsize=8.5)
+    top.legend(fontsize=7.5, frameon=False, loc="upper left")
+    top.grid(alpha=0.15)
+    top.tick_params(labelsize=8)
+
+    lim = np.percentile(np.abs(np.concatenate([centred(r) for r in runs])), 99.5)
+    for k, (ax, run) in enumerate(zip(axes[1:], variants)):
+        colour = colours[k + 1]
+        ax.errorbar(original["berv"], centred(original), yerr=original["e"],
+                    fmt="o", ms=2, lw=0.4, color="0.72", ecolor="0.8",
+                    capsize=0, zorder=1)
+        ax.errorbar(run["berv"], centred(run), yerr=run["e"], fmt="o", ms=2.4,
+                    lw=0.5, color=colour, ecolor=colour, alpha=0.8, capsize=0,
+                    zorder=2)
+        rho, was = berv_rho(run), berv_rho(original)
+        ax.set_title("%s: rho with BERV %s (the original in grey, %s)"
+                     % (run["label"],
+                        "n/a" if rho is None else "%+.2f" % rho,
+                        "n/a" if was is None else "%+.2f" % was), fontsize=8.2)
+        ax.set_ylim(-1.15 * lim, 1.15 * lim)
+        ax.axhline(0, color="0.6", lw=0.6)
+        ax.set_ylabel("m/s", fontsize=8)
+        ax.grid(alpha=0.15)
+        ax.tick_params(labelsize=7.5)
+    axes[-1].set_xlabel("BERV (km/s)", fontsize=9)
+    fig.suptitle(title or "the same velocities against BERV", fontsize=10)
     fig.tight_layout(rect=(0, 0, 1, 0.97))
     return fig
 

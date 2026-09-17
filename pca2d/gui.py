@@ -19,6 +19,7 @@ exported as a variant file, which is how a run is made reproducible
 """
 from __future__ import annotations
 
+import codecs
 import glob
 import json
 import os
@@ -125,8 +126,6 @@ def window_settings():
     return ([path for _key, path, _kind in OPTIONS + OPTIONS_LBL]
             + [path for _key, path in PATH_SETTINGS]
             + [path for _key, path, _kind in OPTIONS_PATHS])
-
-
 #: the flag each LBL setting travels under (cli.SETTING_FLAGS). Until
 #: 2026-09-16 none of them travelled at all: the LBL page was shown, changed,
 #: and ignored by the run, which took the configuration's own values
@@ -280,9 +279,10 @@ EN = {
     "clean_none": "nothing measured yet: press Measure",
     "clean_confirm_title": "delete the rebuildable files",
     "clean_confirm":
-        "About to free %s from %d places:\n\n%s\n\nNothing here is a result:"
-        " the cubes are read again from the spectra, and LBL's logs are"
-        " written again by LBL. Go ahead?",
+        "About to free %s from %d places:\n\n%s\n\nNothing here is a"
+        " result: the cubes are read again from the spectra, and LBL's logs"
+        " are written again by LBL. Go ahead?",
+    "clean_go": "Sweep it", "clean_keep": "Keep it",
     "clean_freed": "freed %s from %d places",
     "clean_nothing": "nothing to free: there is no scratch or cache here",
     "clean_pick": "pick one row or several in the list first: the button"
@@ -412,6 +412,9 @@ EN = {
     "log_no_report":
         "no compilation PDF yet at %s. The figures stage writes it, and the LBL"
         " stage adds the velocity pages to it",
+    "log_report_launched":
+        "the settings have moved since; this is the report of the run that was"
+        " launched: %s",
     "log_failed": "could not start it: %s",
     "log_no_command": "nothing was installed, so there is nothing to run",
     "log_installing": "installing the command into this environment, from %s",
@@ -815,9 +818,10 @@ FR = {
     "clean_none": "rien de mesuré encore : appuyez sur Mesurer",
     "clean_confirm_title": "effacer les fichiers refaisables",
     "clean_confirm":
-        "Sur le point de libérer %s à %d endroits :\n\n%s\n\nRien ici n'est"
-        " un résultat : les cubes se relisent depuis les spectres, et les"
-        " journaux de LBL sont réécrits par LBL. On y va ?",
+        "Sur le point de libérer %s à %d endroits :\n\n%s\n\nRien ici"
+        " n'est un résultat : les cubes se relisent depuis les spectres, et"
+        " les journaux de LBL sont réécrits par LBL. On y va ?",
+    "clean_go": "On y va", "clean_keep": "Garder",
     "clean_freed": "%s libérés à %d endroits",
     "clean_nothing": "rien à libérer : ni brouillon ni cache ici",
     "clean_pick": "choisissez d'abord une ligne ou plusieurs dans la liste :"
@@ -954,6 +958,9 @@ FR = {
     "log_no_report":
         "pas encore de PDF de compilation à %s. C'est l'étape des figures qui"
         " l'écrit, et l'étape LBL qui y ajoute les pages de vitesses",
+    "log_report_launched":
+        "les réglages ont changé depuis ; voici le rapport du passage qui a été"
+        " lancé : %s",
     "log_failed": "impossible de le lancer : %s",
     "log_no_command": "rien n'a été installé, il n'y a donc rien à lancer",
     "log_installing": "installation de la commande dans cet environnement, depuis %s",
@@ -1353,6 +1360,43 @@ def run_folder(state, out_root):
     if len(names) > 1:
         return os.path.join(where, "joint", "+".join(names), tag)
     return os.path.join(where, names[0], tag)
+
+
+def cut_output(buffer):
+    """Cut what has been read from a run into finished lines, and the rest.
+
+    tqdm draws a bar by rewriting one line: the bar, a carriage return, the bar
+    again, and no newline until the loop is over. LBL's bars are drawn into a
+    pipe as happily as into a terminal, and they are what the log filled with;
+    this package's own are drawn here too, since this is what makes the window
+    a place where a redrawn line means something (progress._drawn).
+
+    Returns (segments, rest). Each segment is (text, transient), where
+    transient says it ended in a carriage return, i.e. it is one draw of a bar
+    and the next segment takes its place rather than following it. `rest` is
+    what has been read but not yet terminated, to be put back in front of the
+    next chunk: a run's output arrives cut wherever the pipe happened to fill.
+    """
+    segments = []
+    start = i = 0
+    while i < len(buffer):
+        char = buffer[i]
+        if char == "\n":
+            segments.append((buffer[start:i], False))
+            i = start = i + 1
+        elif char == "\r":
+            # a lone one ends a draw of a bar, and is handed on as soon as it
+            # is read: waiting for the next draw to be sure it was not half of
+            # a "\r\n" would hold back the very frame that says a bar has
+            # stopped moving, which is what one watches a bar for. Nothing in
+            # this pipeline writes "\r\n" (both ends are Python, on macOS or
+            # Linux), and a pair inside one chunk is read as the line it is.
+            step = 2 if buffer[i + 1:i + 2] == "\n" else 1
+            segments.append((buffer[start:i], step == 1))
+            i = start = i + step
+        else:
+            i += 1
+    return segments, buffer[start:]
 
 
 def report_pdf(state, out_root):
@@ -1863,7 +1907,17 @@ class Tip:
 
     def show(self):
         import tkinter as tk
+        self.after = None
         if self.window is not None:
+            return
+        # not while a question holds the window: a tooltip opening then is a
+        # new window over the question, and on macOS that is enough to send
+        # the question behind the main window
+        try:
+            held = self.widget.tk.call("grab", "current")
+        except tk.TclError:
+            held = ""
+        if held:
             return
         x = self.widget.winfo_rootx() + 20
         y = self.widget.winfo_rooty() + self.widget.winfo_height() + 8
@@ -1912,6 +1966,8 @@ class App:
         self.tk, self.ttk = tk, ttk
         self.root = root
         self.proc = None
+        # the report of the run this window launched, recorded when it starts
+        self.launched_report = None
         self.lines = queue.Queue()
         self.saved = _read_state()
         self.lang = self.saved.get("lang", "en")
@@ -3657,13 +3713,19 @@ class App:
         try:
             self.proc = subprocess.Popen(
                 argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, bufsize=1, env=env,
+                bufsize=0, env=env,
                 cwd=os.path.dirname(os.path.abspath(self.vars["config"].get()))
                 or None)
         except OSError as exc:
             self._say("log_failed", exc, level="error")
             self.proc = None
             return
+        # where this run will write, recorded now rather than worked out again
+        # when it ends: the proposed name follows the ticks, so a run launched
+        # as GL406_3b7955 finished into that folder while the window had moved
+        # on to SMETHELLS_20_5b5342, and "open the report" looked for its PDF
+        # under a name nothing had ever written
+        self.launched_report = None if dry else report_pdf(state, self._out_root())
         self.run_button.configure(state="disabled")
         self.stop_button.configure(state="normal")
         self.status.configure(text=self.t("running"))
@@ -3699,8 +3761,33 @@ class App:
         return True
 
     def _reader(self):
-        for line in self.proc.stdout:
-            self.lines.put(line)
+        """Put the run's output in the queue as it comes, bars included.
+
+        Bytes, and cut by hand: read as text, Python turns every carriage
+        return into a newline, and a bar that redraws itself two hundred times
+        arrives as two hundred finished bars. A segment that ended in a
+        carriage return is handed on with one in front of the next segment,
+        which is what _write reads as "replace the line you last wrote".
+        """
+        decoder = codecs.getincrementaldecoder("utf-8")("replace")
+        stream = self.proc.stdout
+        # read1 on a buffered pipe, read on a raw one: either way one
+        # read call, returning what has arrived rather than waiting for
+        # a full buffer, which for a bar is the difference between a
+        # window that moves and one that catches up in jumps
+        read = stream.read1 if hasattr(stream, "read1") else stream.read
+        rest, transient = "", False
+        while True:
+            chunk = read(4096)
+            if not chunk:
+                break
+            segments, rest = cut_output(rest + decoder.decode(chunk))
+            for text, is_bar in segments:
+                self.lines.put(("\r" if transient else "") + text + "\n")
+                transient = is_bar
+        rest += decoder.decode(b"", True)
+        if rest:
+            self.lines.put(("\r" if transient else "") + rest + "\n")
         code = self.proc.wait()
         self.proc = None
         # through the queue, not straight to the window: the last lines the run
@@ -3893,6 +3980,14 @@ class App:
         """
         path = report_pdf(self.state(), self._out_root())
         if not path or not os.path.exists(path):
+            # the settings name the folder, so changing one after a run leaves
+            # the window pointing at a folder nothing wrote. What was launched
+            # is still on disk and is what "the report" means here.
+            launched = getattr(self, "launched_report", None)
+            if launched and os.path.exists(launched):
+                self._say("log_report_launched", launched, level="value")
+                self._open(launched)
+                return
             self._say("log_no_report", path or self._out_root(), level="warn")
             return
         self._open(path)
@@ -4167,19 +4262,59 @@ class App:
         return "\n".join("  %s   %s" % (human(it["bytes"]), it["name"])
                           for it in sorted(items, key=lambda it: -it["bytes"]))
 
-    def _ask_delete(self, title, question):
-        """The question, with a run going on this machine added to it.
+    #: what the cleaning question wears. macOS draws the application's own icon
+    #: in a messagebox, and this application is a python in a conda
+    #: environment, so the question before deleting six gigabytes came up under
+    #: a generic folder. The broom is drawn in its place, as the quit question
+    #: draws its face: only these two windows carry one, since only they ask
+    #: something that cannot be taken back.
+    BROOM = "\U0001F9F9"
 
-        A run reads from the folders on this page. It survives them going,
-        since a stage that finds a cube missing builds it again (cli.
-        rebuild_missing_cubes), but building it again is twenty minutes that
-        run is in the middle of, and that is worth knowing before rather than
-        after.
+    def _ask_delete(self, title, question):
+        """The cleaning question, in its own window, with a broom on it.
+
+        True to go ahead. messagebox.askyesno takes no image, so this is a
+        Toplevel, like _ask_quit: the same words, the broom beside them, and
+        the two answers named rather than called Yes and No.
+
+        A run going on this machine is added to the question. It survives its
+        folders going, since a stage that finds a cube missing builds it again
+        (cli.rebuild_missing_cubes), but building it again is twenty minutes
+        that run is in the middle of, and that is worth knowing before rather
+        than after.
         """
-        from tkinter import messagebox
         if getattr(self, "proc", None) is not None:
             question = "%s\n\n%s" % (self.t("clean_while_running"), question)
-        return bool(messagebox.askyesno(title, question))
+        tk, ttk = self.tk, self.ttk
+        win = tk.Toplevel(self.root)
+        win.withdraw()                     # shown by _modal, once placed
+        win.title(title)
+        win.transient(self.root)
+        win.resizable(False, False)
+        answer = {"go": False}
+        frame = ttk.Frame(win, padding=18)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(frame, text=self.BROOM, font=(EMOJI_FONT, 46)).grid(
+            row=0, column=0, rowspan=2, padx=(0, 16), sticky="n")
+        ttk.Label(frame, text=question, wraplength=460, justify="left").grid(
+            row=0, column=1, sticky="w")
+        bar = ttk.Frame(frame)
+        bar.grid(row=1, column=1, sticky="e", pady=(14, 0))
+
+        def go():
+            answer["go"] = True
+            win.destroy()
+
+        ttk.Button(bar, text=self.t("clean_keep"),
+                   command=win.destroy).pack(side="right")
+        ttk.Button(bar, text=self.t("clean_go"),
+                   command=go).pack(side="right", padx=(0, 8))
+        win.bind("<Escape>", lambda _event: win.destroy())
+        win.protocol("WM_DELETE_WINDOW", win.destroy)
+        if not self._modal(win):
+            from tkinter import messagebox
+            return bool(messagebox.askyesno(title, question))
+        return answer["go"]
 
     def _delete(self, going):
         """Remove exactly these items, and measure again so the list is true."""
@@ -4321,6 +4456,7 @@ class App:
         """
         tk, ttk = self.tk, self.ttk
         win = tk.Toplevel(self.root)
+        win.withdraw()                     # shown by _modal, once placed
         win.title(self.t("quit_title"))
         win.transient(self.root)
         win.resizable(False, False)
@@ -4344,16 +4480,69 @@ class App:
                    command=leave).pack(side="right", padx=(0, 8))
         win.bind("<Escape>", lambda _event: win.destroy())
         win.protocol("WM_DELETE_WINDOW", win.destroy)
-        win.update_idletasks()
-        # over the window it interrupts, rather than wherever the system puts it
-        x = self.root.winfo_rootx() + (self.root.winfo_width()
-                                       - win.winfo_width()) // 2
-        y = self.root.winfo_rooty() + (self.root.winfo_height()
-                                       - win.winfo_height()) // 3
-        win.geometry("+%d+%d" % (max(x, 0), max(y, 0)))
-        win.grab_set()
-        self.root.wait_window(win)
+        if not self._modal(win):
+            from tkinter import messagebox
+            return bool(messagebox.askyesno(self.t("quit_title"),
+                                            self.t("quit_running")))
         return answer["leave"]
+
+    def _modal(self, win):
+        """Show a question over this window and wait for its answer.
+
+        False when the question could not be shown, for the caller to ask it
+        some other way; the window is then gone.
+
+        On 2026-09-16 the cleanup question, opened from a button of this
+        window, came up for a fraction of a second and nothing happened after:
+        on macOS a new window opened from a click can drop behind the one that
+        was clicked, and with the grab it holds, the main window then ignores
+        every click while the question waits where nobody sees it. So the
+        question is placed over the window, kept above it, given the focus,
+        and takes the grab only once it is on the screen.
+        """
+        tk = self.tk
+        try:
+            win.update_idletasks()
+            # over the window it interrupts, rather than wherever the system
+            # puts it
+            # (its requested size: a window not yet shown measures 1 x 1)
+            x = self.root.winfo_rootx() + (self.root.winfo_width()
+                                           - win.winfo_reqwidth()) // 2
+            y = self.root.winfo_rooty() + (self.root.winfo_height()
+                                           - win.winfo_reqheight()) // 3
+            win.geometry("+%d+%d" % (max(x, 0), max(y, 0)))
+            win.deiconify()
+            # after showing it: on macOS, showing a window resets the flag
+            win.attributes("-topmost", True)
+            win.lift()
+            win.focus_force()
+        except tk.TclError:
+            if not win.winfo_exists():
+                return True                  # answered already: not again
+            try:
+                win.destroy()
+            except tk.TclError:
+                pass
+            return False
+
+        def hold(tries=[0]):
+            # the grab once the question is on the screen, which may be a
+            # moment after it was asked for; never waited for, so a question
+            # the system is slow to show cannot hang the window. One that
+            # never holds it still answers, the window behind it merely
+            # staying usable meanwhile
+            if not win.winfo_exists():
+                return
+            try:
+                win.grab_set()
+            except tk.TclError:
+                tries[0] += 1
+                if tries[0] < 100:
+                    win.after(50, hold)
+
+        win.after_idle(hold)
+        self.root.wait_window(win)
+        return True
 
     def _close(self):
         if self.proc is not None:

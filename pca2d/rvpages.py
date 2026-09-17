@@ -24,8 +24,8 @@ import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 
 from .logger import log
-from .lblscan import (AFTER, BEFORE, compilation_figure, nightly, rdb_rows,
-                      velocity_stats)
+from .lblscan import (AFTER, BEFORE, berv_figure, compilation_figure,
+                      nightly, rdb_rows, velocity_stats)
 
 
 def rdb_path(data_dir, name):
@@ -43,8 +43,22 @@ def load_series(data_dir, name, label):
         log("  %s has no finite velocity in it" % os.path.basename(path), "warn")
         return None
     return {"t": t, "v": v, "e": e, "table": table, "label": label,
-            "name": name, "path": path,
+            "name": name, "path": path, "berv": berv_of(table),
             "stats": velocity_stats(t, v, e)}
+
+
+def berv_of(table):
+    """The BERV column of an rdb, or None when it has none.
+
+    LBL spells it BERV; a hand-made rdb, and the ones the tests write, may not
+    carry it at all, and that is not an error: it costs the BERV page and
+    nothing else.
+    """
+    for column in table.colnames:
+        if column.strip().lower() == "berv":
+            berv = np.asarray(table[column], float)
+            return berv if np.isfinite(berv).any() else None
+    return None
 
 
 def on_common(series):
@@ -64,6 +78,8 @@ def on_common(series):
         cut = dict(run)
         cut["t"], cut["v"], cut["e"] = run["t"][keep], run["v"][keep], run["e"][keep]
         cut["table"] = run["table"][keep]
+        if run.get("berv") is not None:
+            cut["berv"] = run["berv"][keep]
         cut["stats"] = velocity_stats(cut["t"], cut["v"], cut["e"])
         out.append(cut)
     return out, int(common.size)
@@ -85,8 +101,10 @@ def solo_figure(run, title):
                       " error %.2f m/s" % (s["rms"], s["robust"],
                                            s["median_error"]), fontsize=8.5)
     nt = nightly(run["t"], run["v"], run["e"])
-    axes[1].errorbar(nt[0], nt[1] - np.median(run["v"]), yerr=nt[2], fmt="o-",
-                     ms=4, lw=1.0, color=AFTER, ecolor=AFTER, capsize=0)
+    # points and no line joining them: consecutive nights can be a fortnight
+    # apart, and the line drawn across the gap is a shape nothing measured
+    axes[1].errorbar(nt[0], nt[1] - np.median(run["v"]), yerr=nt[2], fmt="o",
+                     ms=4, lw=0, color=AFTER, ecolor=AFTER, capsize=0)
     axes[1].set_title("%d nightly weighted means: nightly rms %.2f m/s"
                       % (s["nights"], s["nightly_rms"]), fontsize=8.5)
     for ax in axes:
@@ -183,6 +201,16 @@ def velocity_pages(plan, out=None):
             fig = solo_figure(cut[0], "%s: LBL velocities of the corrected"
                                       " spectra" % star)
         pages.append(fig)
+        # the same points against BERV: time says whether the scatter went
+        # down, BERV says whether what is left follows the Earth
+        against_berv = berv_figure(
+            cut[0], cut[1:],
+            title="%s: the same velocities against BERV" % star)
+        if against_berv is None:
+            log("  %s has no BERV column: no page against BERV for %s"
+                % (os.path.basename(cut[-1]["path"]), star), "warn")
+        else:
+            pages.append(against_berv)
         text.append(numbers(star, cut, n_common))
 
     if not pages:
