@@ -111,6 +111,10 @@ printf '%s  environment %s%s   %spython %s%s\n' \
 printf '%s  checkout    %s%s\n' "${_c_dim}" "${_c_off}" "${PCA2D_HOME}"
 printf '%s  config      %s%s/config.yaml\n\n' "${_c_dim}" "${_c_off}" "${PCA2D_HOME}"
 
+# the checkout's own path in the command, so it works from any folder; the
+# package is installed in editable mode, so a pull is the whole update
+printf '  %s%-42s%s  the latest code, from GitHub; the install follows the checkout\n' \
+    "${_c_cmd}" "git -C ${PCA2D_HOME} pull" "${_c_off}"
 printf '  %spca2d-gui%s                                   the window: pick targets, run, watch it\n' \
     "${_c_cmd}" "${_c_off}"
 printf '  %spca2d-preclean --object TOI-2120%s            one target, t.fits to velocities\n' \
