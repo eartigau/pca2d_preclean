@@ -1725,7 +1725,11 @@ def summary_table(star, numbers):
             "berv_binned")
     if "d2v_sigma" in b:
         vb, va = b["d2v_sigma"] / 1e3, a["d2v_sigma"] / 1e3
-        word = "watch" if verdict(vb, va, tolerance=0.1) != "same" else "same"
+        # lower is better: a scatter that falls is telluric noise the
+        # correction took out of the line width, one that rises is noise it
+        # put in (asked for on 2026-09-17; it was flagged as a change either
+        # way until then)
+        word = verdict(vb, va, tolerance=0.1)
         rows.append("d2v robust sigma ($10^3$ m$^2$/s$^2$) & %s & %s & & %s \\\\"
                     % (number(vb, 1), number(va, 1), mark(word)))
         rows.append("velocity-d2v correlation r & %s & %s & & \\muted{activity}"
@@ -1903,10 +1907,11 @@ def verdict_lines(numbers):
                        tolerance=0.05)
         (better if word == "gain" else worse if word == "loss"
          else []).append("%s's structure against $V_\\mathrm{tot}$" % tex(b["dtemp_name"]))
-    if "d2v_sigma" in b and verdict(b["d2v_sigma"], a["d2v_sigma"],
-                                    tolerance=0.1) != "same":
-        moved.append("d2v's scatter (%.0f to %.0f, in $10^3$ m$^2$/s$^2$)"
-                     % (b["d2v_sigma"] / 1e3, a["d2v_sigma"] / 1e3))
+    if "d2v_sigma" in b:
+        word = verdict(b["d2v_sigma"], a["d2v_sigma"], tolerance=0.1)
+        (better if word == "gain" else worse if word == "loss"
+         else []).append("d2v's scatter (%.0f to %.0f, in $10^3$ m$^2$/s$^2$)"
+                         % (b["d2v_sigma"] / 1e3, a["d2v_sigma"] / 1e3))
     for letter, period, kb, ka in zip("bcdefgh", numbers["planet_periods"],
                                       b["planets"], a["planets"]):
         if abs(ka[0] - kb[0]) > 2 * np.hypot(ka[1], kb[1]):
@@ -2061,9 +2066,10 @@ def velocity_section(star, before, after, numbers, folder, stale):
          "%s: d2v, the activity indicator" % name,
          "d2v, LBL's second-derivative term, which follows the line width and"
          " is an activity indicator. Above, over the campaign; below, the"
-         " velocity against it. A correction of the observer frame has no"
-         " business changing it, and a velocity that correlates with it is"
-         " activity rather than noise."),
+         " velocity against it. A scatter that falls is telluric noise the"
+         " correction took out of it, a gain; one that rises, noise it put"
+         " in. A velocity that correlates with it is activity rather than"
+         " noise."),
         (figure_dtemp(before, after, os.path.join(figures, base + "-dtemp.pdf")),
          "%s: %s, the temperature projection" % (name, tex(
              before.get("dtemp_name") or "DTEMP")),

@@ -624,3 +624,27 @@ def test_the_figures_stage_figures_carry_the_target(tmp_path):
     manifest["figures"][0]["title"] = "The sequence, step by step"
     assert "named-" not in tr.correction_section(
         manifest, folder=str(tmp_path), name="X")
+
+
+def test_a_d2v_scatter_that_falls_is_a_gain():
+    """Telluric noise taken out of the line width is a gain, noise put in a
+    loss; within 10% it is the same."""
+    def numbers(before, after):
+        side = {"rms": 5.0, "robust": 5.0, "nightly_rms": 5.0,
+                "median_error": 1.0, "planets": []}
+        b = dict(side, d2v_sigma=before, d2v_r=0.0)
+        a = dict(side, d2v_sigma=after, d2v_r=0.0)
+        return {"before": b, "after": a, "n": 10, "nights": 10,
+                "planet_periods": [], "change_rms": 1.0, "removed": 1.0}
+
+    for after, where in ((23.2e3, 0), (40e3, 1), (32e3, None)):
+        better, worse, moved = tr.verdict_lines(numbers(33.0e3, after))
+        lists = (better, worse)
+        found = [i for i, words in enumerate(lists)
+                 if any("d2v's scatter" in w for w in words)]
+        assert found == ([] if where is None else [where])
+        assert not any("d2v" in w for w in moved)
+        table = tr.summary_table("X", numbers(33.0e3, after))
+        row = [line for line in table.splitlines() if "d2v robust" in line][0]
+        assert (r"\gain{gain}", r"\loss{loss}", r"\muted{same}")[
+            {0: 0, 1: 1, None: 2}[where]] in row
