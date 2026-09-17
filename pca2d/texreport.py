@@ -479,10 +479,10 @@ def bias_row(fitted):
             "bias_significance": fitted["significance"],
             "bias_detected": fitted["detected"],
             "bias_upper": fitted["upper"],
-            "bias_width": float(fitted["sigma"][0]),
-            "bias_width_err": float(0.5 * (fitted["sigma"][2]
-                                           - fitted["sigma"][1])),
-            "bias_amp_sigma_r": fitted["amp_sigma_r"],
+            "bias_fwhm": float(fitted["fwhm"][0]),
+            "bias_fwhm_err": float(0.5 * (fitted["fwhm"][2]
+                                          - fitted["fwhm"][1])),
+            "bias_amp_fwhm_r": fitted["amp_fwhm_r"],
             "bias_p_positive": fitted["p_positive"],
             "bias_delta_bic": fitted.get("delta_bic", np.nan),
             "jitter": float(fitted["jitter"][0])}
@@ -509,6 +509,7 @@ def star_numbers(before, after, planets=(), seed=0):
             # the bias's own shape, by MCMC; a straight line has no meaning
             row.update(bias_row(bervbias.fit(vtot, run["v"], run["e"],
                                              seed=seed)))
+            row["bias_near"] = int(np.sum(np.abs(vtot) < bervbias.FWHM_MAX))
         if run.get("d2v") is not None:
             good = inliers(run["d2v"])
             row.update(d2v_sigma=robust_sigma(run["d2v"]),
@@ -788,7 +789,8 @@ def figure_berv(before, after, path):
                         ms=4.5, mfc="white", mec=INK, mew=0.8, ecolor=INK,
                         elinewidth=0.7, capsize=0, zorder=5,
                         label="2 km/s bins, median")
-        _bias_band(ax, fitted, grid, INK, label="fitted bias, 1$\\sigma$")
+        # in the series' colour, as below: the grey is |V_tot| < 4 km/s
+        _bias_band(ax, fitted, grid, colour, label="fitted bias, 1$\\sigma$")
         ax.set_title("%s\n%s" % (run["label"], bervbias.summary(fitted)),
                      fontsize=7, color=INK, loc="left")
         ax.axhline(0, color=MUTED, lw=0.6)
@@ -840,8 +842,9 @@ def amp_range(*fits):
 
 
 def _corner(fig, cell, fitted, colour, title, arange):
-    """amp against sigma for one fit: the joint posterior and both
-    marginals, with 1 and 2 sigma contours, on the amp axis given."""
+    """amp against the FWHM for one fit: the joint posterior and both
+    marginals, with 1 and 2 sigma contours, on the amp axis given, the FWHM
+    from 1 to 10 km/s."""
     inner = cell.subgridspec(2, 2, width_ratios=[1.0, 0.35],
                              height_ratios=[0.35, 1.0], wspace=0.05,
                              hspace=0.05)
@@ -849,9 +852,9 @@ def _corner(fig, cell, fitted, colour, title, arange):
     top = fig.add_subplot(inner[0, 0], sharex=joint)
     side = fig.add_subplot(inner[1, 1], sharey=joint)
     amp = fitted["samples"][:, 0]
-    lsig = np.log10(fitted["samples"][:, 1])
-    srange = (np.log10(bervbias.SIGMA_MIN), np.log10(bervbias.SIGMA_MAX))
-    counts, xe, ye = np.histogram2d(lsig, amp, bins=45, range=[srange, arange])
+    width = fitted["samples"][:, 1]
+    srange = (bervbias.FWHM_MIN, bervbias.FWHM_MAX)
+    counts, xe, ye = np.histogram2d(width, amp, bins=45, range=[srange, arange])
     ordered = np.sort(counts.ravel())[::-1]
     cumulative = np.cumsum(ordered) / ordered.sum()
     # the densities enclosing 39% and 86% of the mass: 1 and 2 sigma in 2D
@@ -864,24 +867,28 @@ def _corner(fig, cell, fitted, colour, title, arange):
                       counts.T, levels=levels, colors=[colour],
                       linewidths=[0.9, 1.4][:len(levels)])
     joint.axhline(0, color=MUTED, lw=0.6)
-    joint.set_xlabel("sigma (km/s)", fontsize=7.5, color=INK)
+    joint.set_xlabel("FWHM (km/s)", fontsize=7.5, color=INK)
     joint.set_ylabel("amp ((m/s)/(km/s))", fontsize=7.5, color=INK)
-    ticks = [t for t in (1, 2, 5, 10, 20, 50)
-             if srange[0] <= np.log10(t) <= srange[1]]
-    joint.set_xticks(np.log10(ticks))
-    joint.set_xticklabels(["%g" % t for t in ticks])
+    joint.set_xticks(np.arange(1, 11))
     joint.set_xlim(*srange)
     joint.set_ylim(*arange)
     joint.yaxis.set_major_formatter(SIGNED)
-    top.hist(lsig, bins=45, range=srange, color=colour, alpha=0.7)
+    top.hist(width, bins=45, range=srange, color=colour, alpha=0.7)
+    # the prior, scaled to the histogram, for what the data added to it
+    mean, spread = bervbias.FWHM_PRIOR
+    xs = np.linspace(*srange, 200)
+    prior = np.exp(-0.5 * ((xs - mean) / spread) ** 2)
+    top.plot(xs, prior * len(width) * (xe[1] - xe[0])
+             / (spread * np.sqrt(2 * np.pi)), color=MUTED, lw=0.9, ls="--",
+             label="prior")
     side.hist(amp, bins=45, range=arange, color=colour, alpha=0.7,
               orientation="horizontal")
     for ax in (top, side):
         ax.set_yticks([]) if ax is top else ax.set_xticks([])
         plt.setp(ax.get_xticklabels() if ax is top else ax.get_yticklabels(),
                  visible=False)
-    top.set_title("%s\nr(amp, ln sigma) %.2f, P(amp > 0) %.2f"
-                  % (title, fitted["amp_sigma_r"], fitted["p_positive"]),
+    top.set_title("%s\nr(amp, FWHM) %.2f, P(amp > 0) %.2f"
+                  % (title, fitted["amp_fwhm_r"], fitted["p_positive"]),
                   fontsize=7, color=INK, loc="left")
     for ax in (joint, top, side):
         _style(ax)
@@ -1494,13 +1501,13 @@ def summary_table(star, numbers):
             return "$<$ %.1f" % side["bias_upper"]
         rows.append("BERV bias at its peak (m/s) & %s & %s & & %s \\\\"
                     % (said(b), said(a), mark(bias_verdict(b, a))))
-        rows.append("its width sigma (km/s) & %s & %s & & \\\\" % tuple(
-            ("%.1f $\\pm$ %.1f" % (side["bias_width"], side["bias_width_err"])
-             if side["bias_detected"] else "\\muted{unconstrained}")
+        rows.append("its FWHM (km/s) & %s & %s & & \\\\" % tuple(
+            ("%.1f $\\pm$ %.1f" % (side["bias_fwhm"], side["bias_fwhm_err"])
+             if side["bias_detected"] else "\\muted{the prior's}")
             for side in (b, a)))
-        rows.append("amp-sigma correlation (posterior) & %s & %s & & \\\\"
-                    % (number(b["bias_amp_sigma_r"]),
-                       number(a["bias_amp_sigma_r"])))
+        rows.append("amp-FWHM correlation (posterior) & %s & %s & & \\\\"
+                    % (number(b["bias_amp_fwhm_r"]),
+                       number(a["bias_amp_fwhm_r"])))
         rows.append("P(amp $>$ 0) (posterior) & %s & %s & & \\\\"
                     % (number(b["bias_p_positive"]),
                        number(a["bias_p_positive"])))
@@ -1769,6 +1776,15 @@ def velocity_section(star, before, after, numbers, folder, stale):
                      " one yet.}\n\n")
     parts.append(star_sentence(star, numbers) + " " + activity_note(numbers)
                  + "\n")
+    near = numbers["before"].get("bias_near")
+    if near is not None and near < bervbias.MIN_NEAR:
+        parts.append("\n\\watch{The bias against $V_\\mathrm{tot}$ is not"
+                     " fitted: %d exposure%s bring%s $V_\\mathrm{tot}$ within"
+                     " %g km/s of zero, where the star's lines meet the"
+                     " tellurics, and a fit needs %d.}\n"
+                     % (near, "" if near == 1 else "s",
+                        "s" if near == 1 else "", bervbias.FWHM_MAX,
+                        bervbias.MIN_NEAR))
     if before.get("dtemp") is None:
         parts.append("\n\\muted{No temperature projection in these"
                      " velocities: this run's LBL had no DTEMP table. Runs from"
@@ -1793,15 +1809,18 @@ def velocity_section(star, before, after, numbers, folder, stale):
          " telluric line blended with the stellar lines produces, fitted by"
          " MCMC: $v = c + a\\,V_\\mathrm{tot}\\,"
          "e^{-V_\\mathrm{tot}^2/2\\sigma^2}$, with a jitter added"
-         " to LBL's error bars, a flat prior on $a$ and a"
-         " log-uniform one on $\\sigma$ between 1 and 60 km/s. The line is the posterior median, the band its"
-         " 1$\\sigma$ envelope (the band alone for a bias that is not"
+         " to LBL's error bars, a flat prior on $a$ and a Gaussian one on the"
+         " Gaussian's FWHM, $2\\sqrt{2\\ln 2}\\,\\sigma$, of $5 \\pm 1.5$ km/s"
+         " within 1 to 10 km/s. The line is the posterior median, the band"
+         " its 1$\\sigma$ envelope, in each series' colour (the band alone"
+         " for a bias that is not"
          " detected); squares are medians in 2 km/s bins, and the grey band"
          " is $|V_\\mathrm{tot}| < 4$ km/s, where the star's lines sit on the"
          " tellurics. Above,"
          " each series less its fitted offset; below, both envelopes on one"
          " axis. $\\Delta$BIC is BIC(no bias) $-$ BIC(bias), $k \\ln n - 2\\ln"
-         " L_\\mathrm{max}$ with $k = 2$ (offset, jitter) against 4:"
+         " L_\\mathrm{max}$ with $k = 2$ (offset, jitter) against 4, the"
+         " likelihood maximised with the FWHM free within 1 to 10 km/s:"
          " positive when the data prefer the bias, above 2, 6 and 10 positive,"
          " strong and very strong evidence for it (Kass \\& Raftery 1995); it"
          " asks whether a curve of this shape improves the fit, whatever put"
@@ -1811,16 +1830,19 @@ def velocity_section(star, before, after, numbers, folder, stale):
          " $a\\sigma e^{-1/2}$; below 3$\\sigma$ from zero, only an upper"
          " limit on it is quoted."),
         (figure_corner(before, after, os.path.join(figures, base + "-corner.pdf")),
-         "%s: the covariance of amp and sigma" % name,
-         "The joint posterior of the bias's amplitude $a$ and width"
-         " $\\sigma$, delivered and corrected, on the same axes, with its 1"
+         "%s: the covariance of amp and FWHM" % name,
+         "The joint posterior of the bias's amplitude $a$ and the FWHM of the"
+         " Gaussian whose derivative it is, from 1 to 10 km/s, delivered and"
+         " corrected, on the same axes, with its 1"
          " and 2$\\sigma$ contours and both marginals. $a$ is signed: its"
          " prior is flat, the same on both sides, half the"
          " walkers start on each, and the amp axis is symmetric about zero;"
          " P($a > 0$) is the posterior's share on the positive side. The two trade against each other,"
          " since a narrower bias needs a larger amplitude to reach the same"
-         " points; a posterior filling the width's prior is a bias that is"
-         " not there."),
+         " points. The dashed curve over the FWHM's marginal is its prior,"
+         " $5 \\pm 1.5$ km/s: a marginal that is the prior is a width the"
+         " data said nothing about, which is what a bias that is not there"
+         " looks like."),
         (figure_d2v(before, after, os.path.join(figures, base + "-d2v.pdf")),
          "%s: d2v, the activity indicator" % name,
          "d2v, LBL's second-derivative term, which follows the line width and"

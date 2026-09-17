@@ -308,10 +308,10 @@ def berv_figures(run, lbl_dir, out):
                     "value")
         for key in ("before", "after"):
             side = numbers[key]
-            log("%s %-9s %s; jitter %.1f m/s; amp-ln sigma r %.2f"
+            log("%s %-9s %s; jitter %.1f m/s; amp-FWHM r %.2f"
                 % (star, key, tr.bervbias.summary(side.get("bias")),
                    side.get("jitter", float("nan")),
-                   side.get("bias_amp_sigma_r", float("nan"))), "value")
+                   side.get("bias_amp_fwhm_r", float("nan"))), "value")
 
 
 def main(argv=None):

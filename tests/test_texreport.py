@@ -92,14 +92,14 @@ def test_the_numbers_of_a_correction_that_removed_a_berv_bias():
     noise = r.normal(0, 2, t.size)
     e = np.full(t.size, 2.0)
     d2v = r.normal(0, 3e4, t.size)
-    bias = bervbias.shape(berv, -3.0, 6.0)
+    bias = bervbias.shape(berv, -8.0, bervbias.sigma_of(5.0))
     before = series(t, planet + noise + bias, e, berv, d2v, "delivered")
     after = series(t, planet + noise, e, berv, d2v, "corrected")
     numbers = tr.star_numbers(before, after, planets=[7.3])
     b, a = numbers["before"], numbers["after"]
     assert b["rms"] > a["rms"] and np.isfinite(numbers["removed"])
     assert b["bias_detected"] and not a["bias_detected"]
-    assert b["bias_width"] == pytest.approx(6.0, abs=1.5)
+    assert b["bias_fwhm"] == pytest.approx(5.0, abs=1.5)
     assert "berv_r" not in b and "berv_slope" not in b, \
         "no straight line against BERV: it has no meaning here"
     assert a["planets"][0][0] == pytest.approx(5.0, abs=1.0), \
@@ -337,7 +337,7 @@ def test_an_old_report_rewritten_is_kept_whole_first(tmp_path):
 
 
 def test_the_two_posteriors_are_drawn_on_the_same_axes(tmp_path):
-    """Side by side, they are compared: one amp axis and one sigma axis for
+    """Side by side, they are compared: one amp axis and one FWHM axis for
     both, whatever each posterior spans."""
     from pca2d import bervbias
 
@@ -345,7 +345,7 @@ def test_the_two_posteriors_are_drawn_on_the_same_axes(tmp_path):
     berv = r.uniform(-25, 25, 150)
     e = np.full(150, 5.0)
     noise = r.normal(0, 5, 150)
-    fits = {"before": bervbias.fit(berv, bervbias.shape(berv, -10, 6) + noise,
+    fits = {"before": bervbias.fit(berv, bervbias.shape(berv, -10, bervbias.sigma_of(5.0)) + noise,
                                    e, seed=1),
             "after": bervbias.fit(berv, noise, e, seed=2)}
     before = {"label": "delivered", "fits": fits}
@@ -426,7 +426,7 @@ def test_the_minus_signs_are_in_the_figures_text(tmp_path):
     berv = r.uniform(-25, 25, 150)
     e = np.full(150, 5.0)
     noise = r.normal(0, 5, 150)
-    fits = {"before": bervbias.fit(berv, bervbias.shape(berv, -10, 6) + noise,
+    fits = {"before": bervbias.fit(berv, bervbias.shape(berv, -10, bervbias.sigma_of(5.0)) + noise,
                                    e, seed=1),
             "after": bervbias.fit(berv, noise, e, seed=2)}
     path = str(tmp_path / "corner.pdf")
@@ -439,30 +439,43 @@ def test_the_minus_signs_are_in_the_figures_text(tmp_path):
 
 
 def test_the_bias_is_fitted_against_the_total_velocity():
-    """V_tot = vrad/1000 - BERV: a star at +30 km/s whose velocities carry a
-    bias in V_tot has it found there, and none of its exposures are listed
-    as close to the tellurics, since V_tot never comes near zero."""
+    """V_tot = vrad/1000 - BERV: a star at +40 km/s has none of its
+    exposures listed as close to the tellurics, since V_tot never comes near
+    zero; one at +15 km/s whose velocities carry a bias in V_tot has it
+    found there, where against BERV alone it would sit at +15."""
     from pca2d import bervbias
 
     r = np.random.default_rng(21)
     t = np.sort(60000 + r.uniform(0, 700, 200))
     berv = 25 * np.sin(2 * np.pi * (t - 60000) / 365.25)
     e = np.full(t.size, 2.0)
-    vtot = 30.0 - berv
-    v = 30000.0 + bervbias.shape(vtot, -3.0, 40.0) + r.normal(0, 2, t.size)
+    v = 40000.0 + r.normal(0, 2, t.size)
     before = series(t, v, e, berv, None, "delivered")
-    after = series(t, 30000.0 + r.normal(0, 2, t.size), e, berv, None,
+    after = series(t, 40000.0 + r.normal(0, 2, t.size), e, berv, None,
                    "corrected")
     assert np.allclose(tr.vtot_of(before), v / 1000.0 - berv, atol=1e-6)
     numbers = tr.star_numbers(before, after)
     o = numbers["observations"]
-    assert o["systemic"] == pytest.approx(30.0, abs=0.01)
+    assert o["systemic"] == pytest.approx(40.0, abs=0.01)
     assert o["vtot"][0] > 4.0 and o["windows"] == [] and o["close_n"] == 0
     assert o["first"] <= o["last"] and o["nights"] == numbers["nights"]
     table = tr.observations_table("X", numbers)
     assert "never comes within 4 km/s of zero" in table
     assert "median SNR" not in table, "no SNR column, no SNR row"
+    # V_tot never within 10 km/s of zero: nothing to fit, and said so
+    assert "bias_peak" not in numbers["before"]
+    assert numbers["before"]["bias_near"] < bervbias.MIN_NEAR
+
+    vtot = 15.0 - berv
+    v = 15000.0 + bervbias.shape(vtot, -8.0, bervbias.sigma_of(5.0)) \
+        + r.normal(0, 2, t.size)
+    before = series(t, v, e, berv, None, "delivered")
+    after = series(t, 15000.0 + r.normal(0, 2, t.size), e, berv, None,
+                   "corrected")
+    numbers = tr.star_numbers(before, after)
     assert numbers["before"]["bias_detected"]
+    assert not numbers["after"]["bias_detected"]
+    assert numbers["before"]["bias_fwhm"] == pytest.approx(5.0, abs=1.5)
 
 
 def test_the_close_dates_are_calendar_windows_every_year_alike():

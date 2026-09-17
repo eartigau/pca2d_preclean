@@ -244,7 +244,8 @@ v(V) = c + a * V * exp(-V**2 / (2 sigma**2))     peak a * sigma * exp(-1/2) at V
 
 fitted by MCMC (Goodman and Weare's stretch move) to the delivered and to the
 corrected velocities: `a`, signed, with a flat prior on both sides (within
-+-1e4 (m/s)/(km/s)), and half the walkers starting on each sign; `sigma` log-uniform over 1 to 60 km/s; the offset `c`
++-1e4 (m/s)/(km/s)), and half the walkers starting on each sign; the width as the Gaussian's FWHM, with a Gaussian
+prior of 5 +- 1.5 km/s within 1 to 10 km/s; the offset `c`
 and a jitter beside LBL's error bars marginalised. Beside the posterior, a
 ΔBIC = BIC(no bias) - BIC(bias), with k = 4 against 2 (offset, jitter), says
 whether the curve earns its two parameters: positive when the data prefer
