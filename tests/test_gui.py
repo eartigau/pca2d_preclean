@@ -1243,10 +1243,23 @@ def test_the_cleaning_question_wears_a_broom_and_not_the_system_icon():
             shown = [w for w in root.winfo_children()
                      if isinstance(w, tk.Toplevel) and w.winfo_exists()]
             tries.append(1)
-            if len(tries) < 100 and not (shown and shows(shown[0])):
-                # not shown and raised yet: showing it handles events on
-                # macOS, and this can come in the middle of it
-                root.after(20, act)
+            ready = bool(shown) and shows(shown[0])
+            if not ready:
+                if len(tries) < 100:
+                    # not shown and raised yet: showing it handles events on
+                    # macOS, and this can come in the middle of it
+                    root.after(20, act)
+                    return
+                # two seconds of it: this window manager does not do what the
+                # question asks of it, and the test is not about that
+                seen.clear()
+                seen["unshown"] = ("never shown" if not shown
+                                   else "shown but never raised")
+                for win in shown:            # let the question return
+                    try:
+                        win.destroy()
+                    except tk.TclError:
+                        pass
                 return
             try:
                 win = shown[0]
