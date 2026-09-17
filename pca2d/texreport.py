@@ -479,6 +479,7 @@ def bias_row(fitted):
                                            - fitted["sigma"][1])),
             "bias_amp_sigma_r": fitted["amp_sigma_r"],
             "bias_p_positive": fitted["p_positive"],
+            "bias_delta_bic": fitted.get("delta_bic", np.nan),
             "jitter": float(fitted["jitter"][0])}
 
 
@@ -1498,6 +1499,15 @@ def summary_table(star, numbers):
         rows.append("P(amp $>$ 0) (posterior) & %s & %s & & \\\\"
                     % (number(b["bias_p_positive"]),
                        number(a["bias_p_positive"])))
+        if np.isfinite(b.get("bias_delta_bic", np.nan)):
+            def bic(side):
+                value = side.get("bias_delta_bic", np.nan)
+                return "%s (%s)" % (tex("%+.1f" % value) if np.isfinite(value)
+                                    else "n/a", bervbias.bic_words(value))
+            rows.append("$\\Delta$BIC, no bias $-$ bias & %s & %s & & %s \\\\"
+                        % (bic(b), bic(a),
+                           mark(bic_verdict(b["bias_delta_bic"],
+                                            a["bias_delta_bic"]))))
         row("jitter beyond LBL's errors (m/s)", "jitter")
     if "berv_binned" in b:
         row("scatter of $V_\\mathrm{tot}$-binned medians (m/s)",
@@ -1604,6 +1614,18 @@ def signed(value, digits=1):
     return ("$%+.*f$" % (digits, value))
 
 
+def bic_verdict(before, after, step=2.0):
+    """gain when the evidence for a bias fell by more than `step` on the BIC
+    scale, loss when it rose by more and is now worth a mention."""
+    if not (np.isfinite(before) and np.isfinite(after)):
+        return "same"
+    if after < before - step:
+        return "gain"
+    if after > before + step and after > step:
+        return "loss"
+    return "same"
+
+
 def bias_verdict(b, a):
     """gain, loss or same for the fitted BERV bias.
 
@@ -1625,10 +1647,13 @@ def bias_verdict(b, a):
 
 
 def bias_words(side):
+    bic = side.get("bias_delta_bic", np.nan)
+    said = (", $\\Delta$BIC %s" % tex("%+.0f" % bic)) if np.isfinite(bic) else ""
     if side.get("bias_detected"):
-        return "%.0f $\\pm$ %.0f m/s" % (side["bias_peak"], side["bias_err"])
+        return "%.0f $\\pm$ %.0f m/s%s" % (side["bias_peak"], side["bias_err"],
+                                          said)
     if "bias_upper" in side:
-        return "none detected ($<$ %.0f m/s)" % side["bias_upper"]
+        return "none detected ($<$ %.0f m/s%s)" % (side["bias_upper"], said)
     return "not fitted"
 
 
@@ -1652,6 +1677,12 @@ def verdict_lines(numbers):
     word = bias_verdict(b, a)
     (better if word == "gain" else worse if word == "loss"
      else []).append("the fitted BERV bias")
+    if "bias_delta_bic" in b and "bias_delta_bic" in a:
+        word = bic_verdict(b["bias_delta_bic"], a["bias_delta_bic"])
+        (better if word == "gain" else worse if word == "loss"
+         else []).append("the evidence for it ($\\Delta$BIC %s to %s)"
+                         % (tex("%+.0f" % b["bias_delta_bic"]),
+                            tex("%+.0f" % a["bias_delta_bic"])))
     if "dtemp_sigma" in b and "dtemp_sigma" in a:
         if verdict(b["dtemp_sigma"], a["dtemp_sigma"], tolerance=0.1) != "same":
             moved.append("%s's scatter (%.1f to %.1f K)"
@@ -1764,7 +1795,14 @@ def velocity_section(star, before, after, numbers, folder, stale):
          " is $|V_\\mathrm{tot}| < 4$ km/s, where the star's lines sit on the"
          " tellurics. Above,"
          " each series less its fitted offset; below, both envelopes on one"
-         " axis. The peak is the bias at $V_\\mathrm{tot} = \\pm\\sigma$,"
+         " axis. $\\Delta$BIC is BIC(no bias) $-$ BIC(bias), $k \\ln n - 2\\ln"
+         " L_\\mathrm{max}$ with $k = 2$ (offset, jitter) against 4:"
+         " positive when the data prefer the bias, above 2, 6 and 10 positive,"
+         " strong and very strong evidence for it (Kass \\& Raftery 1995); it"
+         " asks whether a curve of this shape improves the fit, whatever put"
+         " it there, and on a narrow $V_\\mathrm{tot}$ span a seasonal signal"
+         " can be that curve."
+         " The peak is the bias at $V_\\mathrm{tot} = \\pm\\sigma$,"
          " $a\\sigma e^{-1/2}$; below 3$\\sigma$ from zero, only an upper"
          " limit on it is quoted."),
         (figure_corner(before, after, os.path.join(figures, base + "-corner.pdf")),

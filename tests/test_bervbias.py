@@ -47,7 +47,7 @@ def test_a_bias_that_is_there_is_found_with_its_width():
     assert fitted["peak"][0] == pytest.approx(bb.peak(-10.0, 6.0), abs=6.0)
     assert fitted["c"][0] == pytest.approx(30.0, abs=3.0)
     assert fitted["jitter"][0] < 4.0, "no scatter was added past the errors"
-    assert "sigma)" in bb.summary(fitted)
+    assert "sigma, \u0394BIC +" in bb.summary(fitted)
 
 
 def test_a_bias_that_is_not_there_is_an_upper_limit():
@@ -129,3 +129,28 @@ def test_total_velocity_is_vrad_less_berv_composed_relativistically():
 
     assert np.allclose(factor(got), factor(vrad / 1000.0) / factor(berv),
                        rtol=0, atol=1e-15)
+
+
+def test_delta_bic_prefers_the_bias_only_when_there_is_one():
+    """BIC(no bias) - BIC(bias): large and positive for a bias well above
+    the noise, negative for none, where the two extra parameters cost
+    2 ln n and buy nothing."""
+    berv, v, e = a_campaign(amp=-10.0, sigma=6.0, seed=31)
+    there = bb.fit(berv, v, e, seed=32)
+    assert there["delta_bic"] > 10 and bb.bic_words(there["delta_bic"]) == \
+        "very strong"
+    assert there["lnl_bias"] > there["lnl_null"]
+    berv, v, e = a_campaign(amp=0.0, sigma=6.0, seed=33)
+    none = bb.fit(berv, v, e, seed=34)
+    n = v.size
+    assert none["delta_bic"] < 0 and bb.bic_words(none["delta_bic"]) == \
+        "no bias preferred"
+    assert none["delta_bic"] >= -2 * np.log(n) - 1e-6, \
+        "the bias model contains the null: it can only lose its penalty"
+    # the maximum is a maximum: no posterior sample does better
+    lp = bb.log_probability(np.column_stack([
+        none["samples"][:, 0], np.log(none["samples"][:, 1]),
+        none["samples"][:, 2], np.log(none["samples"][:, 3])]), berv, v, e)
+    assert none["lnl_bias"] >= lp.max() - 1e-6
+    assert [bb.bic_words(x) for x in (1.0, 3.0, 7.0, 12.0, np.nan)] == \
+        ["not worth a mention", "positive", "strong", "very strong", "n/a"]

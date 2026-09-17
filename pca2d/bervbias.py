@@ -123,6 +123,92 @@ def log_probability(theta, berv, v, e):
     return out
 
 
+#: Kass and Raftery (1995, JASA 90, 773) on a Bayes factor, read on the BIC's
+#: scale, 2 ln B: below 2 not worth more than a mention, 2 to 6 positive, 6
+#: to 10 strong, above 10 very strong. Negative: the data prefer no bias
+BIC_WORDS = ((10.0, "very strong"), (6.0, "strong"), (2.0, "positive"),
+             (0.0, "not worth a mention"))
+
+
+def log_likelihood_null(v, e):
+    """ln L of (c, ln jitter), no bias, one row per walker, as
+    log_probability counts it (the 2 pi left out of both)."""
+    def lnl(theta):
+        theta = np.atleast_2d(theta)
+        c, ljit = theta.T
+        var = e[None, :] ** 2 + np.exp(2 * ljit)[:, None]
+        out = -0.5 * np.sum((v[None, :] - c[:, None]) ** 2 / var
+                            + np.log(var), axis=1)
+        return np.where((ljit > np.log(JITTER_MIN))
+                        & (ljit < np.log(JITTER_MAX)), out, -np.inf)
+    return lnl
+
+
+def maximum(lnl, starts, bounds):
+    """The highest ln L from several starting points, and where it is."""
+    from scipy.optimize import minimize
+
+    best = (-np.inf, None)
+    for start in starts:
+        start = np.clip(np.asarray(start, float), [b[0] + 1e-9 for b in bounds],
+                        [b[1] - 1e-9 for b in bounds])
+        found = minimize(lambda x: -float(lnl(x)[0]), start,
+                         method="Nelder-Mead", bounds=bounds,
+                         options={"xatol": 1e-6, "fatol": 1e-6,
+                                  "maxiter": 4000, "maxfev": 8000})
+        for x in (found.x, start):
+            value = float(lnl(x)[0])
+            if value > best[0]:
+                best = (value, np.array(x, float))
+    return best
+
+
+def delta_bic(berv, v, e, chain_samples=None, chain_lp=None):
+    """(Delta BIC, ln L with the bias, ln L without), Delta BIC being
+    BIC(no bias) - BIC(bias): positive when the data prefer the bias.
+
+    BIC = k ln n - 2 ln L_max, with k = 4 (amp, sigma, c, jitter) against 2
+    (c, jitter). Each maximum is found from several starts: the best of the
+    posterior's samples when there are some, and a grid of widths. The
+    bias's width means nothing when its amplitude is zero, so the two models
+    are nested only at a boundary the BIC does not know about (Davies' problem):
+    the number is a guide on the Kass and Raftery scale, not a p-value.
+    """
+    berv, v, e = (np.asarray(x, float) for x in (berv, v, e))
+    n = v.size
+    excess = max(float(np.var(v - np.median(v)) - np.median(e) ** 2), 1.0)
+    jit_bounds = (np.log(JITTER_MIN), np.log(JITTER_MAX))
+    null, _ = maximum(log_likelihood_null(v, e),
+                      [(np.median(v), 0.5 * np.log(excess)),
+                       (np.mean(v), 0.5 * np.log(excess) + 1.0),
+                       (np.mean(v), 0.0)],
+                      [(float(np.min(v)), float(np.max(v))), jit_bounds])
+    starts = []
+    if chain_samples is not None and len(chain_samples):
+        best = chain_samples[int(np.argmax(chain_lp))]
+        starts.append(best)
+    centre = starting_point(berv, v, e)
+    starts.append(centre)
+    for sigma in np.geomspace(SIGMA_MIN * 1.5, SIGMA_MAX / 1.5, 6):
+        starts.append([centre[0], np.log(sigma), centre[2], centre[3]])
+    reach = float(np.max(np.abs(v - np.median(v)))) + 1.0
+    bias, _ = maximum(
+        lambda theta: log_probability(theta, berv, v, e), starts,
+        [(-AMP_MAX, AMP_MAX), (np.log(SIGMA_MIN), np.log(SIGMA_MAX)),
+         (float(np.min(v)) - reach, float(np.max(v)) + reach), jit_bounds])
+    value = 2.0 * (bias - null) - (4 - 2) * np.log(n)
+    return float(value), float(bias), float(null)
+
+
+def bic_words(value):
+    """What a Delta BIC says, on Kass and Raftery's scale."""
+    if not np.isfinite(value):
+        return "n/a"
+    if value < 0:
+        return "no bias preferred"
+    return next(word for floor, word in BIC_WORDS if value >= floor)
+
+
 def stretch(log_prob, start, steps, rng, a=2.0):
     """Goodman and Weare's stretch move. Returns (chain, acceptance).
 
@@ -202,9 +288,14 @@ def fit(berv, v, e, walkers=32, steps=2500, burn=1000, seed=0):
         lambda theta: log_probability(theta, berv, v, e), start,
         steps, rng)
     flat = chain[burn:].reshape(-1, 4)
+    # the best of the posterior's samples starts the maximum the BIC needs
+    thin = flat[::max(1, flat.shape[0] // 4000)]
+    dbic, lnl_bias, lnl_null = delta_bic(
+        berv, v, e, thin, log_probability(thin, berv, v, e))
     samples = np.column_stack([flat[:, 0], np.exp(flat[:, 1]), flat[:, 2],
                                np.exp(flat[:, 3])])
-    out = {"samples": samples, "acceptance": acceptance, "n": int(ok.sum())}
+    out = {"samples": samples, "acceptance": acceptance, "n": int(ok.sum()),
+           "delta_bic": dbic, "lnl_bias": lnl_bias, "lnl_null": lnl_null}
     for i, name in enumerate(NAMES):
         out[name] = np.percentile(samples[:, i], [50, 16, 84])
     peaks = peak(samples[:, 0], samples[:, 1])
@@ -233,13 +324,17 @@ def envelope(result, grid, draws=400, seed=1):
 
 
 def summary(result):
-    """'peak -70.6 +9.6/-10.0 m/s at 6.7 km/s (7.1 sigma)', or the limit."""
+    """'peak -70.6 +9.6/-10.0 m/s at 6.7 km/s (7.1 sigma, \u0394BIC +40.2)',
+    or the limit."""
     if result is None:
         return "not fitted"
+    bic = ""
+    if np.isfinite(result.get("delta_bic", np.nan)):
+        bic = ", \u0394BIC %+.1f" % result["delta_bic"]
     if not result["detected"]:
-        return ("none detected (%.1f sigma): |peak| < %.1f m/s at 95%%"
-                % (result["significance"], result["upper"]))
+        return ("none detected (%.1f sigma%s): |peak| < %.1f m/s at 95%%"
+                % (result["significance"], bic, result["upper"]))
     p, lo, hi = result["peak"]
     s = result["sigma"][0]
-    return ("peak %.1f +%.1f/-%.1f m/s at %.1f km/s (%.1f sigma)"
-            % (p, hi - p, p - lo, s, result["significance"]))
+    return ("peak %.1f +%.1f/-%.1f m/s at %.1f km/s (%.1f sigma%s)"
+            % (p, hi - p, p - lo, s, result["significance"], bic))

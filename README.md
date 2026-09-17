@@ -245,7 +245,11 @@ v(V) = c + a * V * exp(-V**2 / (2 sigma**2))     peak a * sigma * exp(-1/2) at V
 fitted by MCMC (Goodman and Weare's stretch move) to the delivered and to the
 corrected velocities: `a`, signed, with a flat prior on both sides (within
 +-1e4 (m/s)/(km/s)), and half the walkers starting on each sign; `sigma` log-uniform over 1 to 60 km/s; the offset `c`
-and a jitter beside LBL's error bars marginalised. Below 3 sigma from zero only
+and a jitter beside LBL's error bars marginalised. Beside the posterior, a
+ΔBIC = BIC(no bias) - BIC(bias), with k = 4 against 2 (offset, jitter), says
+whether the curve earns its two parameters: positive when the data prefer
+it, above 2, 6 and 10 positive, strong and very strong on Kass and
+Raftery's scale. Below 3 sigma from zero only
 an upper limit on the peak is quoted. On SMETHELLS 20 (NIRPS, 127 exposures,
 0-3, systemic +2.6 km/s): +80.2 +- 8.9 m/s at sigma = 6.0 km/s (9.1 sigma)
 delivered (P(a > 0) = 1.00; against the BERV alone it was -70.9, 7.2 sigma),

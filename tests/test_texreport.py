@@ -109,6 +109,9 @@ def test_the_numbers_of_a_correction_that_removed_a_berv_bias():
     assert not moved, "d2v and the planet were left alone"
     table = tr.summary_table("X", numbers)
     assert "BERV bias at its peak" in table and "slope" not in table
+    assert r"$\Delta$BIC, no bias $-$ bias" in table
+    assert b["bias_delta_bic"] > 10 > a["bias_delta_bic"]
+    assert tr.bic_verdict(b["bias_delta_bic"], a["bias_delta_bic"]) == "gain"
 
 
 # ------------------------------------------------------ whose planets ---
