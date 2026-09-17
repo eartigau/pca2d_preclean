@@ -1279,7 +1279,10 @@ def main(argv=None):
             runners[name](plan)
 
     log("done in %s" % human(time.time() - started), "info")
-    bundle = os.path.join(plan["outdir"], "%s_%s.pdf" % (args.object, plan["tag"]))
+    # the run's own name for its target: A+B+C for a joint run, as the report
+    # and the RV pages name their file
+    name = plan["config"]["input"].get("object") or args.object
+    bundle = os.path.join(plan["outdir"], "%s_%s.pdf" % (name, plan["tag"]))
     if os.path.exists(bundle):
         log("everything this run produced: %s" % bundle, "value")
     return None

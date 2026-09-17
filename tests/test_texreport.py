@@ -555,3 +555,11 @@ def test_the_time_figure_shows_the_spread_with_and_without_the_line(tmp_path):
     assert "less the straight line in time" in titles
     assert any("median = 1000" in ax.get_ylabel() or "median = 99" in
                ax.get_ylabel() for ax in captured[0].axes)
+
+
+def test_terminal_colours_never_reach_latex():
+    """A skipped figure's reason came from a coloured log line, and its
+    escape stopped pdflatex on a joint run."""
+    said = tr.tex("\x1b[93;1m1197.2 nm: outside the grid, skipped\x1b[0m\x07")
+    assert said == "1197.2 nm: outside the grid, skipped"
+    assert tr.tex("a\tb_c") == "a b\\_c"

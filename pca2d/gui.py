@@ -1358,13 +1358,18 @@ def run_folder(state, out_root):
 def report_pdf(state, out_root):
     """The run's compilation PDF: <folder>/<object>_<tag>.pdf, or None.
 
-    Named after the first object even when several were fitted together, which
-    is how cli.main names it.
+    <object> is the run's own name for its target: the object, or for several
+    fitted together the joint set, A+B+C, as the folder above the tag names it
+    and as the report and the RV pages name their file. The first object
+    alone, which this used to take, named a PDF no joint run writes: on
+    2026-09-17 the window looked for TOI4552_0-7.pdf beside
+    TOI4552+TOIM4508+TOI782_0-7.pdf and said there was none.
     """
     folder = run_folder(state, out_root)
     if not folder:
         return None
-    return os.path.join(folder, "%s_%s.pdf" % ((state.get("objects") or [""])[0],
+    names = state.get("objects") or [""]
+    return os.path.join(folder, "%s_%s.pdf" % ("+".join(names),
                                                os.path.basename(folder)))
 
 

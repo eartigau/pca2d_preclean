@@ -1010,6 +1010,10 @@ def test_the_window_knows_which_pdf_is_this_run_s(tmp_path):
     assert run_folder({**state, "objects": ["PROXIMA", "GJ1"]},
                       str(tmp_path)) == str(tmp_path / "joint" / "PROXIMA+GJ1"
                                             / "0-3")
+    # and a joint run's PDF carries the joint name, as its folder does
+    assert report_pdf({**state, "objects": ["PROXIMA", "GJ1"]},
+                      str(tmp_path)) == str(tmp_path / "joint" / "PROXIMA+GJ1"
+                                            / "0-3" / "PROXIMA+GJ1_0-3.pdf")
     assert run_folder({"objects": []}, str(tmp_path)) is None
 
 

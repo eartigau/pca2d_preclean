@@ -126,17 +126,28 @@ _UNICODE = {"\u00b2": r"\textsuperscript{2}", "\u00b3": r"\textsuperscript{3}",
             "\u2018": "`", "\u201c": "``", "\u201d": "''", "\u00a0": "~"}
 
 
+#: a terminal's colour and cursor sequences, the whole of each
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+
+
 def tex(text) -> str:
     """`text` as LaTeX prints it, whatever it holds.
 
     Object names carry underscores (SMETHELLS_20), run names plus signs and
     paths every character there is, and one unescaped one stops the document.
     A character nothing here knows becomes a question mark rather than an
-    error: a report with one odd glyph is still a report.
+    error: a report with one odd glyph is still a report. Terminal colours
+    and other control characters are dropped: a skipped figure's reason came
+    from a coloured log line, and its escape stopped pdflatex on a joint run
+    (2026-09-17, "Unicode character ^^[ (U+001B)").
     """
     out = []
-    for ch in str(text):
-        if ch in _TEX:
+    for ch in ANSI_ESCAPE.sub("", str(text)):
+        if ch in "\t\n":
+            out.append(" " if ch == "\t" else ch)
+        elif ord(ch) < 32 or 127 <= ord(ch) < 160:
+            continue
+        elif ch in _TEX:
             out.append(_TEX[ch])
         elif ch in _UNICODE:
             out.append(_UNICODE[ch])
