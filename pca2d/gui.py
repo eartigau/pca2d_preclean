@@ -1837,26 +1837,12 @@ def suggested_run_name(state, digits=6):
     targets are sorted in it, since the same set in another order is the same
     reduction, and the name itself is left out, or it would hash itself.
     """
-    import hashlib
+    from .naming import run_name
 
-    # sorted, like the command line's own joint name: the same set of targets
-    # in another order is the same reduction
     names = sorted(str(n).strip() for n in (state.get("objects") or [])
                    if str(n).strip())
-    if not names:
-        head = "run"
-    elif len(names) <= 3:
-        head = "+".join(names)
-    else:
-        # three names is already a long folder name; past that, say how many
-        head = "%s+%d" % ("+".join(names[:2]), len(names) - 2)
-    head = re.sub(r"[^0-9A-Za-z._+-]", "_", head)[:40].strip("_+") or "run"
-
-    asked = dict(state, objects=names, run_name="")
-    payload = " ".join(build_command(asked))
-    short = hashlib.blake2b(payload.encode("utf-8"),
-                            digest_size=8).hexdigest()[:digits]
-    return "%s_%s" % (head, short)
+    return run_name(build_command(dict(state, objects=names, run_name="")),
+                    names, digits)
 
 
 def command_line(state, pending, defaults=None):

@@ -218,7 +218,11 @@ def parse_args(argv=None):
                         " and its LBL object is <object>_PCA2D_<M-N>_NAME, so"
                         " two runs of the same objects at different settings"
                         " never write into one folder nor under one LBL name."
-                        " A run whose folder already holds a fit says so")
+                        " A run whose folder already holds a fit says so."
+                        " `--name auto` names it after its targets and a hash"
+                        " of this whole command line, so that anything the"
+                        " command says - the roots, the counts, the stages,"
+                        " every LBL setting - makes it a different run")
     p.add_argument("--variant", default=None, metavar="NAME",
                    help="variants/NAME.yaml, beside the config, on top of it:"
                         " the nominal plus what the variant changes. Its"
@@ -284,6 +288,12 @@ def name_run(config, args):
     label = getattr(args, "name", None) or window_label(args)
     if not label:
         return None
+    if str(label).strip().lower() == "auto":
+        # the command itself, which is what makes this run a different result
+        from .naming import run_name
+        label = run_name(sys.argv[1:], getattr(args, "objects", None)
+                         or ([args.object] if getattr(args, "object", None)
+                             else []))
     label = re.sub(r"[^0-9A-Za-z._+-]", "_", str(label)).strip("_") or "run"
     config["output"]["directory"] = os.path.join(config["output"]["directory"],
                                                  "_" + label)

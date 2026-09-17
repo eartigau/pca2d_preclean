@@ -19,8 +19,9 @@ fit a velocity per exposure : yes or no? still to be understood
 
 sets you will want to try : 
 
-GL406 with NIRPS (alone)
-TOI4552 TOIM4508 TOI782 with spirou together vs alone
+GL406 alone, with NIRPS and with SPIRou, one instrument at a time (never
+mixed in one fit: two instruments are two runs)
+TOI4552 TOIM4508 TOI782 with NIRPS together vs alone
 TOI2120 TOI6091 with SPIRou together vs alone
 GL725B, GL251, GL48 with SPIRou together vs alone (in particular GL725B that has little BERV coverage)
 GJ1 and GJ707 with NIRPS, alone/together

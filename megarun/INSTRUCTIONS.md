@@ -6,9 +6,21 @@ what it is judged by, is `optimisation_megarun.md` at the root of this
 repository. This file is the mechanics: where everything is, what to launch,
 in what order, and what to write down after each run.
 
-**The one rule: one run at a time.** A run is a fit and then LBL, it takes
-between forty minutes and three hours, and two at once take longer than two
-in a row and can fill the memory. Never launch a second while one is going.
+**Two rules.**
+
+1. **One run at a time.** A run is a fit and then LBL, it takes between forty
+   minutes and three hours, and two at once take longer than two in a row and
+   can fill the memory. Never launch a second while one is going.
+2. **Every run is named**, `--name <scenario>` or `--name auto`. A named run
+   gets its own folder AND its own LBL object
+   (`<target>_PCA2D_<counts>_<name>`); an unnamed one does not, so two
+   scenarios of the same target with the same component counts would be one
+   LBL object and the second would overwrite the first's velocities.
+   `--name auto` calls the run after its targets and a hash of the whole
+   command line: the roots, the counts, the stages, every LBL setting. The
+   instrument is in that line through `--data-dir`, `--out-dir` and
+   `--lbl-dir`, so the same target on two instruments is two runs by
+   construction.
 
 ## What is already there, verified on 2026-09-17
 
@@ -22,8 +34,9 @@ in a row and can fill the memory. Never launch a second while one is going.
 | SPIRou spectra | `/cosmos99/spirou/apero-data/spirou_offline/objects/<OBJECT>` |
 | the station | rali, 40 cores, 376 GB of memory |
 
-Where each target actually is, counted in `t.fits`. The plan asks for three
-of them "with SPIRou"; they exist only in NIRPS, and GL406 exists in both:
+Where each target actually is, counted in `t.fits`. GL406 is the only one in
+both, and it is run on each instrument separately: two instruments are two
+runs, never one fit.
 
 | target | NIRPS | SPIRou |
 | --- | --- | --- |
@@ -87,16 +100,18 @@ target's Teff and its published planets, which LBL and the report need.
 input:
   directory: /home/artigau/pca2d_optimisation/data/NIRPS   # per instrument
 output:
-  directory: /home/artigau/pca2d_optimisation/outputs
+  directory: /home/artigau/pca2d_optimisation/outputs/NIRPS
   cache_directory: /home/artigau/pca2d_optimisation/cache
   fits_directory: null            # everything under the output root
 lbl:
-  directory: /home/artigau/pca2d_optimisation/lbl
+  directory: /home/artigau/pca2d_optimisation/lbl/NIRPS
   run: true
 ```
 
-`--data-dir` on the command line chooses the instrument for a run, so the
-value above is only the default.
+The three directories that carry the instrument are given on every command
+line (`--data-dir`, `--out-dir`, `--lbl-dir`), so the values above are only
+defaults. The cube cache is shared: its key already hashes the input
+directory, so two instruments never meet in it.
 
 ## Step 3: what one run looks like
 
@@ -105,14 +120,15 @@ cd /home/artigau/pca2d_optimisation
 conda activate pca2d-preclean
 mkdir -p logs
 
+ROOT=/home/artigau/pca2d_optimisation
 RUN=nominal                        # the name of this scenario
 OBJ=GL406
-INST=NIRPS
+INST=NIRPS                         # or SPIROU
 pca2d-preclean --object $OBJ \
-    --config  /home/artigau/pca2d_optimisation/config.yaml \
-    --data-dir /home/artigau/pca2d_optimisation/data/$INST \
-    --out-dir  /home/artigau/pca2d_optimisation/outputs \
-    --lbl-dir  /home/artigau/pca2d_optimisation/lbl \
+    --config   $ROOT/config.yaml \
+    --data-dir $ROOT/data/$INST \
+    --out-dir  $ROOT/outputs/$INST \
+    --lbl-dir  $ROOT/lbl/$INST \
     --no-fits-dir --name $RUN \
     --n-star 0 --n-earth 7 --weight velocity --high-pass 100 \
     --velocity-term false \
@@ -121,7 +137,19 @@ pca2d-preclean --object $OBJ \
 
 Several objects fitted together against one observer basis: replace
 `--object GL406` with `--objects TOI4552,TOIM4508,TOI782`. The run then
-writes into `outputs/_<name>/joint/<A+B+C>/<tag>/`.
+writes into `outputs/<INST>/_<name>/joint/<A+B+C>/<tag>/`. Only objects of
+the same instrument are ever fitted together: one observer basis is one
+spectrograph's sky.
+
+The output root and the LBL tree carry the instrument, and the name carries
+the scenario, in the folder and in the LBL object alike. That is what keeps
+GL406's two runs, one per instrument, and the sweep's scenarios apart: same
+target, same counts, different velocities.
+
+`--name auto` instead of a scenario name hashes the command line, which is
+the same identifier the window proposes. Use it when a run is a one-off; for
+the sweep, a name that says what it changes (`hp50`, `earth3`) is easier to
+read in `megarun/status.md` months later.
 
 A dry run prints everything it resolved and touches nothing:
 
@@ -163,6 +191,9 @@ settings Phase A found:
 - SPIRou: `GL725B,GL251,GL48` together, then each alone. GL725B is the one
   with almost no barycentric coverage (BERV within ±4.6 km/s), which is where
   the method is expected to have the least to work with
+- GL406 alone on NIRPS and alone on SPIRou, the same settings both times: the
+  same star through two spectrographs, which says what belongs to the method
+  and what belongs to the instrument
 
 Phase C: the two or three settings that came out best in Phase A, run on
 every target, so that the conclusion rests on more than one star.
@@ -171,7 +202,8 @@ every target, so that the conclusion rests on more than one star.
 
 ```bash
 cd /data/spirou/pca2d_preclean
-python megarun/score.py /home/artigau/pca2d_optimisation/outputs \
+python megarun/score.py /home/artigau/pca2d_optimisation/outputs/NIRPS \
+                       /home/artigau/pca2d_optimisation/outputs/SPIROU \
     --csv megarun/results.csv --status megarun/status.md
 git add megarun/results.csv megarun/status.md && \
 git commit -m "megarun: <what was run>, robust sigma <before> -> <after>" && \
@@ -190,12 +222,17 @@ are the campaign's log.
 
 - the run's own report, `outputs/.../<object>_<tag>.pdf`: the velocities, the
   V_tot bias with its ΔBIC, the phase-folded known planets, the periodograms
-- a scan across component counts of one object, in one PDF:
+- several scenarios of one object against the delivered velocities, in one
+  PDF. `--compare` takes the LBL object names themselves, which is what the
+  per-scenario suffixes make them:
   ```bash
-  python -m pca2d.lblscan --object GL406 --tags 0-1 0-3 0-7 0-11 \
-      --suffix '_PCA2D_{tag}' --outputs /home/artigau/pca2d_optimisation/outputs \
-      --lbl-dir /home/artigau/pca2d_optimisation/lbl \
-      --out /home/artigau/pca2d_optimisation/outputs/gl406_scan.pdf
+  python -m pca2d.lblscan --object GL406 \
+      --compare GL406_PCA2D_0-1_earth1="1 observer" \
+                GL406_PCA2D_0-3_earth3="3 observers" \
+                GL406_PCA2D_0-7_nominal="7 observers" \
+                GL406_PCA2D_0-11_earth11="11 observers" \
+      --lbl-dir /home/artigau/pca2d_optimisation/lbl/NIRPS \
+      --out /home/artigau/pca2d_optimisation/outputs/NIRPS/gl406_earth.pdf
   ```
 - what is on the disks:
   ```bash
@@ -203,7 +240,7 @@ are the campaign's log.
       --out-dir /home/artigau/pca2d_optimisation/outputs
   ```
 - the runs already made, with their start times:
-  `python -m pca2d.runs /home/artigau/pca2d_optimisation/outputs`
+  `python -m pca2d.runs /home/artigau/pca2d_optimisation/outputs/NIRPS`
 
 ## Step 7: the paper, at the end
 
