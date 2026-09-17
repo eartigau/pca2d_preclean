@@ -101,6 +101,30 @@ def text_pages(pdf, title, body, per_page=62, size=7.0):
         plt.close(fig)
 
 
+def clear_figures(folder):
+    """Remove the report's figures of a previous run of this stage.
+
+    Not the AppleDouble files macOS writes beside every file on an exFAT
+    disk: `._name.pdf` goes when `name.pdf` does, and removing it afterwards
+    raised FileNotFoundError on a joint run that had done nothing wrong
+    (2026-09-17, on irrisor). A file that another process took in the
+    meantime is not a reason to lose a stage either: the point is an empty
+    folder, and what is already gone is gone.
+    """
+    if not os.path.isdir(folder):
+        return 0
+    removed = 0
+    for name in sorted(os.listdir(folder)):
+        if not name.endswith(".pdf") or name.startswith("."):
+            continue
+        try:
+            os.remove(os.path.join(folder, name))
+            removed += 1
+        except OSError:
+            continue
+    return removed
+
+
 def object_name(config, args):
     """What to call this run.
 
@@ -420,10 +444,7 @@ def main(argv=None):
     from .. import texreport
     folder = os.path.join(args.outdir, "report")
     old = os.path.join(folder, "figures")
-    if os.path.isdir(old):
-        for name in os.listdir(old):
-            if name.endswith(".pdf"):
-                os.remove(os.path.join(old, name))
+    clear_figures(old)
     texreport.write_manifest(folder, {
         "object": obj, "tag": tag, "cube": args.cube,
         "windows": [str(w) for w in args.windows],
