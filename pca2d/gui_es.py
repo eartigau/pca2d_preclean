@@ -130,6 +130,39 @@ ES = {
     "tab_lbl": "  LBL  ",
     "tab_run": "  análisis  ",
     "tab_clean": "  limpieza  ",
+    "tab_runs": "  pasadas  ",
+    "runs_title": "todas las pasadas que contiene esta carpeta de salida",
+    "help_runs":
+        "Lo que se ha probado, leído de lo que cada pasada dejó escrito: una"
+        " pasada registra los ajustes que resolvió, la orden que recibió y la"
+        " hora en que empezó, así que esta lista son las pasadas mismas y no"
+        " un historial que guarde la ventana. Elija una para ver todas sus"
+        " opciones y abrir su PDF de compilación.",
+    "runs_rescan": "Volver a leer",
+    "help_runs_rescan":
+        "Recorrer de nuevo la carpeta de salida y listar todas las pasadas que"
+        " hay en ella. Una pasada en curso aparece en cuanto ha escrito su"
+        " configuración resuelta, es decir, antes de su primera etapa.",
+    "runs_open_pdf": "Abrir su PDF de compilación",
+    "help_runs_open_pdf":
+        "Abrir el único PDF de la pasada elegida en la lista: sus figuras, sus"
+        " números y, una vez medido por LBL, sus velocidades. Lo escribe la"
+        " etapa de figuras y de nuevo después de LBL.",
+    "runs_open_folder": "Abrir su carpeta",
+    "help_runs_open_folder":
+        "Mostrar la carpeta de la pasada elegida en el explorador de archivos:"
+        " la configuración resuelta, el ajuste, los espectros corregidos y el"
+        " informe están todos ahí.",
+    "runs_scanning": "leyendo la carpeta de salida...",
+    "runs_found": "%d pasada(s) en %s",
+    "runs_none": "aún no hay ninguna pasada en %s: una pasada escribe ahí su"
+                 " configuración resuelta antes de su primera etapa",
+    "runs_pick": "elija primero una pasada en la lista",
+    "runs_no_pdf": "aún no hay PDF de compilación en %s",
+    "runs_command": "la orden que recibió",
+    "col_started": "empezó", "col_targets": "objetivos", "col_tag": "contadores",
+    "col_components": "estrella + observador", "col_report": "PDF",
+    "col_setting": "ajuste", "col_value": "esta pasada",
     "clean_title": "lo que pca2d ha dejado en estos discos",
     "help_clean":
         "Cada lugar donde este programa escribe bytes, medido. La caché de"

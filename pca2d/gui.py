@@ -242,6 +242,39 @@ EN = {
     "tab_targets": "  targets  ", "tab_settings": "  settings  ",
     "tab_lbl": "  LBL  ", "tab_run": "  analysis  ",
     "tab_clean": "  cleanup  ",
+    "tab_runs": "  runs  ",
+    "runs_title": "every run this output root holds",
+    "help_runs":
+        "What has been tried, read from what each run wrote down: a run"
+        " records the settings it resolved, the command it was given and the"
+        " time it started, so this list is the runs themselves rather than a"
+        " history the window keeps. Pick one to see every option it was given"
+        " and to open its compilation PDF.",
+    "runs_rescan": "Read them again",
+    "help_runs_rescan":
+        "Walk the output root again and list every run under it. A run that"
+        " is going appears as soon as it has written its resolved"
+        " configuration, which is before its first stage.",
+    "runs_open_pdf": "Open its compilation PDF",
+    "help_runs_open_pdf":
+        "Open the one PDF of the run picked in the list: its figures, its"
+        " numbers and, once LBL has measured, its velocities. Written by the"
+        " figures stage and again after LBL.",
+    "runs_open_folder": "Open its folder",
+    "help_runs_open_folder":
+        "Show the picked run's own folder in the file browser: the resolved"
+        " configuration, the fit, the corrected spectra and the report are"
+        " all in it.",
+    "runs_scanning": "reading the output root...",
+    "runs_found": "%d run(s) under %s",
+    "runs_none": "no run under %s yet: a run writes its resolved"
+                 " configuration there before its first stage",
+    "runs_pick": "pick a run in the list first",
+    "runs_no_pdf": "no compilation PDF in %s yet",
+    "runs_command": "the command it was given",
+    "col_started": "started", "col_targets": "targets", "col_tag": "counts",
+    "col_components": "star + observer", "col_report": "PDF",
+    "col_setting": "setting", "col_value": "this run",
     "clean_title": "what pca2d has left on these disks",
     "help_clean":
         "Every place this program puts bytes, measured. The cube cache, the"
@@ -779,6 +812,39 @@ FR = {
     "tab_targets": "  cibles  ", "tab_settings": "  réglages  ",
     "tab_lbl": "  LBL  ", "tab_run": "  analyse  ",
     "tab_clean": "  nettoyage  ",
+    "tab_runs": "  passages  ",
+    "runs_title": "tous les passages de ce dossier de sortie",
+    "help_runs":
+        "Ce qui a été essayé, lu dans ce que chaque passage a écrit : un"
+        " passage note les réglages résolus, la commande reçue et l'heure de"
+        " son démarrage, donc cette liste est celle des passages eux-mêmes et"
+        " non un historique tenu par la fenêtre. Choisissez-en un pour voir"
+        " toutes ses options et ouvrir son PDF de compilation.",
+    "runs_rescan": "Relire",
+    "help_runs_rescan":
+        "Reparcourir le dossier de sortie et lister tous les passages qui s'y"
+        " trouvent. Un passage en cours apparaît dès qu'il a écrit sa"
+        " configuration résolue, c'est-à-dire avant sa première étape.",
+    "runs_open_pdf": "Ouvrir son PDF de compilation",
+    "help_runs_open_pdf":
+        "Ouvrir l'unique PDF du passage choisi dans la liste : ses figures,"
+        " ses chiffres et, une fois LBL passé, ses vitesses. Écrit par"
+        " l'étape des figures, puis de nouveau après LBL.",
+    "runs_open_folder": "Ouvrir son dossier",
+    "help_runs_open_folder":
+        "Montrer le dossier du passage choisi dans le navigateur de fichiers :"
+        " la configuration résolue, l'ajustement, les spectres corrigés et le"
+        " rapport y sont tous.",
+    "runs_scanning": "lecture du dossier de sortie...",
+    "runs_found": "%d passage(s) dans %s",
+    "runs_none": "aucun passage dans %s : un passage y écrit sa configuration"
+                 " résolue avant sa première étape",
+    "runs_pick": "choisissez d'abord un passage dans la liste",
+    "runs_no_pdf": "pas encore de PDF de compilation dans %s",
+    "runs_command": "la commande reçue",
+    "col_started": "démarré", "col_targets": "cibles", "col_tag": "compteurs",
+    "col_components": "étoile + observateur", "col_report": "PDF",
+    "col_setting": "réglage", "col_value": "ce passage",
     "clean_title": "ce que pca2d a laissé sur ces disques",
     "help_clean":
         "Chaque endroit où ce programme met des octets, mesuré. Le cache des"
@@ -1764,9 +1830,12 @@ def suggested_run_name(state, digits=6):
     six. Unique in the only sense that matters here, which is that a clash is
     improbable rather than impossible.
 
-    The hash covers what makes a run a different result: the targets, the
-    component counts, the velocity term, the sweeps, the shrinkage, the high
-    pass, the grid step, the nightly coadding, and the date window.
+    The hash covers THE WHOLE COMMAND the settings amount to (build_command),
+    which is every flag the run is given and the roots it reads and writes:
+    asked for on 2026-09-17, in place of the handful of keys it hashed until
+    then, so that nothing the window can change is left out of the name. The
+    targets are sorted in it, since the same set in another order is the same
+    reduction, and the name itself is left out, or it would hash itself.
     """
     import hashlib
 
@@ -1783,10 +1852,8 @@ def suggested_run_name(state, digits=6):
         head = "%s+%d" % ("+".join(names[:2]), len(names) - 2)
     head = re.sub(r"[^0-9A-Za-z._+-]", "_", head)[:40].strip("_+") or "run"
 
-    keys = ("n_star", "n_earth", "velocity_term", "iters", "shrink",
-            "width_kms", "dv", "nightly_stack", "min_rjd", "max_rjd")
-    payload = "|".join(["+".join(sorted(names))] +
-                       ["%s=%s" % (key, state.get(key, "")) for key in keys])
+    asked = dict(state, objects=names, run_name="")
+    payload = " ".join(build_command(asked))
     short = hashlib.blake2b(payload.encode("utf-8"),
                             digest_size=8).hexdigest()[:digits]
     return "%s_%s" % (head, short)
@@ -2003,7 +2070,7 @@ class App:
         self.tabs = []
         pages = {}
         for key in ("tab_targets", "tab_settings", "tab_lbl", "tab_run",
-                    "tab_clean"):
+                    "tab_runs", "tab_clean"):
             page = ttk.Frame(book, padding=8)
             book.add(page, text=self.t(key))
             self.tabs.append((book, page, key))
@@ -2040,6 +2107,9 @@ class App:
         self._build_buttons(pages["tab_run"], "run")
         self._build_log(pages["tab_run"])
 
+        # what has been run before, with what, and where each one's PDF is
+        self._build_runs(pages["tab_runs"])
+
         # and what all of it has left on the disks, with the one button that
         # takes any of it away
         self._build_clean(pages["tab_clean"])
@@ -2052,6 +2122,8 @@ class App:
         else:
             self._warn_other_clone(self.vars["config"].get())
         self.refresh_objects()
+        # the runs already on the disk, once the window is up
+        self.root.after(400, self.scan_runs)
         self._drain_id = self.root.after(80, self._drain)
         self._seen = {}
         self.root.after(WATCH_MS, self._watch_root)
@@ -2327,6 +2399,8 @@ class App:
             except Exception:                                 # noqa: BLE001
                 pass
         self._draw_headings()
+        if hasattr(self, "runs_tree"):
+            self._draw_runs_headings()
         if hasattr(self, "clean_tree"):
             self._draw_clean_headings()
             self._clean_rows()
@@ -3834,6 +3908,8 @@ class App:
                 self._scanned(*item[1:])
             elif item[0] == "measured":
                 self._measured(item[1])
+            elif item[0] == "runs":
+                self._runs_found(item[1], item[2])
             elif item[0] == "finished":
                 self._finished()
         self._drain_id = self.root.after(80, self._drain)
@@ -4036,6 +4112,158 @@ class App:
             self._tip(label, "help_" + key)
 
     # ---- the disks ----------------------------------------------------
+    def _build_runs(self, parent):
+        """The runs an output root already holds, and what each was given.
+
+        Read from the runs themselves (pca2d.runs): every one wrote its
+        resolved configuration, the command it was given and the time it
+        started, so nothing has to be remembered by the window for a run
+        launched from a terminal, or by somebody else, to be in this list.
+        """
+        ttk = self.ttk
+        note = ttk.Label(parent, style="Hint.TLabel", wraplength=900,
+                         justify="left", text=self.t("help_runs"))
+        note.pack(anchor="w", pady=(0, 8))
+        self._register(note, "help_runs")
+        box = ttk.Labelframe(parent, text=self.t("runs_title"))
+        box.pack(fill="both", expand=True, pady=4)
+        self._register(box, "runs_title")
+
+        self.runs_tree = ttk.Treeview(
+            box, columns=("started", "targets", "tag", "components", "report"),
+            show="headings", selectmode="browse", height=9)
+        self.runs_headings = (("started", "col_started"),
+                              ("targets", "col_targets"), ("tag", "col_tag"),
+                              ("components", "col_components"),
+                              ("report", "col_report"))
+        for column, width, anchor in (("started", 150, "w"),
+                                      ("targets", 260, "w"), ("tag", 70, "w"),
+                                      ("components", 110, "w"),
+                                      ("report", 60, "center")):
+            self.runs_tree.column(column, width=width, anchor=anchor)
+        self._draw_runs_headings()
+        self.runs_tree.pack(fill="both", expand=True, padx=6, pady=(6, 2))
+        self.runs_tree.bind("<<TreeviewSelect>>", self._run_selected)
+        self.runs_tree.bind("<Double-1>", lambda _e: self.open_run_pdf())
+
+        self.runs_totals = ttk.Label(box, text=self.t("runs_scanning"))
+        self.runs_totals.pack(anchor="w", padx=8, pady=(0, 4))
+        # not _register'ed: it says a MEASUREMENT of the disk, not a label
+
+        bar = ttk.Frame(box)
+        bar.pack(fill="x", padx=6, pady=(0, 8))
+        for key, command, tip in (("runs_rescan", self.scan_runs,
+                                   "help_runs_rescan"),
+                                  ("runs_open_pdf", self.open_run_pdf,
+                                   "help_runs_open_pdf"),
+                                  ("runs_open_folder", self.open_run_folder,
+                                   "help_runs_open_folder")):
+            button = ttk.Button(bar, text=self.t(key), command=command)
+            button.pack(side="left", padx=(0, 6))
+            self._register(button, key)
+            self._tip(button, tip)
+
+        # what the picked run was asked for, setting by setting
+        self.runs_options = ttk.Treeview(box, columns=("setting", "value"),
+                                         show="headings", height=11)
+        self.runs_options_headings = (("setting", "col_setting"),
+                                      ("value", "col_value"))
+        self.runs_options.column("setting", width=280, anchor="w")
+        self.runs_options.column("value", width=520, anchor="w")
+        self._draw_runs_headings()
+        self.runs_options.pack(fill="both", expand=True, padx=6, pady=(0, 4))
+        self.runs_command = ttk.Label(box, style="Hint.TLabel", wraplength=880,
+                                      justify="left", text="")
+        self.runs_command.pack(anchor="w", padx=8, pady=(0, 8))
+        self.runs_rows = []
+        self._scanning_runs = False
+
+    def _draw_runs_headings(self):
+        for column, key in getattr(self, "runs_headings", ()):
+            self.runs_tree.heading(column, text=self.t(key))
+        for column, key in getattr(self, "runs_options_headings", ()):
+            self.runs_options.heading(column, text=self.t(key))
+
+    def scan_runs(self):
+        """Walk the output root off the main thread and fill the list."""
+        if self._scanning_runs:
+            return
+        self._scanning_runs = True
+        self.runs_totals.configure(text=self.t("runs_scanning"))
+        root = self._out_root()
+
+        def look():
+            from . import runs
+            try:
+                found = runs.listed(root)
+            except OSError:
+                found = []
+            self.lines.put(("runs", root, found))
+
+        threading.Thread(target=look, daemon=True).start()
+
+    def _runs_found(self, root, found):
+        """One walk of the output root, applied on the main thread."""
+        self._scanning_runs = False
+        self.runs_rows = found
+        for row in self.runs_tree.get_children():
+            self.runs_tree.delete(row)
+        for i, run in enumerate(found):
+            self.runs_tree.insert(
+                "", "end", iid=str(i),
+                values=((run["started"] or "")[:19].replace("T", " "),
+                        run["objects"], run["tag"], run["components"],
+                        "yes" if run["report"] else ""))
+        self.runs_totals.configure(
+            text=(self.t("runs_found") % (len(found), root)) if found
+            else (self.t("runs_none") % root))
+        for row in self.runs_options.get_children():
+            self.runs_options.delete(row)
+        self.runs_command.configure(text="")
+
+    def _picked_run(self):
+        """The run picked in the list, or None."""
+        rows = self.runs_tree.selection()
+        if not rows or not rows[0].isdigit():
+            return None
+        index = int(rows[0])
+        return self.runs_rows[index] if index < len(self.runs_rows) else None
+
+    def _run_selected(self, _event=None):
+        """Show every option the picked run was given, and its command."""
+        from . import runs
+
+        run = self._picked_run()
+        for row in self.runs_options.get_children():
+            self.runs_options.delete(row)
+        if run is None:
+            self.runs_command.configure(text="")
+            return
+        for i, (what, value) in enumerate(runs.settings(run)):
+            self.runs_options.insert("", "end", iid=str(i),
+                                     values=(what, value))
+        self.runs_command.configure(text="%s\n%s" % (self.t("runs_command"),
+                                                     run["command"] or "n/a"))
+
+    def open_run_pdf(self):
+        """Open the compilation PDF of the run picked in the list."""
+        run = self._picked_run()
+        if run is None:
+            self._say("runs_pick", level="warn")
+            return
+        if not run.get("report"):
+            self._say("runs_no_pdf", run["folder"], level="warn")
+            return
+        self._open(run["report"])
+
+    def open_run_folder(self):
+        """Show the picked run's folder in the file browser."""
+        run = self._picked_run()
+        if run is None:
+            self._say("runs_pick", level="warn")
+            return
+        self._open(run["folder"])
+
     def _build_clean(self, parent):
         """What pca2d has left on the disks, and the one button that removes it.
 

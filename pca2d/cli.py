@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import datetime
 import glob
 import os
 import re
@@ -1252,6 +1253,10 @@ def main(argv=None):
     # file edited after the run says whatever it says now.
     plan["config"]["provenance"]["command"] = " ".join(
         shlex.quote(a) for a in sys.argv)
+    # and when it started, so that a list of past runs can be read in order
+    # without going by the file times of what each one happened to write
+    plan["config"]["provenance"]["started"] = datetime.datetime.now(
+    ).astimezone().isoformat(timespec="seconds")
     log("code        pca2d %s" % code_stamp(plan["config"]["provenance"]), "value")
     import yaml
     with open(plan["written_config"], "w") as fh:

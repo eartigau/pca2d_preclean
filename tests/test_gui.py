@@ -112,7 +112,8 @@ def test_every_item_explains_itself_in_both_languages():
             "help_savedefaults_button",
             "help_lblwin_button", "help_all_button", "help_check",
             "help_col_snr", "help_col_exptime", "help_col_mag",
-            "help_berv"]
+            "help_berv", "help_runs", "help_runs_rescan",
+            "help_runs_open_pdf", "help_runs_open_folder"]
     keys += ["help_" + key for key, _p, _k in ALL_OPTIONS]
     keys += ["help_stage_" + stage for stage in STAGES]
     for key in keys:
@@ -1293,4 +1294,62 @@ def test_no_tooltip_opens_while_a_question_waits():
     tip.show()
     assert tip.window is not None, "and one again once it is answered"
     tip.leave()
+    root.destroy()
+
+
+def test_the_runs_tab_lists_what_was_run_and_finds_its_pdf(tmp_path):
+    """The page reads the runs themselves: a row each, newest first, and the
+    picked one's every option under it."""
+    import queue
+
+    import pytest
+
+    tk = pytest.importorskip("tkinter")
+    try:
+        root = tk.Tk()
+    except Exception:                      # a machine with no screen
+        pytest.skip("no display to open a window on")
+    root.withdraw()
+    from tkinter import ttk
+
+    from pca2d import runs as runs_module
+    from pca2d.gui import EN, App
+
+    import yaml
+    where = tmp_path / "GL406" / "0-7"
+    (where / "corrected").mkdir(parents=True)
+    (where / "resolved_config.yaml").write_text(yaml.safe_dump(
+        {"input": {"object": "GL406"}, "twoframe": {"n_star": 0, "n_earth": 7},
+         "provenance": {"command": "pca2d-preclean --object GL406",
+                        "started": "2026-09-17T06:53:09"}}))
+    (where / "GL406_0-7.pdf").write_bytes(b"%PDF-1.4\n")
+
+    window = App.__new__(App)
+    window.tk, window.ttk, window.root = tk, ttk, root
+    window.t = lambda key: EN.get(key, key)
+    window._register = lambda *a, **k: None
+    window._tip = lambda *a, **k: None
+    window.lines = queue.Queue()
+    window._say = lambda *a, **k: None
+    opened = []
+    window._open = opened.append
+    App._build_runs(window, ttk.Frame(root))
+    App._runs_found(window, str(tmp_path), runs_module.listed(str(tmp_path)))
+    rows = window.runs_tree.get_children()
+    assert len(rows) == 1
+    values = window.runs_tree.item(rows[0], "values")
+    assert values[0] == "2026-09-17 06:53:09" and values[1] == "GL406"
+    assert values[2] == "0-7" and values[4] == "yes"
+    assert "1 run(s)" in window.runs_totals.cget("text")
+
+    window.runs_tree.selection_set(rows[0])
+    App._run_selected(window)
+    options = [window.runs_options.item(i, "values")
+               for i in window.runs_options.get_children()]
+    assert ("twoframe.n_earth", "7") in options
+    assert "--object GL406" in window.runs_command.cget("text")
+    App.open_run_pdf(window)
+    assert opened and opened[0].endswith("GL406_0-7.pdf")
+    App.open_run_folder(window)
+    assert opened[1] == str(where)
     root.destroy()

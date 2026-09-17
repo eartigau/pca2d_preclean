@@ -128,6 +128,39 @@ PT = {
     "tab_lbl": "  LBL  ",
     "tab_run": "  análise  ",
     "tab_clean": "  limpeza  ",
+    "tab_runs": "  passagens  ",
+    "runs_title": "todas as passagens que esta pasta de saída contém",
+    "help_runs":
+        "O que já foi tentado, lido do que cada passagem deixou escrito: uma"
+        " passagem regista os ajustes que resolveu, o comando que recebeu e a"
+        " hora a que começou, por isso esta lista são as próprias passagens e"
+        " não um histórico guardado pela janela. Escolha uma para ver todas as"
+        " suas opções e abrir o seu PDF de compilação.",
+    "runs_rescan": "Reler",
+    "help_runs_rescan":
+        "Percorrer de novo a pasta de saída e listar todas as passagens que lá"
+        " estão. Uma passagem a decorrer aparece assim que tiver escrito a sua"
+        " configuração resolvida, ou seja, antes da sua primeira etapa.",
+    "runs_open_pdf": "Abrir o seu PDF de compilação",
+    "help_runs_open_pdf":
+        "Abrir o único PDF da passagem escolhida na lista: as suas figuras, os"
+        " seus números e, depois de o LBL medir, as suas velocidades. Escrito"
+        " pela etapa das figuras e outra vez depois do LBL.",
+    "runs_open_folder": "Abrir a sua pasta",
+    "help_runs_open_folder":
+        "Mostrar a pasta da passagem escolhida no explorador de ficheiros: a"
+        " configuração resolvida, o ajuste, os espectros corrigidos e o"
+        " relatório estão lá todos.",
+    "runs_scanning": "a ler a pasta de saída...",
+    "runs_found": "%d passagem(ns) em %s",
+    "runs_none": "ainda não há passagens em %s: uma passagem escreve lá a sua"
+                 " configuração resolvida antes da sua primeira etapa",
+    "runs_pick": "escolha primeiro uma passagem na lista",
+    "runs_no_pdf": "ainda não há PDF de compilação em %s",
+    "runs_command": "o comando que recebeu",
+    "col_started": "começou", "col_targets": "alvos", "col_tag": "contadores",
+    "col_components": "estrela + observador", "col_report": "PDF",
+    "col_setting": "ajuste", "col_value": "esta passagem",
     "clean_title": "o que o pca2d deixou nestes discos",
     "help_clean":
         "Cada sítio onde este programa escreve bytes, medido. A cache de"

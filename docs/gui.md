@@ -9,10 +9,11 @@ run is written out so that it can be copied into a terminal.
 
 ## Three pages
 
-Everything at once was a wall. The window is four pages, and each has room to be
+Everything at once was a wall. The window is six pages, and each has room to be
 read: **targets**, what is being reduced; **settings**, how; **LBL**, what the
-step that produces velocities is asked; and **analysis**, the command, the
-buttons that start and end it, and everything it says. The banner
+step that produces velocities is asked; **analysis**, the command, the
+buttons that start and end it, and everything it says; **runs**, what has been
+run before; and **cleanup**, what all of it has left on the disks. The banner
 and the language button stay above them. What follows is where each thing is.
 
 The corners are round, which ttk does not do: no theme here draws one, so the
@@ -176,6 +177,21 @@ the spectra get there as symlinks or copies. That is the equivalent of the
 wrapper, and it is the step that produces velocities. It had a window of its own
 until the pages existed, which was one window too many: these are settings like
 the others, they are simply LBL's rather than the fit's.
+
+## The runs page
+
+Every run the output root holds, read from the runs themselves rather than from
+anything the window remembers: each writes `resolved_config.yaml` into its own
+folder before its first stage, with every setting as it resolved it, the command
+it was given word for word, the code it ran and the time it started
+(`pca2d/runs.py`). A run launched from a terminal, or by somebody else on the
+same disk, is therefore in the list too, and one that is going appears as soon
+as it has started.
+
+The list gives the time it started, its targets, its counts, its components and
+whether its compilation PDF is there; picking one fills the table under it with
+every option that run was given, and the two buttons open its PDF or its folder.
+A double-click opens the PDF.
 
 ## The buttons that write something
 
