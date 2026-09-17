@@ -740,11 +740,79 @@ def workspace(shape, dtype, spill=None, tag="tmp"):
     """
     if not spill:
         return np.zeros(shape, dtype=dtype)
+    import shutil
+
     os.makedirs(spill, exist_ok=True)
-    path = os.path.join(spill, "%s-%s-%d.dat" % (SPILL_NAME, tag, os.getpid()))
-    out = np.memmap(path, dtype=dtype, mode="w+", shape=tuple(shape))
-    out[:] = 0
-    return out
+    path = os.path.join(spill, "%s-%s-%s-%d.dat" % (SPILL_NAME, tag, _host(),
+                                                    os.getpid()))
+    # A new file reads as zeros already, and writing them was one more pass
+    # over the whole of it, a slow one on a machine that is paging. What the
+    # writing also did was claim the disk space; without it a disk that fills
+    # during the fit kills the process at its next write, so the space is
+    # checked here instead, where there is still something useful to say.
+    need = int(np.prod(shape)) * np.dtype(dtype).itemsize
+    free = shutil.disk_usage(spill).free
+    if need > 0.95 * free:
+        raise SystemExit(
+            "the fit's %s array needs %.1f GB on disk and %s has %.1f GB free."
+            " Free some space (the cleanup tab lists what can go) or fit less"
+            " at once" % (tag, need / 1e9, spill, free / 1e9))
+    return np.memmap(path, dtype=dtype, mode="w+", shape=tuple(shape))
+
+
+def _host():
+    """This machine's name as it can sit in a file name."""
+    import socket
+
+    name = socket.gethostname().split(".")[0] or "host"
+    return "".join(c if c.isalnum() else "_" for c in name)
+
+
+def sweep_spill(spill):
+    """Remove the mapped files of fits on this machine that have ended.
+
+    A fit removes its own files when it finishes, and one that is killed, by
+    the kernel or by a Stop, cannot: on 2026-09-16 a stopped run had left
+    11.5 GB in cache/spill. The file names carry the machine and the process,
+    so only files of this machine whose process is gone are touched; a folder
+    shared with another machine keeps that machine's files whatever their
+    number says.
+    """
+    import re
+
+    if not spill or not os.path.isdir(spill):
+        return 0
+    pattern = re.compile(r"^%s-[a-z0-9]+-(.+)-(\d+)\.dat$" % re.escape(SPILL_NAME))
+    freed = 0
+    for name in sorted(os.listdir(spill)):
+        found = pattern.match(name)
+        if not found or found.group(1) != _host():
+            continue
+        pid = int(found.group(2))
+        if pid == os.getpid() or _alive(pid):
+            continue
+        path = os.path.join(spill, name)
+        try:
+            size = os.path.getsize(path)
+            os.remove(path)
+        except OSError:
+            continue
+        freed += size
+    if freed:
+        log("removed %.1f GB of mapped files left in %s by fits that had ended"
+            % (freed / 1e9, spill), "value")
+    return freed
+
+
+def _alive(pid):
+    """Whether a process of that number exists on this machine."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:                    # it exists and belongs to someone else
+        return True
+    return True
 
 
 def drop_workspace(array):
@@ -971,6 +1039,9 @@ def update_star(data, w, P, Q, a, b, shifter, delta, chunk, alpha=None,
             from .resolution import smooth_rows
             P_new = smooth_rows(P_new, star_fwhm)
         return P_new
+    # the grid star basis works on whole arrays: clipped weights stored
+    # sparsely (ClippedWeights) are assembled for it
+    w = np.asarray(w)
     resid *= w
     resid_star = shifter.adjoint(resid, delta,
                                  desc="star basis, carrying home")
@@ -1130,12 +1201,15 @@ def parity_means(data, w, parity):
     groups = np.unique(parity)
     means = np.zeros((groups.size, data.shape[1]))
     for i, value in enumerate(groups):
-        rows = parity == value
-        total = w[rows].sum(axis=0)
+        # one row at a time, in numpy's order and dtype, so that the sums are
+        # sum(axis=0)'s to the bit without three copies of half the cube
+        total, weighted = column_sums(
+            [(lambda r: w[r], data.shape[0]),
+             (lambda r: w[r] * data[r], data.shape[0])],
+            rows=np.flatnonzero(parity == value))
         with np.errstate(invalid="ignore", divide="ignore"):
             means[i] = np.where(total > 0,
-                                (w[rows] * data[rows]).sum(axis=0)
-                                / np.where(total > 0, total, 1.0), 0.0)
+                                weighted / np.where(total > 0, total, 1.0), 0.0)
     return means, groups
 
 
@@ -1197,12 +1271,22 @@ def mean_rows(means, group, n_rows):
 
 def subtract_means(data, means, group):
     """data -= means[group], in place and without an (N, M) temporary."""
+    if not np.any(means):              # x - 0 is x: a pass over the cube saved
+        return data
     if means.shape[0] == 1:
         data -= means[0][None, :]
         return data
-    for i in range(means.shape[0]):
-        rows = group == i
-        data[rows] -= means[i][None, :]
+    # a block of rows at a time: data[rows] on a mask is a copy of the rows,
+    # half the cube at once, written back afterwards
+    group = np.asarray(group)
+    step = _row_step(data.shape[1])
+    for start in range(0, data.shape[0], step):
+        stop = min(start + step, data.shape[0])
+        block = data[start:stop]
+        here = group[start:stop]
+        for i in np.unique(here):
+            rows = here == i
+            block[rows] -= means[i][None, :]
     return data
 
 
@@ -1216,10 +1300,12 @@ def carried_means(prepared, group, shifter, delta, start, stop):
     return out[np.arange(stop - start), np.asarray(group)[start:stop]]
 
 
-def subtract_carried(data, T, group, shifter, delta, chunk, w=None):
+def subtract_carried(data, T, group, shifter, delta, chunk, w=None,
+                     desc=None):
     """data -= S_n T_g, a chunk of rows at a time; zero again where w <= 0."""
     Tf = shifter.prepare(np.atleast_2d(T))
-    for start in range(0, data.shape[0], chunk):
+    starts = range(0, data.shape[0], chunk)
+    for start in (_bar(starts, desc=desc, unit="chunk") if desc else starts):
         stop = min(start + chunk, data.shape[0])
         data[start:stop] -= carried_means(Tf, group, shifter, delta, start, stop)
         if w is not None:
@@ -1484,6 +1570,16 @@ def memory_needed(rows, columns, dtype, margin=1.05):
 
     NOT counted: the model is carried in chunks of rows (`chunk`, hundreds of
     MB) and the bases are (K, columns), tens of MB.
+
+    Since 2026-09-16 that count is what the fit actually holds. Until then it
+    also held a copy of the weights, the data copied back out of its mapped
+    file by the gap guard, and in every sweep the clip's float64 weights with
+    two more copies for their medians. A joint fit this count put at 11.7 GB,
+    with 8.5 allowed, went to mapped files as it should and then held 11 GB
+    of memory beside them, most of it in swap. The weights are no
+    longer copied, the clip stores only the samples it changed
+    (ClippedWeights), and the star spectra, the medians and the means are
+    taken a block at a time (tests/test_low_memory.py).
     """
     item = np.dtype(dtype).itemsize
     return rows * columns * (2 * item + 8) * float(margin) / 1e9
@@ -1501,6 +1597,8 @@ def spill_dir(rows, columns, dtype, cube, outdir, fraction=None):
 
     need = memory_needed(rows, columns, dtype)
     total, budget = describe(DEFAULT_FRACTION if fraction is None else fraction)
+    where = os.path.join(os.path.dirname(os.path.abspath(cube)), "spill")
+    sweep_spill(where)
     if total is None:
         log("this fit needs about %.1f GB; the machine's memory could not be"
             " read, so it is kept in memory and nothing is checked" % need,
@@ -1511,7 +1609,6 @@ def spill_dir(rows, columns, dtype, cube, outdir, fraction=None):
             " of this machine's %.1f GB), so it is held in memory"
             % (need, budget, total), "value")
         return None
-    where = os.path.join(os.path.dirname(os.path.abspath(cube)), "spill")
     log("memory: this fit needs about %.1f GB and may use %.1f, half of this"
         " machine's %.1f GB. Its arrays go to a mapped file in %s instead, and"
         " the kernel pages them: the same arithmetic, slower, and it finishes."
@@ -1934,22 +2031,26 @@ def write_components_fits(path, grid, P, Q, template, means, power_star,
     # by three, and the vectors look equally trustworthy everywhere. Counted per
     # parity because half the domain is reached by the even orders only.
     if weights is not None:
-        live = np.asarray(weights) > 0
+        # a row at a time: `weights > 0` and `weights[rows]` were a boolean of
+        # the cube's size and a copy of half of it, for two numbers a column
+        n_rows = weights.shape[0]
         groups = ([0] if parity is None
                   else list(np.unique(np.asarray(parity))))
         total = 0
         for i, value in enumerate(groups):
-            rows = (slice(None) if parity is None
-                    else np.asarray(parity) == value)
+            rows = (np.arange(n_rows) if parity is None
+                    else np.flatnonzero(np.asarray(parity) == value))
             name = group_names(len(groups))[i]
-            count = live[rows].sum(axis=0).astype(np.int32)
-            wsum = np.asarray(weights)[rows].sum(axis=0)
+            count, wsum = column_sums(
+                [(lambda r: (np.asarray(weights[r]) > 0).astype(np.int64), n_rows),
+                 (lambda r: np.asarray(weights[r]), n_rows)], rows=rows)
+            count = count.astype(np.int32)
             cols.append(fits.Column(name="n_spectra_%s" % name, format="J",
                                     array=count))
             cols.append(fits.Column(name="weight_sum_%s" % name, format="D",
                                     array=wsum))
             total += count
-        fraction = total / float(live.shape[0])
+        fraction = total / float(n_rows)
         cols.append(fits.Column(name="constrained", format="L",
                                 array=fraction >= min_fraction))
     basis = fits.BinTableHDU.from_columns(cols, name="BASIS")
@@ -2037,7 +2138,7 @@ def write_variance_table(power_star, power_earth, chi2_null, chi2_best, path):
 
 
 
-def _hierarchical_median(home, berv, bin_kms, min_entries):
+def _hierarchical_median(home, berv, bin_kms, min_entries, desc=None):
     """Median within each BERV bin, then median across bins.
 
     A plain median over spectra is robust to a minority, and that is exactly
@@ -2058,18 +2159,30 @@ def _hierarchical_median(home, berv, bin_kms, min_entries):
     steps of the chain bin the same way.
     """
     labels = np.floor((berv - np.nanmin(berv)) / bin_kms).astype(int)
-    per_bin = []
+    groups = []
     for value in np.unique(labels):
-        rows = labels == value
-        if rows.sum() < min_entries:
-            continue
-        per_bin.append(np.nanmedian(home[rows], axis=0))
-    if len(per_bin) < 2:                       # not enough bins to be worth it
-        return np.nanmedian(home, axis=0)
-    return np.nanmedian(np.vstack(per_bin), axis=0)
+        rows = np.flatnonzero(labels == value)
+        if rows.size >= min_entries:
+            groups.append(rows)
+    if len(groups) < 2:                        # not enough bins to be worth it
+        return _nanmedian_over_rows(home, desc=desc)
+    # a block of columns at a time: each column's medians are its own, and a
+    # bin's rows copied whole would be another array of the carried cube's size
+    n_cols = home.shape[1]
+    out = np.empty(n_cols)
+    step = _col_step(home.shape[0])
+    starts = range(0, n_cols, step)
+    for first in (_bar(starts, desc=desc, unit="block") if desc else starts):
+        last = min(first + step, n_cols)
+        part = home[:, first:last]
+        per_bin = np.vstack([_nanmedian_over_rows(part[rows], step=last - first)
+                             for rows in groups])
+        out[first:last] = _nanmedian_over_rows(per_bin, step=last - first)
+    return out
 
 def star_frame_template(data, w, shifter, delta, min_spectra=20, berv=None,
-                        berv_bin=None, berv_min_entries=3):
+                        berv_bin=None, berv_min_entries=3, rows=None,
+                        spill=None, desc=None):
     """Component zero of the star block: the median spectrum in the star frame.
 
     NOTES.md 11.12: with only an observer-frame mean removed, the star block
@@ -2081,22 +2194,49 @@ def star_frame_template(data, w, shifter, delta, min_spectra=20, berv=None,
     samples a spectrum does not constrain are masked before the median rather
     than contributing a zero, which would pull the template toward zero exactly
     under the tellurics.
+
+    `rows`, a mask or a list of indices, takes the template over those rows
+    only; `data`, `w`, `delta` and `berv` are then the whole cube's. The rows
+    are read and carried a block at a time, so neither the selection nor its
+    weights are ever held whole, and with `spill` the carried copy, the one
+    array of that size this needs, is a mapped file like the fit's own. The
+    medians are the same to the bit (tests/test_low_memory.py).
     """
-    home = shifter.rows(data, -delta)          # observer -> star
-    home_w = shifter.rows(w, -delta)
-    home[home_w <= 0] = np.nan
+    index = np.arange(data.shape[0]) if rows is None else np.asarray(rows)
+    if index.dtype == bool:
+        index = np.flatnonzero(index)
+    n_cols = data.shape[1]
+    delta = np.asarray(delta)
+    home = workspace((index.size, n_cols), np.float64, spill, tag="home")
+    # two carried blocks, the data's and the weights', and their padded copies
+    step = max(1, _row_step(n_cols) // 2)
+    starts = range(0, index.size, step)
+    for start in (_bar(starts, desc=desc and desc + ", to the star's frame",
+                       unit="block") if desc else starts):
+        pick = index[start:start + step]
+        shift = -delta[pick]
+        carried = shifter.rows(np.asarray(data[pick]), shift)  # observer -> star
+        carried[shifter.rows(np.asarray(w[pick]), shift) <= 0] = np.nan
+        home[start:start + pick.size] = carried
+        del carried
     with warnings.catch_warnings():
         # a t.fits cube has columns no row covers at all (dead orders, and the
         # half of the domain the other parity owns); those are all-NaN by
         # construction and are zeroed by the min_spectra cut below
         warnings.simplefilter("ignore", RuntimeWarning)
+        median_desc = desc and desc + ", median"
         if berv_bin and berv is not None:
-            template = _hierarchical_median(home, np.asarray(berv, dtype=float),
-                                            float(berv_bin) / 1000.0,
-                                            int(berv_min_entries))
+            template = _hierarchical_median(
+                home, np.asarray(berv, dtype=float)[index],
+                float(berv_bin) / 1000.0, int(berv_min_entries),
+                desc=median_desc)
         else:
-            template = np.nanmedian(home, axis=0)
-    count = np.sum(np.isfinite(home), axis=0)
+            template = _nanmedian_over_rows(home, desc=median_desc)
+    count = np.zeros(n_cols, dtype=np.int64)
+    for start in starts:
+        count += np.sum(np.isfinite(home[start:start + step]), axis=0)
+    drop_workspace(home)
+    del home
     template = np.where(np.isfinite(template), template, 0.0)
     template[count < min_spectra] = 0.0
     return template
@@ -2108,13 +2248,92 @@ def carry_template(template, shifter, delta):
 
 
 
+#: samples in one block when a (rows, columns) array is worked through a piece
+#: at a time: 256 MB at float64. The blocks below exist so that no step of the
+#: fit holds a second array of the cube's size, and the arithmetic in each is
+#: the whole-array arithmetic restricted to the block, so the numbers do not
+#: change (tests/test_low_memory.py holds them side by side).
+_BLOCK_SAMPLES = 32 * 1024 * 1024
+
+
+def _row_step(n_columns):
+    """Rows per block for arrays of `n_columns` columns."""
+    return max(1, int(_BLOCK_SAMPLES // max(1, int(n_columns))))
+
+
+def _col_step(n_rows):
+    """Columns per block for arrays of `n_rows` rows."""
+    return max(1, int(_BLOCK_SAMPLES // max(1, int(n_rows))))
+
+
+def zero_unweighted(data, w, step=None):
+    """data = 0 wherever w is not positive, in place and a block at a time.
+
+    `data[w <= 0] = 0` spelled on the whole array holds a boolean of the
+    cube's size, and `np.where(w > 0, data, 0)` a copy of it, which on a
+    mapped cube is the copy that puts it back in memory.
+    """
+    step = step or _row_step(data.shape[1])
+    for start in range(0, data.shape[0], step):
+        stop = min(start + step, data.shape[0])
+        block = data[start:stop]
+        block[~(np.asarray(w[start:stop]) > 0)] = 0.0
+    return data
+
+
+def weighted_power_rows(data, w, step=None):
+    """sum_m w data^2 for each row, in float64, a block of rows at a time."""
+    step = step or _row_step(data.shape[1])
+    out = np.empty(data.shape[0], dtype=np.float64)
+    for start in range(0, data.shape[0], step):
+        stop = min(start + step, data.shape[0])
+        out[start:stop] = np.sum(w[start:stop] * data[start:stop] ** 2,
+                                 axis=1, dtype=np.float64)
+    return out
+
+
+def weighted_power(data, w, chunk):
+    """sum w data^2 over the cube, in float64, `chunk` rows at a time.
+
+    The blocks are the fit's own chunks and are summed in that order, so the
+    total is the one the fit has always quoted, to the bit.
+    """
+    total = 0.0
+    step = max(1, int(chunk))
+    for start in range(0, data.shape[0], step):
+        stop = min(start + step, data.shape[0])
+        total += float(np.sum(w[start:stop] * data[start:stop] ** 2,
+                              dtype=np.float64))
+    return total
+
+
+def column_sums(arrays, rows=None):
+    """Sum over rows of each array, per column, one row at a time.
+
+    numpy's sum(axis=0) adds the rows in order into an accumulator of the
+    array's own dtype; so does this, so a float32 total comes out as numpy's
+    to the bit, without a copy of the rows it is taken over. `arrays` are
+    callables of a row index giving that row, so a product of two arrays is
+    formed one row at a time too.
+    """
+    rows = range(arrays[0][1]) if rows is None else rows
+    totals = [None] * len(arrays)
+    for r in rows:
+        for i, (get, _n) in enumerate(arrays):
+            value = get(r)
+            if totals[i] is None:
+                totals[i] = np.zeros(value.shape, dtype=value.dtype)
+            totals[i] += value
+    return totals
+
+
 try:                                    # optional, and worth having
     import bottleneck as _bn
 except ImportError:                     # pragma: no cover
     _bn = None
 
 
-def _nanmedian_over_rows(z):
+def _nanmedian_over_rows(z, step=None, desc=None):
     """Median over spectra, per wavelength column, ignoring NaN.
 
     This is the single most expensive operation in an iteration after the carry:
@@ -2124,15 +2343,97 @@ def _nanmedian_over_rows(z):
     transposed first. That copy costs 0.05 s against the 1.9 s it saves, and it
     is exact: measured difference from numpy, 0.
 
+    A block of columns at a time: the transposed copy, and bottleneck's own
+    copy inside the call, are each the size of the array, and on a cube that
+    barely fits two more of those is what sends the machine into swap (a
+    three-object joint fit, 2026-09-16: 11 GB resident for a 2.8 GB cube). A
+    column's median does not depend on its neighbours, so the result is the
+    same to the bit.
+
     Falls back to numpy when bottleneck is absent, so the package keeps working
     without it and merely runs slower.
     """
-    if _bn is None:
-        return np.nanmedian(z, axis=0)
-    return _bn.nanmedian(np.ascontiguousarray(z.T), axis=1)
+    n_rows, n_cols = z.shape
+    step = step or _col_step(n_rows)
+    out = None
+    starts = range(0, n_cols, step)
+    for first in (_bar(starts, desc=desc, unit="block") if desc else starts):
+        last = min(first + step, n_cols)
+        part = z[:, first:last]
+        if _bn is None:
+            got = np.nanmedian(part, axis=0)
+        else:
+            got = _bn.nanmedian(np.ascontiguousarray(part.T), axis=1)
+        if out is None:
+            out = np.empty(n_cols, dtype=got.dtype)
+        out[first:last] = got
+    return out if out is not None else np.empty(0)
 
 
-def clip_weights(w0, residual, clip=3.0, min_spectra=20):
+class ClippedWeights:
+    """The clipped weights, stored as the original ones plus what changed.
+
+    The clip lowers a few per cent of the samples at most (the run log's
+    "clipped" column), and a float64 array of the cube's size to hold them is
+    the largest thing a sweep allocated: 5.6 GB on a 2.8 GB float32 cube. Here
+    only the samples whose factor is not exactly 1 are stored, as (row,
+    column, weight), and a row or a block of rows is assembled when it is
+    read: the original weights in float64, with the stored ones written over
+    them. Those are the numbers the dense array held, to the bit, since a
+    factor of exactly 1 times w0 is w0.
+
+    Read by row (`w[n]`) or by block of rows (`w[start:stop]`), which is how
+    every step of a sweep reads its weights; anything else assembles the whole
+    array, as np.asarray does.
+    """
+
+    ndim = 2
+    dtype = np.dtype(np.float64)
+
+    def __init__(self, w0, rows, cols, values):
+        self.w0 = w0
+        self.shape = tuple(w0.shape)
+        order = np.argsort(rows, kind="stable")
+        self.cols = np.asarray(cols, dtype=np.int32)[order]
+        self.values = np.asarray(values, dtype=np.float64)[order]
+        counts = np.bincount(np.asarray(rows), minlength=self.shape[0])
+        self.ptr = np.concatenate([[0], np.cumsum(counts)])
+
+    def __len__(self):
+        return self.shape[0]
+
+    @property
+    def nbytes(self):
+        return int(self.cols.nbytes + self.values.nbytes + self.ptr.nbytes)
+
+    def _block(self, start, stop):
+        out = np.array(self.w0[start:stop], dtype=np.float64)
+        lo, hi = self.ptr[start], self.ptr[stop]
+        if hi > lo:
+            local = np.repeat(np.arange(stop - start),
+                              np.diff(self.ptr[start:stop + 1]))
+            out[local, self.cols[lo:hi]] = self.values[lo:hi]
+        return out
+
+    def __getitem__(self, key):
+        n = self.shape[0]
+        if isinstance(key, (int, np.integer)):
+            row = int(key) + n if key < 0 else int(key)
+            if not 0 <= row < n:
+                raise IndexError(key)
+            return self._block(row, row + 1)[0]
+        if isinstance(key, slice) and key.step in (None, 1):
+            start, stop, _ = key.indices(n)
+            return self._block(start, max(start, stop))
+        return np.asarray(self)[key]
+
+    def __array__(self, dtype=None, copy=None):
+        out = self._block(0, self.shape[0])
+        return out if dtype is None else out.astype(dtype, copy=False)
+
+
+def clip_weights(w0, residual, clip=3.0, min_spectra=20, sparse=False,
+                 desc=None):
     """Iterative soft down-weighting of local >clip-sigma outliers.
 
     Returns w0 scaled by a factor that is 1 inside the clip and falls as
@@ -2150,42 +2451,88 @@ def clip_weights(w0, residual, clip=3.0, min_spectra=20):
 
     Always applied to the original weights, never compounded, so this is
     iterative re-weighting and not a ratchet that slowly deletes the data.
-    """
-    good = w0 > 0
-    # z = residual * sqrt(w0), built in place: the obvious spelling allocates a
-    # sigma array, a z array, a |z - centre| array and a factor array, four
-    # N x M float64 temporaries. At M = 92426 that is 2.3 GB of garbage per call
-    # and it is what drove the K = J = 10 run into swap.
-    z = np.sqrt(w0, dtype=np.float64)
-    z *= residual
-    z[~good] = np.nan
 
+    A block of columns at a time, twice: the column medians first, then the
+    factors, since the fallback scale of a poorly covered column is a median
+    over every column. Each column's arithmetic is the whole-array arithmetic,
+    so the weights are the same to the bit; what is gone is the z array of the
+    cube's size and the two copies of it the medians made. With `sparse` the
+    weights come back as a ClippedWeights, which stores only the samples the
+    clip changed; otherwise as an array.
+    """
+    n_rows, n_cols = w0.shape
+    step = _col_step(n_rows)
+
+    def zblock(first, last):
+        # z = residual * sqrt(w0), NaN where there is no weight
+        wb = np.asarray(w0[:, first:last])
+        good = wb > 0
+        z = np.sqrt(wb, dtype=np.float64)
+        z *= residual[:, first:last]
+        z[~good] = np.nan
+        return z, good, wb
+
+    centre = np.empty(n_cols)
+    scale = np.empty(n_cols)
+    live = np.zeros(n_cols, dtype=np.int64)
+    starts = range(0, n_cols, step)
     with np.errstate(invalid="ignore"), warnings.catch_warnings():
         # columns no row constrains are all-NaN; the min_spectra test below is
         # what handles them, so the median's complaint is noise
         warnings.simplefilter("ignore", RuntimeWarning)
-        centre = _nanmedian_over_rows(z)
-        z -= centre[None, :]
-        np.abs(z, out=z)
-        scale = 1.4826 * _nanmedian_over_rows(z)
-        enough = np.sum(good, axis=0) >= min_spectra
+        for first in (_bar(starts, desc=desc, unit="block") if desc else starts):
+            last = min(first + step, n_cols)
+            z, good, _ = zblock(first, last)
+            centre[first:last] = _nanmedian_over_rows(z, step=last - first)
+            z -= centre[None, first:last]
+            np.abs(z, out=z)
+            scale[first:last] = 1.4826 * _nanmedian_over_rows(z, step=last - first)
+            live[first:last] = np.sum(good, axis=0)
+        enough = live >= min_spectra
         fallback = np.nanmedian(scale[enough]) if np.any(enough) else 1.0
     scale = np.where(enough & np.isfinite(scale) & (scale > 0), scale, fallback)
     if not np.isfinite(fallback) or fallback <= 0:
         scale = np.ones_like(scale)
 
-    # z already holds |z - centre|; finish the normalisation in place
+    # Stored sparsely only where a factor inside the clip is exactly 1, as it
+    # is at clip = 3 (1/9 * 9 rounds to 1). Where it is not, every live sample
+    # differs from w0 and a sparse copy would be larger than the array.
     with np.errstate(invalid="ignore", divide="ignore"):
-        z /= scale[None, :]
-    hit = float(np.count_nonzero(z[good] > clip) / max(np.count_nonzero(good), 1))
-    with np.errstate(invalid="ignore", divide="ignore"):
-        np.maximum(z, clip, out=z)          # inside the clip -> exactly clip
-        z **= -2.0
-        z *= clip ** 2                      # -> 1 inside, (clip/|z|)^2 outside
-    z[~np.isfinite(z)] = 1.0
-    z *= w0
-    return z, hit
-
+        unit = np.maximum(np.full(4, float(clip)), clip) ** -2.0 * clip ** 2
+    sparse = sparse and bool(np.all(unit == 1.0))
+    dense = None
+    if not sparse:
+        dense = np.empty((n_rows, n_cols), dtype=np.float64)
+    rows, cols, values = [], [], []
+    beyond = 0
+    for first in starts:
+        last = min(first + step, n_cols)
+        z, good, wb = zblock(first, last)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            z -= centre[None, first:last]
+            np.abs(z, out=z)
+            z /= scale[None, first:last]
+        beyond += int(np.count_nonzero(z[good] > clip))
+        with np.errstate(invalid="ignore", divide="ignore"):
+            np.maximum(z, clip, out=z)      # inside the clip -> exactly clip
+            z **= -2.0
+            z *= clip ** 2                  # -> 1 inside, (clip/|z|)^2 outside
+        z[~np.isfinite(z)] = 1.0
+        if dense is not None:
+            z *= wb
+            dense[:, first:last] = z
+            continue
+        r, c = np.nonzero(z != 1.0)
+        values.append(z[r, c] * wb[r, c])
+        rows.append(r.astype(np.int32))
+        cols.append((c + first).astype(np.int32))
+    hit = float(beyond / max(int(live.sum()), 1))
+    if dense is not None:
+        return dense, hit
+    joined = [np.concatenate(x) if x else np.empty(0, dtype=t)
+              for x, t in ((rows, np.int32), (cols, np.int32),
+                           (values, np.float64))]
+    return ClippedWeights(w0, *joined), hit
 
 
 def coefficient_errors(data, w, P, Q, shifter, delta, a, b, chunk=64,
@@ -2516,7 +2863,7 @@ def main(argv=None):
         for _ in range(2):
             gap_guard(w, delta, args.kernel_halfwidth,
                       live=star_support(w, delta, shifter))
-        data = np.where(w > 0, data, 0.0)
+        zero_unweighted(data, w)           # in place: the data may be mapped
     elif args.gap_guard:
         log("gap guard skipped: it is defined for a compactly supported"
               " kernel, and %s is not one" % args.shift)
@@ -2539,9 +2886,18 @@ def main(argv=None):
 
     # Everything is scored against the raw high-passed cube so that the numbers
     # are comparable across runs and against the template baseline of 11.12.
-    chi2_raw_rows = np.sum(w * data ** 2, axis=1, dtype=np.float64)
+    tick = time.time()
+    log("scoring the cube as it is read: its weighted variance, row by row")
+    chi2_raw_rows = weighted_power_rows(data, w)
     chi2_raw = float(chi2_raw_rows.sum())
-    w0 = w.copy()          # modified only when the MAD cut retires a spectrum
+    log("  raw weighted variance %.6g, in %.1f s"
+        % (chi2_raw, time.time() - tick), "value")
+    # The weights as read, which the clip starts from at every sweep and the
+    # scores are taken against. The SAME array, not a copy: the clip writes
+    # its weights elsewhere (ClippedWeights), and the MAD cut, the only thing
+    # that changes these, changes them for both. A copy was one more array of
+    # the cube's size in memory, a mapped cube's included.
+    w0 = w
 
     iterate = args.mean == "iterate"
     if args.template and iterate:
@@ -2556,7 +2912,7 @@ def main(argv=None):
             berv_min_entries=args.template_berv_min_entries)
         template_model = carry_template(template, shifter, delta)
         data = data - template_model
-        data[w <= 0] = 0.0
+        zero_unweighted(data, w)
         log("subtracted the star-frame median template: %.4f of the raw"
               " weighted variance left" % (float(np.sum(w * data ** 2, dtype=np.float64)) / chi2_raw))
     else:
@@ -2569,7 +2925,16 @@ def main(argv=None):
     # instrument frame, which a single mean would leave in the residual for a
     # component to spend itself on (NOTES.md 13.9). With an s1d cube there is
     # one group and this is the old code path exactly.
-    means, parity_groups = parity_means(data, w, parity)
+    if args.mean == "star" and not iterate:
+        # zeroed below before anything reads them: the pass over the cube that
+        # would compute them is saved
+        parity_groups = np.unique(parity)
+        means = np.zeros((parity_groups.size, n_pixels))
+    else:
+        tick = time.time()
+        log("the observer-frame mean of each order parity, row by row")
+        means, parity_groups = parity_means(data, w, parity)
+        log("  in %.1f s" % (time.time() - tick))
     mean = means[0] if means.shape[0] == 1 else np.average(
         means, axis=0, weights=[np.sum(parity == g) for g in parity_groups])
     group = np.searchsorted(parity_groups, parity)
@@ -2614,17 +2979,34 @@ def main(argv=None):
         # (the BERV-binned median that also starts --mean iterate), carried to
         # every row and taken out. Nothing is re-estimated afterwards.
         berv_rows = np.asarray(meta["berv"], dtype=float)
+        names = group_names(templates.shape[0])
         for g in range(templates.shape[0]):
             rows_g = group == g
+            tick = time.time()
+            log("star spectrum of the %s rows (%d of %d): %d rows carried into"
+                " the star's frame, then %s"
+                % (names[g], g + 1, templates.shape[0], int(rows_g.sum()),
+                   "a median per %.1f km/s of BERV and a median of those"
+                   % (float(args.template_berv_bin) / 1000.0)
+                   if args.template_berv_bin else "their median"))
             templates[g] = star_frame_template(
-                data[rows_g], w[rows_g], shifter, delta[rows_g],
-                berv=berv_rows[rows_g], berv_bin=args.template_berv_bin,
-                berv_min_entries=args.template_berv_min_entries)
+                data, w, shifter, delta, rows=rows_g,
+                berv=berv_rows, berv_bin=args.template_berv_bin,
+                berv_min_entries=args.template_berv_min_entries,
+                spill=spill, desc="star spectrum, %s rows" % names[g])
             if star_fwhm:
                 from .resolution import smooth
                 templates[g] = smooth(templates[g], star_fwhm)
-        subtract_carried(data, templates, group, shifter, delta, chunk, w=w)
-        data[w <= 0] = 0.0
+            log("  %s rows done in %.1f s, %d columns defined"
+                % (names[g], time.time() - tick,
+                   int(np.count_nonzero(templates[g]))), "value")
+        tick = time.time()
+        log("carrying the %d star spectra to each of the %d rows and"
+            " subtracting them" % (templates.shape[0], n_spectra))
+        subtract_carried(data, templates, group, shifter, delta, chunk, w=w,
+                         desc="star spectra, out of every row")
+        zero_unweighted(data, w)
+        log("  in %.1f s" % (time.time() - tick))
         means = np.zeros_like(means)
         star_mean = (templates, group)
         both = np.all(templates != 0.0, axis=0)
@@ -2644,13 +3026,14 @@ def main(argv=None):
             for g in range(templates.shape[0]):
                 rows_g = group == g
                 templates[g] = star_frame_template(
-                    data[rows_g], w[rows_g], shifter, delta[rows_g],
-                    berv=berv_rows[rows_g], berv_bin=args.template_berv_bin,
-                    berv_min_entries=args.template_berv_min_entries)
+                    data, w, shifter, delta, rows=rows_g,
+                    berv=berv_rows, berv_bin=args.template_berv_bin,
+                    berv_min_entries=args.template_berv_min_entries,
+                    spill=spill, desc="star-frame mean %d" % (g + 1))
             subtract_carried(data, templates, group, shifter, delta, chunk, w=w)
             means, _ = parity_means(data, w, parity)
         subtract_means(data, means, group)
-        data[w <= 0] = 0.0
+        zero_unweighted(data, w)
         for _ in range(MEAN_INIT_ROUNDS):
             step_t, step_o = update_means(data, w, templates, means, group,
                                           shifter, delta, chunk,
@@ -2665,7 +3048,8 @@ def main(argv=None):
         means = means - common
     if not iterate:
         subtract_means(data, means, group)
-        data[w <= 0] = 0.0
+        if np.any(means):
+            zero_unweighted(data, w)
     if args.mean == "offset":
         live_any = w.sum(axis=0) > 0
         log("left the shared part of the observer-frame mean IN the data,"
@@ -2683,16 +3067,18 @@ def main(argv=None):
     # that needs one: the two basis updates, the re-weighting and the scoring.
     # Each of them used to allocate its own, and each of those is the size of
     # the data itself.
+    log("the sweeps' scratch array, %d x %d float64: %.1f GB %s"
+        % (n_spectra, n_pixels, 8 * n_spectra * n_pixels / 1e9,
+           "in a mapped file in %s" % spill if spill else "in memory"))
     work = workspace((n_spectra, n_pixels), np.float64, spill, tag="work")
-    chi2_null = 0.0
-    for _start in range(0, n_spectra, max(1, chunk)):
-        _stop = min(_start + max(1, chunk), n_spectra)
-        chi2_null += float(np.sum(w[_start:_stop] * data[_start:_stop] ** 2,
-                                  dtype=np.float64))
+    tick = time.time()
+    chi2_null = weighted_power(data, w, chunk)
     log("after the %s as well: %.4f of the raw weighted variance left"
+        " (scored in %.1f s)"
         % ("per-parity means of both frames" if iterate
            else "star's spectrum per parity" if args.mean == "star"
-           else "observer-frame mean", chi2_null / chi2_raw))
+           else "observer-frame mean", chi2_null / chi2_raw,
+           time.time() - tick))
     if args.clip > 0:
         log("soft clip at %.1f sigma, local per wavelength column" % args.clip)
 
@@ -2808,7 +3194,11 @@ def main(argv=None):
                     data, P, Q, a_prev, b_prev, shifter, delta, chunk,
                     alpha=alpha_prev, velocity_mask=velocity_mask,
                     star_mean=star_mean, out=work)
-                w, hit = clip_weights(w0, resid_prev, clip=args.clip)
+                # stored as w0 and the samples the clip changed: a float64
+                # array of the cube's size otherwise, the largest one a sweep
+                # used to hold
+                w, hit = clip_weights(w0, resid_prev, clip=args.clip,
+                                      sparse=True, desc="re-weighting, clip")
 
             # ---- E-step: coefficients for both blocks at fixed bases --------
             # Solved JOINTLY, never one block then the other. The off-diagonal
@@ -2979,7 +3369,7 @@ def main(argv=None):
             % (args.max_mad, int(fresh.sum()), count_exposures(meta, fresh),
                int(rejected.sum()), n_spectra, 100 * rejected.mean()))
         w0[fresh] = 0.0
-        w = w0.copy()
+        w = w0
         data[fresh] = 0.0
         # the per-parity mean moved when those rows left; take out the
         # difference, and in offset mode only the part of that difference that
@@ -2992,10 +3382,12 @@ def main(argv=None):
             if args.mean == "offset":
                 residual_means = residual_means - residual_means.mean(axis=0)
             subtract_means(data, residual_means, group)
-            data[w0 <= 0] = 0.0
+            zero_unweighted(data, w0)
             means = means + residual_means
         chi2_raw = float(chi2_raw_rows[~rejected].sum())
-        chi2_null = float(np.sum(w0 * data ** 2, dtype=np.float64))
+        # in the fit's chunks, as the first chi2_null was, rather than a
+        # product and a square of the cube's size each
+        chi2_null = weighted_power(data, w0, chunk)
 
     chi2, P, Q, best_iter = best[:4]
     if rejected.any():
@@ -3153,7 +3545,7 @@ def main(argv=None):
     # the mapped arrays go with the run that made them: they are scratch, they
     # are the size of the cube, and a folder of them left behind fills a disk
     if spill:
-        for array in (work, data, w):
+        for array in (work, data, w0):
             try:
                 drop_workspace(array)
             except Exception:                                 # noqa: BLE001
