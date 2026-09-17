@@ -710,7 +710,38 @@ def _points(ax, x, y, e, colour, label, size=3.2, alpha=0.55, zorder=2):
                 alpha=alpha, capsize=0, label=label, zorder=zorder)
 
 
-def _save(fig, path):
+#: inches added above a figure for the star's name
+NAME_BAND = 0.34
+
+
+def _named(fig, name):
+    """The star's name above everything in the figure.
+
+    A joint report holds the same figures once per star, and a figure seen
+    on its own, or on a page whose caption is on the next, said nothing of
+    whose velocities it drew (2026-09-17). The figure is made taller by a
+    band, everything already in it keeps its size and moves down, and the
+    name goes in the band.
+    """
+    width, height = fig.get_size_inches()
+    total = height + NAME_BAND
+    scale = height / total
+    fig.set_size_inches(width, total)
+    for ax in fig.axes:
+        box = ax.get_position()
+        ax.set_position([box.x0, box.y0 * scale, box.width,
+                         box.height * scale])
+    for text in fig.texts:
+        x, y = text.get_position()
+        text.set_position((x, y * scale))
+    fig.text(0.012, 1.0 - 0.5 * NAME_BAND / total, name, ha="left",
+             va="center", fontsize=12, fontweight="bold", color=INK)
+
+
+def _save(fig, path, name=None):
+    """Write the figure, with the star's name above it when one is given."""
+    if name:
+        _named(fig, name)
     with plt.rc_context(STYLE):
         fig.savefig(path)
     plt.close(fig)
@@ -807,7 +838,7 @@ def figure_time(before, after, path):
         _style(ax)
     plt.setp(right.get_yticklabels(), visible=False)
     fig.subplots_adjust(left=0.1, right=0.98, bottom=0.07, top=0.96)
-    return _save(fig, path)
+    return _save(fig, path, before.get("star"))
 
 
 def _bias_band(ax, fitted, grid, colour, label=None, offset=0.0):
@@ -908,7 +939,7 @@ def figure_berv(before, after, path):
     legend._legend_box.align = "left"
     _style(both)
     fig.tight_layout()
-    return _save(fig, path)
+    return _save(fig, path, before.get("star"))
 
 
 def amp_range(*fits):
@@ -1060,7 +1091,7 @@ def figure_corner(before, after, path):
         fig.text(0.98, 0.72 - 0.13 * k, "%s\n%s" % (label, "\n".join(said)),
                  ha="right", va="top", fontsize=7.5, color=colour)
     fig.subplots_adjust(left=0.12, right=0.98, bottom=0.09, top=0.97)
-    return _save(fig, path)
+    return _save(fig, path, before.get("star"))
 
 
 def figure_d2v(before, after, path):
@@ -1105,7 +1136,7 @@ def figure_d2v(before, after, path):
     axes[0, 0].set_ylabel("d2v ($10^3$ m$^2$/s$^2$)", fontsize=7.5, color=INK)
     axes[1, 0].set_ylabel("velocity - median (m/s)", fontsize=7.5, color=INK)
     fig.tight_layout()
-    return _save(fig, path)
+    return _save(fig, path, before.get("star"))
 
 
 def figure_change(before, after, path):
@@ -1140,7 +1171,7 @@ def figure_change(before, after, path):
         ax.axhline(0, color=MUTED, lw=0.6)
         _style(ax)
     fig.tight_layout()
-    return _save(fig, path)
+    return _save(fig, path, before.get("star"))
 
 
 def figure_dtemp(before, after, path):
@@ -1194,7 +1225,7 @@ def figure_dtemp(before, after, path):
     axes[1, 0].set_ylabel("%s - median (K)" % name, fontsize=7.5, color=INK)
     axes[1, 0].legend(fontsize=6.5, frameon=False, loc="upper left")
     fig.tight_layout()
-    return _save(fig, path)
+    return _save(fig, path, before.get("star"))
 
 
 def _mark_peak(ax, periods, power, colour, label, above, fap=np.nan):
@@ -1305,7 +1336,7 @@ def figure_periodograms(before, after, planets, path):
         return None
     axes[-1, 0].set_xlabel("period (d)", fontsize=8, color=INK)
     fig.tight_layout()
-    return _save(fig, path)
+    return _save(fig, path, before.get("star"))
 
 
 # ============================================================ the context ===
@@ -2070,8 +2101,11 @@ def velocity_section(star, before, after, numbers, folder, stale):
     ]
     for path, short, caption in drawn:
         if path:
+            # the star first in every caption too: a joint report repeats
+            # these figures once per star
             parts.append(figure_block("figures/" + os.path.basename(path),
-                                      caption, short=short))
+                                      "\\textbf{%s.} %s" % (name, caption),
+                                      short=short))
     parts.append("\\clearpage\n")
     return "".join(parts)
 
@@ -2149,7 +2183,67 @@ def run_rows(outdir, cube=None):
     return [[str(k), str(v)] for k, v in rows]
 
 
-def correction_section(manifest, windows=()):
+#: figures of the figures stage whose every page names its star already
+NAMES_ITSELF = ("The sequence, step by step",
+                "Every quantity of the correlations, against time")
+
+
+def _band_page(width, band, name):
+    """A page `width` x `band` points holding `name`, as the velocity
+    figures carry theirs, for pypdf to lay over another."""
+    import io
+
+    from pypdf import PdfReader
+
+    fig = plt.figure(figsize=(width / 72.0, band / 72.0))
+    fig.patch.set_alpha(0.0)
+    fig.text(0.012 * WIDTH * 72.0 / width, 0.5, name, ha="left", va="center",
+             fontsize=12, fontweight="bold", color=INK)
+    buffer = io.BytesIO()
+    with plt.rc_context(STYLE):
+        fig.savefig(buffer, format="pdf", transparent=True)
+    plt.close(fig)
+    buffer.seek(0)
+    return PdfReader(buffer).pages[0]
+
+
+def named_figure(folder, file, name):
+    """A figure PDF with `name` in a band above every page.
+
+    Written beside the figure as named-<file>, from the figure itself each
+    time, so the band is never laid twice; the figure the figures stage kept
+    stays as it was. Returns the new file, relative to `folder` as `file` is.
+    """
+    from pypdf import PageObject, PdfReader, PdfWriter, Transformation
+
+    head, tail = os.path.split(file)
+    out = os.path.join(head, "named-" + tail)
+    band = NAME_BAND * 72.0
+    writer = PdfWriter()
+    stamps = {}
+    for page in PdfReader(os.path.join(folder, file)).pages:
+        box = page.mediabox
+        width, height = float(box.width), float(box.height)
+        if round(width, 1) not in stamps:
+            stamps[round(width, 1)] = _band_page(width, band, name)
+        blank = PageObject.create_blank_page(width=width, height=height + band)
+        blank.merge_transformed_page(
+            page, Transformation().translate(-float(box.left),
+                                             -float(box.bottom)))
+        blank.merge_transformed_page(stamps[round(width, 1)],
+                                     Transformation().translate(0, height))
+        writer.add_page(blank)
+    with open(os.path.join(folder, out), "wb") as handle:
+        writer.write(handle)
+    return out
+
+
+def correction_section(manifest, windows=(), folder=None, name=None):
+    """The figures stage's figures, each with the run's target above it.
+
+    `name` is the target, or the joint set; the figures that name their star
+    on every page already (NAMES_ITSELF) are left alone.
+    """
     figures = (manifest or {}).get("figures") or []
     if not figures:
         return ("\\section{The correction}\nThe figures stage has not drawn"
@@ -2157,6 +2251,13 @@ def correction_section(manifest, windows=()):
     parts = ["\\section{The correction}\n"]
     for entry in figures:
         title, path, pages = entry["title"], entry["file"], entry.get("pages", 1)
+        if name and folder and title not in NAMES_ITSELF \
+                and os.path.exists(os.path.join(folder, path)):
+            try:
+                path = named_figure(folder, path, name)
+            except Exception as exc:                          # noqa: BLE001
+                log("could not name %s (%s); it goes in as it is"
+                    % (path, exc), "warn")
         parts.append("\\subsection{%s}\n" % tex(title))
         caption = tex(CAPTIONS.get(title, title))
         if pages <= 1:
@@ -2279,6 +2380,8 @@ def render(outdir, config=None, lbl_dir=None, out=None, stars=None):
                                            else after_name)))
             continue
         before, after = common(before, after)
+        # whose velocities these are, for the figures' own titles
+        before["star"] = after["star"] = star
         if before["t"].size < 4:
             missing.append((star, "fewer than four exposures in common"))
             continue
@@ -2338,7 +2441,8 @@ def render(outdir, config=None, lbl_dir=None, out=None, stars=None):
     body.append("\\clearpage\n")
     body.append(correction_section(
         manifest, (manifest or {}).get("windows")
-        or (config.get("output") or {}).get("windows") or ()))
+        or (config.get("output") or {}).get("windows") or (),
+        folder=folder, name=" + ".join(stars)))
     body.append(failure_section(manifest))
     body.append(parameters_appendix(config, folder))
 

@@ -563,3 +563,64 @@ def test_terminal_colours_never_reach_latex():
     said = tr.tex("\x1b[93;1m1197.2 nm: outside the grid, skipped\x1b[0m\x07")
     assert said == "1197.2 nm: outside the grid, skipped"
     assert tr.tex("a\tb_c") == "a b\\_c"
+
+
+def test_every_velocity_figure_says_whose_it_is(tmp_path):
+    """A joint report draws these once per star: each carries the star's
+    name above it, and the figure keeps its panels' sizes."""
+    r = np.random.default_rng(14)
+    t = np.sort(60000 + r.uniform(0, 400, 60))
+    e = np.full(t.size, 2.0)
+    before = series(t, 1000 + r.normal(0, 3, t.size), e, None, None,
+                    "delivered")
+    after = series(t, 1000 + r.normal(0, 2, t.size), e, None, None,
+                   "corrected")
+    before["star"] = after["star"] = "TOI782"
+    captured = []
+    real = plt.Figure.savefig
+
+    def keep(fig, *args, **kwargs):
+        captured.append((fig, [ax.get_position().height * fig.get_figheight()
+                               for ax in fig.axes]))
+        return real(fig, *args, **kwargs)
+
+    import unittest.mock
+    with unittest.mock.patch.object(plt.Figure, "savefig", keep):
+        assert tr.figure_time(before, after, str(tmp_path / "t.pdf"))
+        before.pop("star")
+        assert tr.figure_time(before, after, str(tmp_path / "u.pdf"))
+    named, plain = captured
+    assert any(t.get_text() == "TOI782" for t in named[0].texts)
+    assert not any(t.get_text() == "TOI782" for t in plain[0].texts)
+    assert named[0].get_figheight() == pytest.approx(
+        plain[0].get_figheight() + tr.NAME_BAND)
+    assert np.allclose(named[1], plain[1]), "the panels keep their sizes"
+
+
+def test_the_figures_stage_figures_carry_the_target(tmp_path):
+    """A band with the target above every page, laid on a copy each time,
+    so a report written twice does not carry two bands; the pages keep
+    their content and grow by the band."""
+    from pypdf import PdfReader
+
+    (tmp_path / "figures").mkdir()
+    fig = plt.figure(figsize=(4, 3))
+    plt.plot([0, 1], [0, 1])
+    fig.savefig(tmp_path / "figures" / "04-variance.pdf")
+    plt.close(fig)
+    manifest = {"figures": [
+        {"title": "Variance", "file": "figures/04-variance.pdf", "pages": 1}]}
+    for _ in range(2):
+        section = tr.correction_section(manifest, folder=str(tmp_path),
+                                        name="TOI4552 + TOI782")
+    assert "figures/named-04-variance.pdf" in section
+    named = PdfReader(str(tmp_path / "figures" / "named-04-variance.pdf"))
+    plain = PdfReader(str(tmp_path / "figures" / "04-variance.pdf"))
+    assert float(named.pages[0].mediabox.height) == pytest.approx(
+        float(plain.pages[0].mediabox.height) + 72 * tr.NAME_BAND)
+    assert "TOI4552 + TOI782" in named.pages[0].extract_text()
+    assert len(named.pages) == 1
+    # a figure that names its star on every page is left as it is
+    manifest["figures"][0]["title"] = "The sequence, step by step"
+    assert "named-" not in tr.correction_section(
+        manifest, folder=str(tmp_path), name="X")
