@@ -219,9 +219,9 @@ list of figures:
 
 | section | what it holds |
 | --- | --- |
-| The star | SIMBAD's description beside APERO's (its `PP_` keys, each with its source, and its name for the object, `PP_OBJN`) |
+| The star | SIMBAD's description beside APERO's (its `PP_` keys, each with its source, and its name for the object, `PP_OBJN`), and its known planets and TESS candidates from the NASA Exoplanet Archive (`pca2d/archive.py`) |
 | Summary | per star, the gains and losses in words, then every number delivered against corrected, each row saying which way it went |
-| Velocities | the time series as points, the fitted BERV bias, d2v as an activity indicator, the temperature projection DTEMP over time and against BERV, what the correction moved, the periodograms with each curve's highest peak and its level |
+| Velocities | the time series as points, the fitted BERV bias, d2v as an activity indicator, the temperature projection DTEMP over time and against V_tot, what the correction moved, the periodograms with each curve's highest peak, the false-alarm levels and the known planets marked, and the velocities folded at each known planet's period |
 | The run | the fit's numbers, every window setting, the command, the code |
 | The correction | the figures of the figures stage, each with a caption |
 | Parameters | the resolved configuration, verbatim |

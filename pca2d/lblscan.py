@@ -107,7 +107,10 @@ def amplitude_at(t, v, e, period):
     p = cov @ ((A * w[:, None]).T @ np.asarray(v, float))
     K = float(np.hypot(p[0], p[1]))
     dof = max(len(ph) - 3, 1)
-    scale = float(np.sum(w * (v - A @ p) ** 2) / dof / max(np.mean(w), 1e-12))
+    # the reduced chi^2, and nothing else: dividing it by the mean weight as
+    # well scaled the error by the noise itself, which the tests, at a noise
+    # of 1 m/s, never saw (TOI-782: 16 m/s where 2.2 was right, 2026-09-17)
+    scale = float(np.sum(w * (v - A @ p) ** 2) / dof)
     var = (p[0] ** 2 * cov[0, 0] + p[1] ** 2 * cov[1, 1]
            + 2 * p[0] * p[1] * cov[0, 1])
     return K, float(np.sqrt(max(scale * var, 0.0)) / max(K, 1e-9))

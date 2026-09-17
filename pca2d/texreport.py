@@ -557,8 +557,8 @@ def star_numbers(before, after, planets=(), seed=0):
                                 else np.ones_like(run["d2v"]))[good])
             if spot:
                 row.update(d2v_peak_period=spot[2], d2v_peak_fap=spot[4])
-        row["planets"] = [amplitude_at(run["t"], run["v"], run["e"], p)
-                          for p in planets]
+        row["planets"] = [amplitude_at(run["t"], for_phase(run, p), run["e"],
+                                       p) for p in planets]
         out[key] = row
     change = after["v"] - before["v"]
     out["change_rms"] = float(np.std(change - np.median(change)))
@@ -1257,7 +1257,126 @@ REFERENCE_PERIODS = ((365.25, "1 yr"), (365.25 / 2, "1/2 yr"),
                      (365.25 / 3, "1/3 yr"), (29.53, "month"))
 
 
+def planet_lines(planets):
+    """[(label, period)] from planet dictionaries or bare periods."""
+    out = []
+    for i, planet in enumerate(planets or []):
+        if isinstance(planet, dict):
+            out.append((str(planet.get("short") or planet["name"]),
+                        float(planet["period"])))
+        else:
+            out.append(("bcdefgh"[i] if i < 7 else "", float(planet)))
+    return out
+
+
+#: the colour the known planets are drawn in
+PLANET = "#1a7f37"
+
+
+def for_phase(run, period):
+    """The velocities to fold at `period`: less their straight line in time,
+    unless the period is long enough for the line to take the planet with
+    it (a third of the baseline or more)."""
+    v = np.asarray(run["v"], float)
+    if period >= np.ptp(run["t"]) / 3.0:
+        return v - np.median(v)
+    return v - straight_line(run["t"], v, run["e"])[1]
+
+
+def phase_of(t, planet):
+    """Phase in [-0.5, 0.5): 0 at the transit when the archive gives one."""
+    t = np.asarray(t, float)
+    zero = planet.get("t0")
+    zero = zero - 2400000.0 if zero else float(np.min(t))
+    return ((t - zero) / planet["period"] + 0.5) % 1.0 - 0.5
+
+
+def sine_fit(phase, y, e):
+    """(K, its error, the curve's function of phase): y = c + A cos + B sin."""
+    w = 1.0 / np.asarray(e, float) ** 2
+    ang = 2 * np.pi * np.asarray(phase, float)
+    A = np.column_stack([np.cos(ang), np.sin(ang), np.ones_like(ang)])
+    cov = np.linalg.inv(A.T @ (A * w[:, None]))
+    p = cov @ ((A * w[:, None]).T @ y)
+    resid = y - A @ p
+    scale = float(np.sum(w * resid ** 2) / max(len(y) - 3, 1))
+    k = float(np.hypot(p[0], p[1]))
+    var = (p[0] ** 2 * cov[0, 0] + p[1] ** 2 * cov[1, 1]
+           + 2 * p[0] * p[1] * cov[0, 1])
+    err = float(np.sqrt(max(scale * var, 0.0)) / max(k, 1e-9))
+    return k, err, (lambda x: p[0] * np.cos(2 * np.pi * x)
+                    + p[1] * np.sin(2 * np.pi * x) + p[2])
+
+
+def figure_phase(before, after, planets, path, most=4):
+    """The velocities folded at each known planet's period, delivered and
+    corrected side by side on one scale, with the sine fitted at that period
+    and, for a transiting planet with a published K, the orbit it implies."""
+    planets = [p for p in (planets or []) if isinstance(p, dict)][:most]
+    if not planets:
+        return None
+    fig, axes = plt.subplots(len(planets), 2, figsize=(WIDTH,
+                             2.35 * len(planets) + 0.3), sharex=True,
+                             sharey="row", squeeze=False)
+    grid = np.linspace(-0.5, 0.5, 400)
+    for row, planet in zip(axes, planets):
+        folded = [(run, colour, phase_of(run["t"], planet),
+                   for_phase(run, planet["period"]))
+                  for run, colour in ((before, BEFORE), (after, AFTER))]
+        # the bulk, not the few exposures far off it: a planet of a few m/s
+        # disappears on an axis stretched to the outliers
+        lim = _limits(*[y for _r, _c, _x, y in folded], q=97.0)
+        for ax, (run, colour, x, y) in zip(row, folded):
+            _points(ax, x, y, run["e"], colour, "exposures", size=2.6,
+                    alpha=0.45)
+            edges = np.linspace(-0.5, 0.5, 11)
+            centres, means, errors = [], [], []
+            for lo, hi in zip(edges[:-1], edges[1:]):
+                inside = (x >= lo) & (x < hi)
+                if inside.sum() >= 3:
+                    w = 1.0 / run["e"][inside] ** 2
+                    centres.append(0.5 * (lo + hi))
+                    means.append(np.sum(w * y[inside]) / np.sum(w))
+                    errors.append(max(1.0 / np.sqrt(np.sum(w)),
+                                      np.std(y[inside])
+                                      / np.sqrt(inside.sum())))
+            ax.errorbar(centres, means, yerr=errors, fmt="s", ls="none",
+                        ms=4.5, mfc="white", mec=INK, mew=0.8, ecolor=INK,
+                        elinewidth=0.7, capsize=0, zorder=5,
+                        label="phase bins, weighted mean")
+            k, err, curve = sine_fit(x, y, run["e"])
+            ax.plot(grid, curve(grid), color=colour, lw=1.6, zorder=6,
+                    label="sine at P: K = %.2f $\\pm$ %.2f m/s" % (k, err))
+            if planet.get("k") and planet.get("t0"):
+                # circular and transiting: v = -K sin(2 pi phase)
+                ax.plot(grid, -planet["k"] * np.sin(2 * np.pi * grid),
+                        color=MUTED, lw=1.0, ls="--", zorder=4,
+                        label="published K = %.2f m/s" % planet["k"])
+            ax.axhline(0, color=MUTED, lw=0.6)
+            ax.set_ylim(*lim)
+            ax.set_xlim(-0.5, 0.5)
+            ax.set_title("%s: K = %.2f $\\pm$ %.2f m/s" % (run["label"], k, err),
+                         fontsize=8, color=INK, loc="left")
+            ax.legend(fontsize=6, frameon=False, loc="lower left", ncol=1)
+            _style(ax)
+        row[0].set_ylabel("%s\nP = %s d\nvelocity (m/s)"
+                          % (planet["name"], ("%.6f" % planet["period"])
+                             if planet["period"] < 100
+                             else "%.3f" % planet["period"]),
+                          fontsize=7.5, color=PLANET)
+    for ax in axes[-1]:
+        ax.set_xlabel("phase%s" % (" (0 = transit)" if all(
+            p.get("t0") for p in planets) else ""), fontsize=8, color=INK)
+    fig.tight_layout()
+    return _save(fig, path, before.get("star"))
+
+
 def figure_periodograms(before, after, planets, path):
+    lines = planet_lines(planets)
+    # down to the shortest known period, which may be under a day
+    # (TOI-4552 b, 0.301 d), with the grid made finer to match
+    pmin = min([1.1] + [0.8 * p for _l, p in lines])
+    samples = 6000 if pmin >= 1.1 else int(6000 * 1.1 / pmin)
     rows = [("velocity", "v", "e")]
     if before.get("d2v") is not None and after.get("d2v") is not None:
         rows.append(("d2v", "d2v", "sd2v"))
@@ -1274,7 +1393,8 @@ def figure_periodograms(before, after, planets, path):
             if e is None:
                 e = np.ones_like(y)
             keep = inliers(y) if value != "v" else np.isfinite(y)
-            found = periodogram(run["t"][keep], y[keep], e[keep])
+            found = periodogram(run["t"][keep], y[keep], e[keep],
+                                pmin=pmin, samples=samples)
             if not found:
                 continue
             drawn = True
@@ -1312,10 +1432,10 @@ def figure_periodograms(before, after, planets, path):
                         xytext=(-2, 1), textcoords="offset points",
                         fontsize=6, color=MUTED, ha="right", va="bottom")
         top = ax.get_ylim()[1] if drawn else 1.0
-        for letter, period in zip("bcdefgh", planets):
-            ax.axvline(period, color=INK, lw=0.7, zorder=0)
-            ax.text(period, top, " " + letter, fontsize=7, color=INK,
-                    va="top", ha="left")
+        for label, period in lines:
+            ax.axvline(period, color=PLANET, lw=1.1, zorder=0)
+            ax.text(period, top, " " + label, fontsize=7, color=PLANET,
+                    va="top", ha="left", fontweight="bold")
         ax.set_xscale("log")
         shown = (np.nanmin([np.nanmin(f[0]) for f in found_both]),
                  np.nanmax([np.nanmax(f[0]) for f in found_both])) \
@@ -1404,6 +1524,45 @@ def planets_of(outdir, config, star, joint=False):
         target = block.get("target") or {}
         return [float(p) for p in target.get("planets") or []]
     return []
+
+
+def known_planets(outdir, config, star, joint, facts, folder):
+    """(planets, status) of one star: the NASA Exoplanet Archive's, and any
+    period its configuration gives that the archive does not.
+
+    Each planet is a dictionary (name, short, period in days, t0 in BJD or
+    None, k in m/s or None, source, disposition), shortest period first. The
+    archive's answer is kept beside the report, and used again when the
+    archive cannot be reached; `status` says which it was.
+    """
+    from . import archive
+
+    kept = os.path.join(folder, "planets_%s.json" % slug(star))
+    got = archive.planets(facts or {}, folder=star)
+    if got.get("ok") and not got.get("stale"):
+        with open(kept, "w") as handle:
+            json.dump(got, handle, indent=1)
+    elif not got.get("planets") and os.path.exists(kept):
+        with open(kept) as handle:
+            got = dict(json.load(handle), stale=True)
+    planets = [dict(p) for p in got.get("planets") or []]
+    for period in planets_of(outdir, config, star, joint):
+        if not any(abs(p["period"] - period) < archive.SAME_PERIOD * period
+                   for p in planets):
+            planets.append({"name": "%.6g d" % period,
+                            "short": "%.4g d" % period, "period": period,
+                            "t0": None, "k": None,
+                            "source": "configuration", "disposition": ""})
+    planets.sort(key=lambda p: p["period"])
+    return planets, got
+
+
+def planet_labels(numbers):
+    """The short name of each planet the numbers were measured at."""
+    names = numbers.get("planet_names")
+    if names:
+        return list(names)
+    return list("bcdefgh")[:len(numbers.get("planet_periods") or [])]
 
 
 def stars_first(config):
@@ -1614,9 +1773,24 @@ def star_table(star, facts, planets):
     add("magnitudes", ", ".join(shown) or (
         "J %s \\muted{(headers)}" % tex(header["ESO OCS TARG JMAG"])
         if header.get("ESO OCS TARG JMAG") else "n/a"))
-    add("known planets", ", ".join("%s %.6g d" % (letter, p) for letter, p in
-                                   zip("bcdefgh", planets))
-        or "none given in the configuration")
+    known, status = planets if isinstance(planets, tuple) else (
+        [{"name": "%.6g d" % p, "period": p, "source": "configuration",
+          "disposition": ""} for p in planets], {"ok": True})
+    said = "; ".join(
+        "%s, %s d \\muted{(%s%s)}" % (
+            tex(p["name"]), number(p["period"], 6 if p["period"] < 10 else 4),
+            tex(p["source"]), ", " + tex(p["disposition"])
+            if p.get("disposition") and p["source"] == "TOI" else "")
+        for p in known)
+    where = ("the NASA Exoplanet Archive, read on %s" % tex(status["retrieved"])
+             if status.get("retrieved") else "")
+    if status.get("stale"):
+        where += " \\watch{(kept from an earlier report: the archive did not"\
+                 " answer this time)}"
+    elif status.get("ok") is False:
+        where = "\\watch{the NASA Exoplanet Archive did not answer (%s)}" % tex(
+            str(status.get("error"))[:80])
+    add("known planets", said or "none known", where)
     add("read on", tex(facts.get("retrieved", "")) + (
         " \\watch{(kept from an earlier report: SIMBAD did not answer this"
         " time)}" if facts.get("stale") else ""),
@@ -1758,12 +1932,14 @@ def summary_table(star, numbers):
                     % (number(b["peak_period"], 3), number(a["peak_period"], 3)))
         rows.append("its false-alarm probability & %s & %s & & \\\\"
                     % (tex("%.2g" % b["peak_fap"]), tex("%.2g" % a["peak_fap"])))
-    for letter, period, kb, ka in zip("bcdefgh", numbers["planet_periods"],
+    for letter, period, kb, ka in zip(planet_labels(numbers),
+                                      numbers["planet_periods"],
                                       b["planets"], a["planets"]):
         moved = abs(ka[0] - kb[0]) > 2 * np.hypot(ka[1], kb[1])
-        rows.append("K at %s d (planet %s, m/s) & %s $\\pm$ %s & %s $\\pm$ %s"
+        rows.append("K at %s d (%s, m/s) & %s $\\pm$ %s & %s $\\pm$ %s"
                     " & & %s \\\\"
-                    % (number(period, 4), letter, number(kb[0]), number(kb[1]),
+                    % (number(period, 4), tex(letter), number(kb[0]),
+                       number(kb[1]),
                        number(ka[0]), number(ka[1]),
                        mark("watch" if moved else "same")))
     rows.append("\\midrule")
@@ -1912,11 +2088,12 @@ def verdict_lines(numbers):
         (better if word == "gain" else worse if word == "loss"
          else []).append("d2v's scatter (%.0f to %.0f, in $10^3$ m$^2$/s$^2$)"
                          % (b["d2v_sigma"] / 1e3, a["d2v_sigma"] / 1e3))
-    for letter, period, kb, ka in zip("bcdefgh", numbers["planet_periods"],
+    for letter, period, kb, ka in zip(planet_labels(numbers),
+                                      numbers["planet_periods"],
                                       b["planets"], a["planets"]):
         if abs(ka[0] - kb[0]) > 2 * np.hypot(ka[1], kb[1]):
-            moved.append("the amplitude of planet %s (%.4g d)"
-                         % (letter, period))
+            moved.append("the amplitude of %s (%.4g d)"
+                         % (tex(letter), period))
     return better, worse, moved
 
 
@@ -1962,10 +2139,11 @@ def star_sentence(star, numbers):
     if "bias_peak" in b:
         words += (" The bias that follows BERV, fitted, goes from %s to %s."
                   % (bias_words(b), bias_words(a)))
-    for letter, period, kb, ka in zip("bcdefgh", numbers["planet_periods"],
+    for letter, period, kb, ka in zip(planet_labels(numbers),
+                                      numbers["planet_periods"],
                                       b["planets"], a["planets"]):
-        words += (" At the %.4g d period of planet %s, K goes from %.2f to"
-                  " %.2f m/s." % (period, letter, kb[0], ka[0]))
+        words += (" At the %.4g d period of %s, K goes from %.2f to"
+                  " %.2f m/s." % (period, tex(letter), kb[0], ka[0]))
     return words
 
 
@@ -2087,7 +2265,9 @@ def velocity_section(star, before, after, numbers, folder, stale):
          " velocity less the delivered one, over time and against"
          " $V_\\mathrm{tot}$, the grey band being"
          " $|V_\\mathrm{tot}| < 4$ km/s."),
-        (figure_periodograms(before, after, numbers["planet_periods"],
+        (figure_periodograms(before, after,
+                             numbers.get("planets_known")
+                             or numbers["planet_periods"],
                              os.path.join(figures, base + "-periods.pdf")),
          "%s: periodograms of the velocity and its indicators" % name,
          "Lomb-Scargle periodograms of the velocity, of d2v%s, delivered and"
@@ -2098,12 +2278,28 @@ def velocity_section(star, before, after, numbers, folder, stale):
          " dotted grey ones, the power a peak needs for a false-alarm"
          " probability of 1\\%%, 0.1\\%% and $10^{-4}$ (Baluev's approximation"
          " over the periods shown, the higher of the two series' levels);"
-         " black ones, when there are any, the known"
-         " planets. A known planet should keep its peak; a peak at a"
+         " green ones, named, the known planets and TESS candidates"
+         " (NASA Exoplanet Archive), and any period the configuration gives."
+         " A known planet should keep its peak; a peak at a"
          " year or its harmonics is the Earth's; one shared with d2v or the"
          " temperature is the star's activity."
          % (" and of the temperature projection"
             if before.get("dtemp") is not None else "")),
+        (figure_phase(before, after, numbers.get("planets_known"),
+                      os.path.join(figures, base + "-phase.pdf")),
+         "%s: the velocities folded at the known planets' periods" % name,
+         "The velocities folded at the period of each known planet or TESS"
+         " candidate (NASA Exoplanet Archive, or the configuration), delivered"
+         " on the left and corrected on the right, on one scale; phase 0 is"
+         " the transit when the archive gives one, the first exposure"
+         " otherwise. Each series is less its straight line in time (fitted"
+         " with the error bars as weights), except at a period of a third of"
+         " the campaign or more, where the line would take the planet with"
+         " it. The squares are weighted means in tenths of the phase; the"
+         " line is a sine at that period, its amplitude $K$ in the title;"
+         " dashed, where the archive gives a transit time and a"
+         " semi-amplitude, the circular orbit they imply. A correction that"
+         " left the planet alone keeps $K$."),
     ]
     for path, short, caption in drawn:
         if path:
@@ -2377,6 +2573,8 @@ def render(outdir, config=None, lbl_dir=None, out=None, stars=None):
     tree = find_tree(config, outdir, lbl_dir)
     from .lbl import object_names
     results, sections, missing = [], [], []
+    facts = {star: star_facts(star, config, folder) for star in stars}
+    planets = {}
     for star in stars:
         before_name, after_name = object_names(config, star, tag)
         before = load(tree, before_name, "delivered")
@@ -2391,10 +2589,14 @@ def render(outdir, config=None, lbl_dir=None, out=None, stars=None):
         if before["t"].size < 4:
             missing.append((star, "fewer than four exposures in common"))
             continue
-        planets = planets_of(outdir, config, star, joint)
+        known, status = known_planets(outdir, config, star, joint,
+                                      facts[star], folder)
+        planets[star] = (known, status)
         import zlib
-        numbers = star_numbers(before, after, planets,
+        numbers = star_numbers(before, after, [p["period"] for p in known],
                                seed=zlib.crc32(star.encode()) & 0xffffffff)
+        numbers["planet_names"] = [p.get("short") or p["name"] for p in known]
+        numbers["planets_known"] = known
         before["fits"] = {"before": numbers["before"].get("bias"),
                           "after": numbers["after"].get("bias")}
         newest = newest_input(outdir, star, joint)
@@ -2403,14 +2605,16 @@ def render(outdir, config=None, lbl_dir=None, out=None, stars=None):
         sections.append(velocity_section(star, before, after, numbers, folder,
                                          stale))
 
-    facts = {star: star_facts(star, config, folder) for star in stars}
+    for star in stars:
+        if star not in planets:
+            planets[star] = known_planets(outdir, config, star, joint,
+                                          facts[star], folder)
     body = ["\\section{The star%s}\n" % ("s" if len(stars) > 1 else "")]
     body.append("As SIMBAD describes %s, found from the names in the"
                 " spectra's headers and the folder's own.\n"
                 % ("them" if len(stars) > 1 else "it"))
     for star in stars:
-        body.append(star_table(star, facts[star],
-                               planets_of(outdir, config, star, joint)))
+        body.append(star_table(star, facts[star], planets[star]))
     body.append("\\section{Summary}\n")
     if results:
         body.append("One table per star: the delivered and corrected velocities"

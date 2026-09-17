@@ -33,6 +33,10 @@ def no_simbad(monkeypatch, tmp_path):
 
     monkeypatch.setattr(simbad, "_get", offline)
     monkeypatch.setattr(simbad, "CACHE", str(tmp_path / "simbad_cache"))
+    # nor the exoplanet archive
+    from pca2d import archive
+    monkeypatch.setattr(archive, "_get", offline)
+    monkeypatch.setattr(archive, "CACHE", str(tmp_path / "archive_cache"))
 
 
 # ----------------------------------------------------------------- text ---
@@ -648,3 +652,39 @@ def test_a_d2v_scatter_that_falls_is_a_gain():
         row = [line for line in table.splitlines() if "d2v robust" in line][0]
         assert (r"\gain{gain}", r"\loss{loss}", r"\muted{same}")[
             {0: 0, 1: 1, None: 2}[where]] in row
+
+
+def test_the_velocities_are_folded_at_each_known_planet(tmp_path):
+    """A planet in the velocities is found at its period with its K, in
+    both series; the periodogram reaches a period under a day and names it."""
+    r = np.random.default_rng(31)
+    t = np.sort(60000 + r.uniform(0, 300, 150))
+    e = np.full(t.size, 1.0)
+    planet = {"name": "TOI-9 b", "short": "b", "period": 0.7,
+              "t0": 2460000.1, "k": 5.0, "source": "confirmed"}
+    phase = tr.phase_of(t, planet)
+    signal = -5.0 * np.sin(2 * np.pi * phase)
+    before = series(t, 100 + signal + r.normal(0, 1, t.size), e, None, None,
+                    "delivered")
+    after = series(t, 100 + signal + r.normal(0, 1, t.size), e, None, None,
+                   "corrected")
+    k, err, curve = tr.sine_fit(phase, tr.for_phase(before, 0.7), e)
+    assert k == pytest.approx(5.0, abs=0.5) and err < 0.3
+    assert curve(0.25) == pytest.approx(-5.0, abs=0.6), "transit at phase 0"
+    assert tr.figure_phase(before, after, [planet],
+                           str(tmp_path / "phase.pdf"))
+    assert tr.figure_phase(before, after, [], str(tmp_path / "no.pdf")) is None
+    captured = []
+    real = plt.Figure.savefig
+
+    def keep(fig, *args, **kwargs):
+        captured.append(fig)
+        return real(fig, *args, **kwargs)
+
+    import unittest.mock
+    with unittest.mock.patch.object(plt.Figure, "savefig", keep):
+        assert tr.figure_periodograms(before, after, [planet],
+                                      str(tmp_path / "p.pdf"))
+    ax = captured[0].axes[0]
+    assert ax.get_xlim()[0] < 0.7, "the periodogram reaches the planet"
+    assert any(t.get_text().strip() == "b" for t in ax.texts)

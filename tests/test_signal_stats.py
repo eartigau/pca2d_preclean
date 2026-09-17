@@ -69,3 +69,13 @@ def test_a_short_series_does_not_raise():
     s = signal_stats(t, v, e, degree=2)
     assert np.isfinite(s["rms"])
     assert np.isnan(s["in_night"]), "no night has three exposures"
+
+
+def test_the_amplitude_error_follows_the_noise():
+    """sigma_K = sigma sqrt(2 / N) for a sine at a period the sampling
+    covers evenly, whatever the noise is."""
+    for noise in (1.0, 5.0, 20.0):
+        t, v, e = series(K=0.0, period=17.3, noise=noise, n=800)
+        _K, sK = amplitude_at(t, v + 30.0, e, 7.7)
+        assert abs(sK / (noise * np.sqrt(2.0 / t.size)) - 1.0) < 0.3, \
+            (noise, sK)
