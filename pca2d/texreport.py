@@ -313,14 +313,19 @@ def text_column(table, name):
 def snr_column(table):
     """(name, values) of the SNR the headers carry, or (None, None).
 
-    APERO writes the extracted SNR of one order, EXTSN060 for NIRPS; the
-    first such column, or one called SNR, is the one quoted.
+    APERO writes the extracted SNR of one order, EXTSN060 for NIRPS and
+    EXTSN035 for SPIRou, and that measured one is quoted first; a column
+    called SNR only when there is none. Never SNRGOAL: SPIRou's headers carry
+    the SNR the observation was asked to reach, and a GL725B report quoted
+    its 150.0 as the median SNR.
     """
-    for name in table.colnames:
-        if re.fullmatch(r"(EXTSN\d+|SNR\w*)", name.strip(), re.IGNORECASE):
-            values = column(table, name)
-            if values is not None:
-                return name.strip(), values
+    names = [n.strip() for n in table.colnames]
+    for pattern in (r"EXTSN\d+", r"SNR(?!GOAL)\w*"):
+        for name in names:
+            if re.fullmatch(pattern, name, re.IGNORECASE):
+                values = column(table, name)
+                if values is not None:
+                    return name, values
     return None, None
 
 

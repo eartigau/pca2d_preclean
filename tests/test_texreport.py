@@ -494,3 +494,13 @@ def test_the_periodogram_gives_the_power_of_each_false_alarm_level():
     assert len(levels) == len(tr.FAP_LEVELS) == 3
     assert np.all(np.diff(levels) > 0), "rarer false alarms need more power"
     assert 0 < levels[0] < levels[-1] < 1
+
+
+def test_the_snr_quoted_is_the_measured_one_not_the_goal():
+    from astropy.table import Table
+    table = Table({"SNRGOAL": [150.0, 150.0], "EXTSN035": [80.0, 90.0],
+                   "BERV": [1.0, 2.0]})
+    name, values = tr.snr_column(table)
+    assert name == "EXTSN035" and list(values) == [80.0, 90.0]
+    assert tr.snr_column(Table({"SNRGOAL": [150.0]})) == (None, None)
+    assert tr.snr_column(Table({"SNR": [42.0]}))[0] == "SNR"
