@@ -5,7 +5,12 @@
 #
 # Two codes in one environment on purpose: the corrected spectra this writes
 # exist to be fed to LBL, and having to deactivate one to run the other is how
-# a t.fits gets measured by the wrong version of something.
+# a t.fits gets measured by the wrong version of something. The LBL here
+# writes the star template and checks the profile; since 2026-09-18 the
+# velocities are measured by the one config.yaml's lbl.environment names,
+# lbl-rapide (LBL's speed branch, in an environment of its own, made as
+# config.yaml says), which the run starts by its own python. `current` there
+# is this one.
 #
 # WHY THE VERSIONS ARE NAILED DOWN. LBL's pyproject pins its dependencies
 # exactly (numpy==2.3.3, astropy==7.2.0, scipy==1.17.0, and the rest below),

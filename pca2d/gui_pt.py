@@ -403,6 +403,15 @@ PT = {
     "opt_lbl_template": "ficheiro de modelo",
     "opt_lbl_steps": "etapas",
     "opt_lbl_link": "espetros lá dentro como",
+    "opt_lbl_env": "que LBL",
+    "help_lbl_env":
+        "Que LBL mede, pelo ambiente conda em que o seu script corre."
+        " `lbl-rapide`, a predefinição, é o ramo rápido do LBL"
+        " (test-speed-260918-110104) num ambiente próprio, muito mais rápido,"
+        " cujos commits anunciam cada alteração sem efeito nas saídas. `current` é o LBL instalado ao lado"
+        " deste programa, o que todas as execuções anteriores usaram. Uma"
+        " execução que não encontra o escolhido para logo no início, antes do"
+        " ajuste, e diz como criá-lo.",
     "help_lbl_prepare":
         "Escrever lbl_config.yaml e run_lbl.py ao lado das saídas da execução"
         " e colocar os dois conjuntos de espetros nas pastas science do LBL."

@@ -404,6 +404,15 @@ ES = {
     "opt_lbl_template": "archivo de plantilla",
     "opt_lbl_steps": "etapas",
     "opt_lbl_link": "espectros dentro como",
+    "opt_lbl_env": "qué LBL",
+    "help_lbl_env":
+        "Qué LBL mide, por el entorno conda en el que corre su script."
+        " `lbl-rapide`, el predeterminado, es la rama rápida de LBL"
+        " (test-speed-260918-110104) en un entorno propio, mucho más rápida,"
+        " cuyos commits anuncian cada cambio sin efecto en las salidas. `current` es el LBL instalado junto"
+        " a este programa, el que usaron todas las ejecuciones anteriores."
+        " Una ejecución que no encuentra el elegido se detiene al principio,"
+        " antes del ajuste, y dice cómo crearlo.",
     "help_lbl_prepare":
         "Escribir lbl_config.yaml y run_lbl.py junto a las salidas de la"
         " ejecución y poner ambos conjuntos de espectros en las carpetas"

@@ -413,6 +413,12 @@ DEFAULTS = {
     "lbl": {
         "prepare": True,             # write LBL's config and its run script
         "run": False,                # and run it. Hours, so it is asked for.
+        # Which LBL runs it: the conda environment its script is run in.
+        # lbl-rapide is LBL's speed branch (lbl.FAST_RECIPE makes it), the
+        # default since 2026-09-18; 'current' is the LBL environment.yml
+        # installs beside this package, which ran everything before; a path
+        # is a python.
+        "environment": "lbl-rapide",
         # LBL's DATA_DIR, its own tree. None puts it under the output ROOT,
         # <output.directory>/lbl, before a run name or a variant adds its own
         # level: the delivered object's LBL products are the same for every
@@ -801,6 +807,7 @@ WINDOW_SETTINGS = (
     ("domain.dv", "the grid step, in km/s"),
     ("input.nightly_stack", "coadd each night: true, false, or auto"),
     ("lbl.run", "run LBL after the correction"),
+    ("lbl.environment", "which LBL: the environment its script runs in"),
     ("lbl.prepare", "write LBL's tree and its config"),
     ("lbl.before", "measure the uncorrected spectra too"),
     ("lbl.after", "measure the corrected spectra"),

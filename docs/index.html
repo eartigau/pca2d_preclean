@@ -176,6 +176,18 @@ conda env create -f environment.yml
 conda activate pca2d-preclean
 ./check.sh</code></pre>
       <p>
+        The velocities themselves are measured, by default, by LBL's
+        <a href="https://github.com/njcuk9999/lbl/tree/test-speed-260918-110104"
+        target="_blank">speed branch</a>, in an environment of its own made
+        once, from any folder. The run finds it by name and starts it itself;
+        without it, <code>--lbl-env current</code> has the LBL above measure,
+        as every run did before 18 September 2026.
+      </p>
+      <pre><code>git clone -b test-speed-260918-110104 https://github.com/njcuk9999/lbl.git lbl-rapide
+conda create -n lbl-rapide python=3.12
+conda activate lbl-rapide
+pip install -e ./lbl-rapide</code></pre>
+      <p>
         One alias, written once, so that a new terminal is one word from being
         ready:
       </p>
@@ -439,9 +451,11 @@ pca2d-gui                            # the same, in a window</code></pre>
         is measured (the delivered spectra, the corrected ones, or both), what
         the corrected object is called next to the delivered one, which template
         it is measured against, where LBL's tree is, which of its steps run,
-        whether LBL is actually run, and whether the spectra get there as
-        symlinks or as copies. That is the equivalent of the wrapper script, and
-        it is the step that produces velocities.
+        whether LBL is actually run, whether the spectra get there as
+        symlinks or as copies, and <strong>which LBL</strong> measures: its
+        speed branch, <code>lbl-rapide</code>, by default, or the one installed
+        beside this program (<code>current</code>). That is the equivalent of
+        the wrapper script, and it is the step that produces velocities.
       </p>
 
       <h3>What it writes, and what it remembers</h3>
@@ -555,7 +569,9 @@ pca2d-gui                            # the same, in a window</code></pre>
         <code>lbl_config.yaml</code> in LBL's own keys, and
         <code>run_lbl.py</code>, an ordinary LBL wrap script with one runparams
         dict per object. <code>lbl.run: true</code> or <code>--run-lbl</code>
-        has the stage run it.
+        has the stage run it, by the python of the environment
+        <code>lbl.environment</code> names, which is also the script's first
+        line.
       </p>
     </section>
 

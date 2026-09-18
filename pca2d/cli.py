@@ -74,6 +74,10 @@ SETTING_FLAGS = (
     ("--lbl-link", "lbl.link", ("symlink", "copy"),
      "how the spectra get into LBL's science folders"),
     ("--lbl-run", "lbl.run", "bool", "run LBL, which is hours"),
+    ("--lbl-env", "lbl.environment", str,
+     "which LBL runs: a conda environment by name (default lbl-rapide, LBL's"
+     " speed branch), 'current' for the one installed beside this package,"
+     " or a path to a python"),
     ("--lbl-prepare", "lbl.prepare", "bool",
      "write LBL's config and its run script"),
     ("--lbl-before", "lbl.before", "bool", "measure the delivered spectra too"),
@@ -902,6 +906,20 @@ def say_lbl_tree(plan, dry_run=False):
     block = plan["config"].get("lbl") or {}
     tree = lbl_directory(plan["config"])
     log("LBL tree    %s" % tree, "value")
+    # which LBL, here and not after the fit: an environment that is not on
+    # this machine found hours in is hours lost. Asking touches no file, so
+    # a dry run is told too, and only a real run is stopped.
+    code = splbl.chosen(plan["config"])
+    if code["ok"]:
+        log(splbl.say_chosen(code), "value")
+    elif block.get("run", False):
+        log(splbl.say_chosen(code), "error")
+        log(splbl.how_to_get(code), "error")
+        if not dry_run:
+            raise SystemExit(2)
+    else:
+        log("%s. LBL is only prepared by this run, so it goes on; %s"
+            % (splbl.say_chosen(code), splbl.how_to_get(code)), "warn")
     if dry_run:
         return
     mode, why = splbl.link_mode(tree, block.get("link"))
@@ -1177,12 +1195,12 @@ def run_lbl(plan):
         log("lbl.prepare and lbl.run are both off, so nothing to do here",
             "warn")
         return
-    ok, detail = splbl.available()
-    log("LBL %s" % ("is installed: %s" % detail if ok
-                    else "cannot be imported here (%s). The files below are"
-                         " still written; `conda env update -f"
-                         " environment.yml` puts LBL in this environment."
-                         % detail), "value" if ok else "warn")
+    # the LBL that measures (lbl.environment), asked once for every object
+    code = splbl.chosen(cfg)
+    log(splbl.say_chosen(code) if code["ok"] else
+        "%s. The files below are still written. %s"
+        % (splbl.say_chosen(code), splbl.how_to_get(code)),
+        "value" if code["ok"] else "warn")
     # With output.fits_directory set, every folder LBL writes in is a link to
     # the external disk before it starts; lbl/science stays here (storage.py)
     from . import storage as _storage
@@ -1205,28 +1223,29 @@ def run_lbl(plan):
             os.makedirs(theirs["outdir"], exist_ok=True)
             log("LBL for %s, corrected by the joint fit" % member["object"],
                 "info")
-            prepared = splbl.prepare(theirs)
+            prepared = splbl.prepare(theirs, code)
             if block.get("run", False):
                 if not prepared.get("readable", True):
                     log("not running LBL for %s: the profile above cannot read"
                         " its spectra" % member["object"], "error")
                     continue
-                splbl.run(prepared["script"])
+                splbl.run(prepared["script"], code)
         _velocity_pages(plan)
         return
-    prepared = splbl.prepare(plan)
+    prepared = splbl.prepare(plan, code)
     if block.get("run", False):
         if not prepared.get("readable", True):
             log("not running LBL: the profile above cannot read these spectra,"
                 " and it would take a few hundred megabytes of downloads and a"
                 " template to find that out again", "error")
             raise SystemExit(2)
-        splbl.run(prepared["script"])
+        splbl.run(prepared["script"], code)
         _velocity_pages(plan)
         return
     log("LBL is not run by this stage unless asked. Both objects are staged"
         " and everything it needs is written; to run it:", "info")
-    log("    python %s" % prepared["script"], "value")
+    log("    %s %s" % (prepared["python"] or "python", prepared["script"]),
+        "value")
     log("or set lbl.run: true in the config, or pass --run-lbl", "info")
 
 

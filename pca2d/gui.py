@@ -97,6 +97,9 @@ OPTIONS = [
 #: the `lbl:` block, in its own window: what the wrapper would have been asked
 OPTIONS_LBL = [
     ("run", "lbl.run", "bool"),
+    # which LBL: the speed branch in its own environment, the default since
+    # 2026-09-18, or the one installed beside this package, as before
+    ("lbl_env", "lbl.environment", ("lbl-rapide", "current")),
     ("lbl_prepare", "lbl.prepare", "bool"),
     ("lbl_before", "lbl.before", "bool"),
     ("lbl_after", "lbl.after", "bool"),
@@ -129,7 +132,7 @@ def window_settings():
 #: 2026-09-16 none of them travelled at all: the LBL page was shown, changed,
 #: and ignored by the run, which took the configuration's own values
 LBL_FLAGS = {
-    "run": "--lbl-run", "lbl_prepare": "--lbl-prepare",
+    "run": "--lbl-run", "lbl_env": "--lbl-env", "lbl_prepare": "--lbl-prepare",
     "lbl_before": "--lbl-before", "lbl_after": "--lbl-after",
     "lbl_star_template": "--lbl-star-template", "lbl_strpca": "--lbl-strpca",
     "lbl_suffix": "--lbl-suffix", "lbl_teff": "--lbl-teff",
@@ -487,6 +490,16 @@ EN = {
     "opt_lbl_suffix": "corrected name",
     "opt_lbl_teff": "effective temperature", "opt_lbl_template": "template file",
     "opt_lbl_steps": "steps", "opt_lbl_link": "spectra in it as",
+    "opt_lbl_env": "which LBL",
+    "help_lbl_env":
+        "Which LBL measures, by the conda environment its script runs in."
+        " `lbl-rapide`, the default, is LBL's speed branch"
+        " (test-speed-260918-110104) in an environment of its own, much"
+        " faster, every change of which its commits say leaves the outputs"
+        " untouched. `current` is the LBL installed beside this"
+        " program, the one every run used before. A run that cannot find the"
+        " one chosen stops at the top, before the fit, and says how to make"
+        " it.",
     "help_lbl_prepare":
         "Write lbl_config.yaml and run_lbl.py beside the run's outputs and put"
         " both sets of spectra into LBL's science folders. Off, the correction"
@@ -1071,6 +1084,16 @@ FR = {
     "opt_lbl_suffix": "nom du corrigé",
     "opt_lbl_teff": "température effective", "opt_lbl_template": "fichier gabarit",
     "opt_lbl_steps": "étapes", "opt_lbl_link": "spectres dedans en",
+    "opt_lbl_env": "quel LBL",
+    "help_lbl_env":
+        "Quel LBL mesure, par l'environnement conda où tourne son script."
+        " `lbl-rapide`, le défaut, est la branche rapide du LBL"
+        " (test-speed-260918-110104) dans un environnement à elle, beaucoup"
+        " plus rapide, dont chaque changement est annoncé sans effet sur les"
+        " sorties par son commit. `current` est le LBL installé"
+        " à côté de ce programme, celui de tous les passages d'avant. Un"
+        " passage qui ne trouve pas celui choisi s'arrête en tête, avant"
+        " l'ajustement, et dit comment le créer.",
     "help_lbl_prepare":
         "Écrire lbl_config.yaml et run_lbl.py à côté des sorties du passage et"
         " déposer les deux jeux de spectres dans les dossiers science du LBL."
@@ -4117,7 +4140,10 @@ class App:
                 var = tk.BooleanVar(value=bool(default))
                 widget = ttk.Checkbutton(grid, variable=var)
             elif isinstance(kind, tuple):
-                var = tk.StringVar(value=str(default))
+                # the first choice when no configuration could be read, rather
+                # than the word None in a list that cannot be typed into
+                var = tk.StringVar(value=str(kind[0] if default is None
+                                             else default))
                 widget = ttk.Combobox(grid, textvariable=var, values=list(kind),
                                       width=14, state="readonly")
             else:

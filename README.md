@@ -205,7 +205,20 @@ Beside the run's outputs:
 | `star_template.fits` | the fit's star template, made again only when the fit changes |
 
 `lbl.run: true` in `config.yaml`, or `--run-lbl`, has the stage run LBL rather
-than only prepare it. Which LBL instrument a spectrograph is comes from its
+than only prepare it.
+
+**Which LBL** is `lbl.environment` (`--lbl-env`, or *which LBL* on the window's
+LBL page): the conda environment `run_lbl.py` is run in, whose python is its
+first line. `lbl-rapide`, the default since 2026-09-18, is LBL's speed branch,
+[`test-speed-260918-110104`](https://github.com/njcuk9999/lbl/tree/test-speed-260918-110104):
+main plus numba kernels and one open per FITS file, every commit of which says
+the outputs do not change. `current` is the LBL installed beside this package,
+which measured every run before. A run that is to run LBL and cannot find the
+one chosen stops at the top, before the fit. The speed branch keeps main's
+in-place division of the residual for RESPROJ tables (in `lbl/core/fastmath.py`
+now), so the warning about STRPCA3 and beyond holds for both.
+
+Which LBL instrument a spectrograph is comes from its
 block in `config.yaml`: LBL calls NIRPS `NIRPS_HA` or `NIRPS_HE` by the mode it
 was observed in, and the wrong one raises no error, it returns velocities from
 another instrument's profile. The effective temperature LBL needs for its mask
@@ -281,6 +294,20 @@ conda env create -f environment.yml
 conda activate pca2d-preclean
 ```
 
+LBL's velocities are measured, by default, by LBL's speed branch in an
+environment of its own, `lbl-rapide`, made once, from any folder:
+
+```
+git clone -b test-speed-260918-110104 https://github.com/njcuk9999/lbl.git lbl-rapide
+conda create -n lbl-rapide python=3.12
+conda activate lbl-rapide
+pip install -e ./lbl-rapide
+```
+
+The run finds it by name and starts its python itself, so nothing is
+activated by hand. Without it, `--lbl-env current` (or `lbl.environment:
+current`) has the LBL of `pca2d-preclean` measure, as before 2026-09-18.
+
 One alias, written once, so that a new terminal is one word from being ready:
 
 ```
@@ -302,7 +329,10 @@ confirm it and the three ways out:
 
 That environment holds **both codes**, this one and LBL. Having to deactivate
 one to run the other is how a t.fits gets measured by the wrong version of
-something.
+something. The LBL in it writes the star template and checks the profile;
+the velocities come from the one `lbl.environment` names, which the run says
+at the top, by version and folder, and whose python `run_lbl.py` names on its
+first line.
 
 It is why the versions are nailed down rather than floored. LBL pins its
 dependencies exactly, `numpy==2.3.3`, `astropy==7.2.0`, `scipy==1.17.0` and the

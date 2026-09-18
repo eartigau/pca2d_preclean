@@ -318,9 +318,20 @@ def _aliased(source):
                 and re.search(r"^\s*frac_diff_seg\s*/=", source, re.M))
 
 
-def resproj_divides_in_place():
-    """Whether the installed LBL projects every RESPROJ table after the first
-    on a residual it has already divided.
+def _divided_in_place(source):
+    """Whether a numba kernel divides the residual itself, element by element.
+
+    LBL's speed branch moved the line loop into lbl/core/fastmath.py and kept
+    the division exactly (its commits are bit-identical): `diff_seg[i] /=`
+    inside the loop over the tables, with no alias left to find.
+    """
+    import re
+    return bool(re.search(r"^\s*diff_seg\[\w+\]\s*/=", source, re.M))
+
+
+def resproj_divides_in_place(package_dir=None):
+    """Whether an LBL projects every RESPROJ table after the first on a
+    residual it has already divided.
 
     lbl.science.general writes `frac_diff_seg = diff_seg` and then
     `frac_diff_seg /= (b_ratio_seg * norm_seg)`: an alias and not a copy, so
@@ -329,11 +340,26 @@ def resproj_divides_in_place():
     writes to lblrv use the divided residual too (nothing in LBL reads those
     back, so the velocities are untouched). Read from LBL's own source, so a
     fixed LBL stops being warned about.
+
+    `package_dir` is the folder of the LBL package to read, the one that will
+    run (lbl.chosen); None is the one this process imports. Its speed branch
+    does the same division in lbl/core/fastmath.py, which is read too.
     """
     import inspect
     try:
-        from lbl.science import general
-        return _aliased(inspect.getsource(general))
+        if package_dir is None:
+            from lbl.science import general
+            general_file = inspect.getsourcefile(general)
+            package_dir = os.path.dirname(os.path.dirname(general_file))
+        found = False
+        for rel, test in ((os.path.join("science", "general.py"), _aliased),
+                          (os.path.join("core", "fastmath.py"),
+                           _divided_in_place)):
+            path = os.path.join(package_dir, rel)
+            if os.path.exists(path):
+                with open(path) as handle:
+                    found = found or test(handle.read())
+        return found
     except Exception:                                          # noqa: BLE001
         return False
 

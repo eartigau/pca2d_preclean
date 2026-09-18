@@ -47,6 +47,7 @@ in what order, and what to write down after each run.
 | project root | `/home/artigau/pca2d_optimisation` (45 TB free) |
 | the code | `/data/spirou/pca2d_preclean`, a clone of this repository |
 | the environment | `conda activate pca2d-preclean` (it holds LBL 0.67.008) |
+| which LBL measures | since 2026-09-18 the default is the conda environment `lbl-rapide`, LBL's speed branch (`config.yaml`, `lbl.environment`, says how to make it). Not verified on rali: without it a run that runs LBL stops at the top, before the fit; `--lbl-env current` measures with the LBL of `pca2d-preclean`, and changes the run's hash, so keep one choice for a whole campaign |
 | pdflatex | `/usr/bin/pdflatex`, so the reports compile |
 | NIRPS spectra | `/cosmos99/nirps/apero-data/nirps_he_offline/objects/<OBJECT>` |
 | SPIRou spectra | `/cosmos99/spirou/apero-data/spirou_offline/objects/<OBJECT>` |

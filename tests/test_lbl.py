@@ -327,12 +327,28 @@ def test_the_header_spells_the_two_frames_one_way_only():
 # ---------------------------------------- the name `lbl` must mean LBL -------
 def test_nothing_in_the_package_edits_sys_path():
     """A package directory on the path turns every module in it into a top-level
-    name. pca2d/lbl.py then shadows LBL, and pca2d/io.py the standard io."""
+    name. pca2d/lbl.py then shadows LBL, and pca2d/io.py the standard io.
+
+    The CALLS, read from the syntax tree, and not the words: run_lbl.py, which
+    pca2d/lbl.py writes as text for another process, appends the repository
+    to that process's path once LBL is imported there (lbl.write_runner), and
+    a string is not this package editing its own path."""
+    import ast
     import pathlib
+
+    def edits_path(node):
+        return (isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in ("insert", "append", "extend")
+                and isinstance(node.func.value, ast.Attribute)
+                and node.func.value.attr == "path"
+                and isinstance(node.func.value.value, ast.Name)
+                and node.func.value.value.id == "sys")
 
     root = pathlib.Path(__file__).resolve().parent.parent / "pca2d"
     offenders = [str(p.relative_to(root.parent)) for p in root.rglob("*.py")
-                 if re.search(r"sys\.path\.(insert|append|extend)", p.read_text())]
+                 if any(edits_path(node)
+                        for node in ast.walk(ast.parse(p.read_text())))]
     assert not offenders, "edits sys.path: %s" % ", ".join(offenders)
 
 

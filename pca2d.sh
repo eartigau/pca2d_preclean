@@ -12,7 +12,10 @@
 #
 # The environment holds BOTH codes, this one and LBL, which is why leaving the
 # one that happens to be active matters: having to deactivate one to run the
-# other is how a t.fits gets measured by the wrong version of something.
+# other is how a t.fits gets measured by the wrong version of something. The
+# velocities are measured by the LBL config.yaml's lbl.environment names
+# (lbl-rapide, LBL's speed branch, by default), which the run starts through
+# that environment's own python: nothing to activate for it here.
 
 ENV_NAME=${PCA2D_ENV:-pca2d-preclean}
 

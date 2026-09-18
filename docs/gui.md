@@ -175,9 +175,12 @@ few seconds of one scan, nothing else.
 The `lbl:` block, between the settings and the analysis: what is measured (the
 delivered spectra, the corrected ones, or both), what the corrected object is
 called next to the delivered one, which template it is measured against, where
-LBL's tree is, which of its steps run, whether LBL is actually run, and whether
-the spectra get there as symlinks or copies. That is the equivalent of the
-wrapper, and it is the step that produces velocities. It had a window of its own
+LBL's tree is, which of its steps run, whether LBL is actually run, whether
+the spectra get there as symlinks or copies, and **which LBL** measures:
+`lbl-rapide`, LBL's speed branch in a conda environment of its own, the default
+since 2026-09-18, or `current`, the LBL installed beside this program, as
+before. That is the equivalent of the wrapper, and it is the step that produces
+velocities. It had a window of its own
 until the pages existed, which was one window too many: these are settings like
 the others, they are simply LBL's rather than the fit's.
 

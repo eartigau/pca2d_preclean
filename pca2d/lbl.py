@@ -39,13 +39,24 @@ What it leaves beside the run's other outputs:
 
 Running LBL takes hours, so the stage prepares by default and runs only when
 asked: `lbl.run: true` in the config, or --run-lbl on the command line.
+
+Which LBL runs it is `lbl.environment`: a conda environment by name, and
+`lbl-rapide` by default, LBL's speed branch in an environment of its own
+(FAST_RECIPE). `current` is the LBL installed beside this package by
+environment.yml, which is what every run used until 2026-09-18. The template
+writer and the profile check still use that one, in this process: they read
+and write files, and the speed branch changed neither format.
 """
 
 from __future__ import annotations
 
+import functools
+import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 
 import yaml
 
@@ -163,6 +174,198 @@ def _what_lbl_resolves_to():
     except (ImportError, ValueError):
         return None
     return getattr(spec, "origin", None) if spec else None
+
+
+#: lbl.environment's word for the interpreter this package runs in, and the
+#: LBL environment.yml installs beside it (LBL main)
+CURRENT = "current"
+#: lbl.environment when nothing says otherwise
+DEFAULT_ENVIRONMENT = "lbl-rapide"
+#: how that environment is made, said wherever it is missing. LBL's speed
+#: branch: main plus [LBL.SPEED] commits, numba kernels and single-open FITS
+#: I/O, every one of which says in its message that the outputs do not change
+FAST_RECIPE = ("git clone -b test-speed-260918-110104"
+               " https://github.com/njcuk9999/lbl.git lbl-rapide\n"
+               "conda create -n lbl-rapide python=3.12\n"
+               "conda activate lbl-rapide\n"
+               "pip install -e ./lbl-rapide")
+
+#: What another interpreter is asked, from a folder with no `lbl` in it.
+#: `python -c` puts its working directory first on the path, and the root of
+#: this repository holds an `lbl/` folder, the examples' LBL tree: an LBL
+#: installed in place (pip install -e) is found through a finder hook that
+#: comes after the path, so that folder won, as an empty namespace package,
+#: the first time this was asked from there.
+PROBE = ("import os, lbl\n"
+         "where = getattr(lbl, '__file__', None)\n"
+         "if not where:\n"
+         "    raise SystemExit('the name lbl is %s, a folder and not the LBL"
+         " package' % list(lbl.__path__))\n"
+         "print(getattr(lbl, '__version__', 'unknown'))\n"
+         "print(os.path.dirname(os.path.abspath(where)))\n")
+
+
+def asked_environment(config: dict) -> str:
+    """lbl.environment, as written, or the default."""
+    asked = (config.get("lbl") or {}).get("environment")
+    return str(asked).strip() if asked not in (None, "") else DEFAULT_ENVIRONMENT
+
+
+def conda_prefix(name: str):
+    """The folder of the conda environment called `name`, or None.
+
+    Looked for beside the environment this runs in first, which is where
+    `conda create -n` puts it and costs nothing, then in conda's own envs
+    folder, and only then asked of conda, which takes a second.
+    """
+    if os.path.basename(sys.prefix) == name:
+        return sys.prefix
+    roots = []
+    parent = os.path.dirname(sys.prefix)
+    if os.path.basename(parent) == "envs":
+        roots.append(parent)
+    roots.append(os.path.join(sys.prefix, "envs"))     # when this is base
+    conda = os.environ.get("CONDA_EXE")
+    if conda:
+        roots.append(os.path.join(os.path.dirname(os.path.dirname(conda)),
+                                  "envs"))
+    roots.append(os.path.expanduser(os.path.join("~", ".conda", "envs")))
+    for root in roots:
+        if os.path.isdir(os.path.join(root, name)):
+            return os.path.join(root, name)
+    conda = conda or shutil.which("conda")
+    if not conda:
+        return None
+    try:
+        out = subprocess.run([conda, "env", "list", "--json"],
+                             capture_output=True, text=True, timeout=60)
+        prefixes = json.loads(out.stdout).get("envs", [])
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+    return next((p for p in prefixes if os.path.basename(p) == name), None)
+
+
+def python_in(prefix: str):
+    """The python of the environment at `prefix`, or None if it has none."""
+    for rel in (os.path.join("bin", "python"), "python.exe"):
+        path = os.path.join(prefix, rel)
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    return None
+
+
+def interpreter(config: dict) -> tuple:
+    """(python, what it is) for LBL's script, from lbl.environment.
+
+    `current` is the interpreter this package runs in. A path is a python, or
+    the folder of an environment. Any other word is a conda environment by
+    name. python is None when it names nothing on this machine, and `what`
+    then says what was looked for.
+    """
+    asked = asked_environment(config)
+    if asked.lower() == CURRENT:
+        return sys.executable, "the environment pca2d-preclean runs in"
+    if os.sep in asked or asked.startswith("~"):
+        path = os.path.expanduser(asked)
+        python = python_in(path) if os.path.isdir(path) else (
+            path if os.path.isfile(path) and os.access(path, os.X_OK) else None)
+        return python, ("%s" % path if python else
+                        "%s, which is not a python nor an environment's folder"
+                        % path)
+    prefix = conda_prefix(asked)
+    if prefix is None:
+        return None, "the conda environment %s, which is not on this machine" \
+            % asked
+    python = python_in(prefix)
+    return python, ("the conda environment %s" % asked if python else
+                    "the conda environment %s, which has no python (%s)"
+                    % (asked, prefix))
+
+
+def environment_for(python: str) -> dict:
+    """The process environment `python` is started with: this one, less
+    PYTHONPATH and PYTHONHOME when it is another environment's.
+
+    The window starts the pipeline with this repository first on PYTHONPATH
+    (gui.App), and the repository holds an `lbl/` folder, the examples' LBL
+    tree. An LBL installed in place is found through a finder hook that
+    comes after the path, so in lbl-rapide that folder was `lbl`, as an empty
+    namespace package, and `from lbl.recipes import lbl_wrap` could not work.
+    The runner finds pca2d by itself (write_runner), after LBL.
+    """
+    env = dict(os.environ)
+    if python != sys.executable:
+        for key in ("PYTHONPATH", "PYTHONHOME"):
+            env.pop(key, None)
+    return env
+
+
+@functools.lru_cache(maxsize=None)
+def probe(python: str) -> tuple:
+    """(True, LBL's version, its package folder) as `python` imports LBL, or
+    (False, why, None).
+
+    This process's own interpreter is answered by available(), as it always
+    was; another is asked, which costs the two seconds of importing LBL once
+    per run.
+    """
+    if python == sys.executable:
+        ok, detail = available()
+        if not ok:
+            return False, detail, None
+        import lbl
+        return True, detail, os.path.dirname(os.path.abspath(lbl.__file__))
+    try:
+        out = subprocess.run([python, "-c", PROBE], capture_output=True,
+                             text=True, timeout=300, cwd=tempfile.gettempdir(),
+                             env=environment_for(python))
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, str(exc), None
+    lines = out.stdout.strip().splitlines()
+    if out.returncode != 0 or len(lines) < 2:
+        tail = (out.stderr.strip().splitlines() or ["exit %d" % out.returncode])
+        return False, tail[-1], None
+    return True, lines[-2], lines[-1]
+
+
+def chosen(config: dict) -> dict:
+    """Which LBL measures: the python lbl.environment names and what it imports.
+
+    {asked, python, what, ok, detail, where}: detail is LBL's version when ok
+    and why not otherwise; where is the folder of the LBL package it imports.
+    """
+    asked = asked_environment(config)
+    python, what = interpreter(config)
+    if python is None:
+        return dict(asked=asked, python=None, what=what, ok=False,
+                    detail=what, where=None)
+    ok, detail, where = probe(python)
+    return dict(asked=asked, python=python, what=what, ok=ok, detail=detail,
+                where=where)
+
+
+def say_chosen(code: dict) -> str:
+    """One line for the log: which LBL, from where, run by which python."""
+    if code["ok"]:
+        return ("LBL %s from %s, run by %s: %s (lbl.environment: %s)"
+                % (code["detail"], code["where"], code["python"], code["what"],
+                   code["asked"]))
+    return ("lbl.environment is %s, and %s" % (code["asked"], (
+        "%s cannot import LBL: %s" % (code["python"], code["detail"])
+        if code["python"] else "that is %s" % code["what"])))
+
+
+def how_to_get(code: dict) -> str:
+    """What to do about a chosen LBL that is not there."""
+    fix = ("--lbl-env %s (lbl.environment: %s) runs the LBL installed beside"
+           " this package instead" % (CURRENT, CURRENT))
+    if code["asked"] == DEFAULT_ENVIRONMENT:
+        return ("%s is LBL's speed branch, in an environment of its own, made"
+                " once with\n\n%s\n\nor %s."
+                % (DEFAULT_ENVIRONMENT, "\n".join("    " + line for line in
+                                                   FAST_RECIPE.splitlines()),
+                   fix))
+    return fix[0].upper() + fix[1:] + "."
 
 
 def profile(config: dict) -> tuple:
@@ -400,15 +603,16 @@ def runparams(config: dict, data_dir: str, instrument: str, data_source: str,
     return params
 
 
-RUNNER = '''#!/usr/bin/env python
+RUNNER = '''#!%(shebang)s
 """Run LBL on %(object)s, as delivered and as pca2d-preclean corrected it (%(tag)s).
 
 Written by pca2d-preclean, and left here to be read, edited and re-run by
 hand: an ordinary LBL wrap script, with one of the runparams dicts LBL users
 know per object. The settings that are not about which object is which live
-in %(config)s.
+in %(config)s. It is run by the python of the LBL it was written for
+(lbl.environment):
 
-    python %(script)s
+    %(python)s %(script)s
 """
 
 from lbl.recipes import lbl_wrap
@@ -438,14 +642,19 @@ def _block(name, comment, params, upper=True):
 
 
 def write_runner(path: str, runs: list, strpca, object_name: str, tag: str,
-                 config_file: str) -> str:
+                 config_file: str, python: str = None) -> str:
     """The wrap script: one runparams dict per object, spelled one key a line.
 
     `runs` is [(NAME, comment, params)], in the order they are run. `strpca`,
     when not None, is lbltemplate.strpca_from's arguments: the object named
     AFTER then runs its mask alone first, the tables are written in the rest
     frame that mask measured, and its velocities are measured with them.
+    `python` is the interpreter it is written for, its first line, so that
+    ./run_lbl.py is run by the LBL it was meant for.
     """
+    # where the pca2d package is, for strpca_from: the environment LBL runs in
+    # need not have pca2d-preclean installed
+    package_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     # UPPER CASE, and not a style choice: lbl_wrap reads runparams['INSTRUMENT']
     # and every other key by that exact spelling, so a lower-case dict fails on
     # the first line of its own checking with "Must define key INSTRUMENT".
@@ -459,6 +668,14 @@ def write_runner(path: str, runs: list, strpca, object_name: str, tag: str,
                      " the mask measures",
                      "    lbl_wrap.main(dict(AFTER, RUN_LBL_COMPUTE=False,"
                      " RUN_LBL_COMPILE=False))",
+                     "    # pca2d-preclean, which LBL's environment need not"
+                     " hold: at the END of the",
+                     "    # path, and only now that LBL is imported, since that"
+                     " folder also holds",
+                     "    # an lbl/ tree the name `lbl` would otherwise find",
+                     "    import sys",
+                     "    if %r not in sys.path:" % package_root,
+                     "        sys.path.append(%r)" % package_root,
                      "    from pca2d.lbltemplate import strpca_from",
                      "    # after DTEMP, which has to stay first (see the"
                      " config's lbl.dtemp)",
@@ -466,6 +683,8 @@ def write_runner(path: str, runs: list, strpca, object_name: str, tag: str,
                      '"RESPROJ_TABLES") or {}, **strpca_from(**STRPCA))']
         main.append("    lbl_wrap.main(%s)" % name)
     body = RUNNER % {
+        "shebang": python or "/usr/bin/env python",
+        "python": python or "python",
         "object": object_name,
         "tag": tag,
         "script": os.path.abspath(path),
@@ -560,9 +779,9 @@ def star_template(plan, config_file: str, name: str, files, place=True) -> dict:
             "status": status}
 
 
-def prepare(plan) -> dict:
+def prepare(plan, code=None) -> dict:
     """Stage both objects, make the star template, write LBL's config and the
-    script that runs it."""
+    script that runs it. `code` is chosen(config), found here if not given."""
     config = plan["config"]
     block = config.get("lbl") or {}
     object_name = config["input"]["object"]
@@ -570,6 +789,7 @@ def prepare(plan) -> dict:
     from .config import lbl_directory
     data_dir = lbl_directory(config)
     before, after = object_names(config, object_name, plan["tag"])
+    code = code or chosen(config)
 
     log("LBL profile: instrument %s, data source %s, from %s"
         % (instrument, data_source, where), "value")
@@ -680,22 +900,26 @@ def prepare(plan) -> dict:
                 % (n_star, ", ".join("STRPCA%d" % k for k in range(2, n_star + 1))),
                 "value")
             from .lbltemplate import resproj_divides_in_place
-            if dtemp_table(block, teff) and resproj_divides_in_place():
+            # the LBL that will run, which is not this process's own
+            aliased = resproj_divides_in_place(code["where"])
+            if dtemp_table(block, teff) and aliased:
                 log("DTEMP is the first RESPROJ table and the STRPCA ones come"
-                    " after it, and the LBL installed here divides the residual"
+                    " after it, and the LBL that runs divides the residual"
                     " in place for each table: DTEMP is right and STRPCA2..%d"
                     " are not. lbl.dtemp: false puts STRPCA2 first again"
                     % n_star, "warn")
-            if n_star >= 3 and resproj_divides_in_place():
-                log("the LBL installed here divides the residual in place for"
+            if n_star >= 3 and aliased:
+                log("the LBL that runs divides the residual in place for"
                     " each RESPROJ table (frac_diff_seg = diff_seg in"
-                    " lbl/science/general.py), so every table after the first"
-                    " is projected on a residual divided twice: STRPCA2 is"
-                    " right and STRPCA3..%d are not, until that is a copy"
+                    " lbl/science/general.py, diff_seg[i] /= in the speed"
+                    " branch's lbl/core/fastmath.py), so every table after the"
+                    " first is projected on a residual divided twice: STRPCA2"
+                    " is right and STRPCA3..%d are not, until that is a copy"
                     % n_star, "warn")
 
     script = write_runner(os.path.join(plan["outdir"], "run_lbl.py"), runs,
-                          strpca, object_name, plan["tag"], config_file)
+                          strpca, object_name, plan["tag"], config_file,
+                          python=code["python"])
 
     if runs and runs[0][2]["RUN_LBL_MASK"] and teff is None:
         log("no Teff, and the mask step is on. LBL stops on that rather than"
@@ -706,20 +930,25 @@ def prepare(plan) -> dict:
     log("LBL script   %s" % script, "value")
     return {"config_file": config_file, "script": script, "objects": objects,
             "data_dir": data_dir, "readable": ok, "star": star,
-            "strpca": strpca is not None}
+            "strpca": strpca is not None, "python": code["python"],
+            "code": code}
 
 
-def run(script: str) -> None:
-    """Run the script that was just written, in this interpreter's env."""
-    ok, detail = available()
-    if not ok:
-        raise SystemExit(
-            "lbl.run is on but LBL cannot be imported here: %s. It is in"
-            " environment.yml; `conda env update -f environment.yml` puts it"
-            " in this environment." % detail)
-    log("running LBL %s. This is hours, and LBL prints its own progress."
-        % detail, "info")
-    result = subprocess.run([sys.executable, script])
+def run(script: str, code: dict = None) -> None:
+    """Run the script that was just written, by the LBL lbl.environment chose.
+
+    `code` is chosen(config); without one it is this interpreter's LBL, as it
+    was before there was a choice.
+    """
+    code = code or chosen({"lbl": {"environment": CURRENT}})
+    if not code["ok"]:
+        raise SystemExit("lbl.run is on, but %s. %s"
+                         % (say_chosen(code), how_to_get(code)))
+    log("running LBL %s from %s, with %s. This is hours, and LBL prints its"
+        " own progress." % (code["detail"], code["where"], code["python"]),
+        "info")
+    result = subprocess.run([code["python"], script],
+                            env=environment_for(code["python"]))
     if result.returncode != 0:
         raise SystemExit("LBL exited %d; the script that ran is %s"
                          % (result.returncode, script))
