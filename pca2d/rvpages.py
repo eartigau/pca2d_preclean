@@ -158,9 +158,12 @@ def stars_of(plan):
 
 def report_path(plan):
     """The bundle this run left, or None when the figures stage did not run."""
-    obj = plan["config"]["input"].get("object")
-    tag = plan["tag"]
-    path = os.path.join(plan["outdir"], "%s_%s.pdf" % (obj, tag))
+    from .naming import report_name
+
+    config = plan["config"]
+    stem = report_name(config["input"].get("object"), plan["tag"],
+                       (config.get("provenance") or {}).get("run_hash"))
+    path = os.path.join(plan["outdir"], stem + ".pdf")
     return path if os.path.exists(path) else None
 
 

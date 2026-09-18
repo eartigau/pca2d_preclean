@@ -45,7 +45,7 @@ SWEPT = (("weight", "correct.weight"), ("n_star", "twoframe.n_star"),
          ("shrink", "correct.shrink"), ("mean", "twoframe.mean"),
          ("star_basis", "twoframe.star_basis"),
          ("nightly_stack", "input.nightly_stack"))
-FIELDS = (["star", "run", "started", "targets", "joint", "tag"]
+FIELDS = (["star", "run", "hash", "started", "targets", "joint", "tag"]
           + [name for name, _path in SWEPT]
           + ["n", "nights", "rms_before", "rms_after", "robust_before",
              "robust_after", "nightly_before", "nightly_after",
@@ -79,7 +79,8 @@ def scored(run, lbl_dir=None):
             continue
         b = velocity_stats(before["t"], before["v"], before["e"])
         a = velocity_stats(after["t"], after["v"], after["e"])
-        row = {"star": star, "run": run["name"], "started": run["started"],
+        row = {"star": star, "run": run["name"], "hash": run.get("hash", ""),
+               "started": run["started"],
                "targets": run["objects"], "joint": len(stars_of(run)) > 1,
                "tag": run["tag"], "folder": run["folder"],
                "report": run["report"] or "", "n": b["n"],
@@ -128,14 +129,14 @@ def write_status(rows, path, roots, waiting=()):
              "The metric is the robust sigma (1.4826 MAD) of the LBL"
              " velocities: `gain` is the delivered one divided by the"
              " corrected one, so above 1 is better.", "",
-             "| star | run | n* | nE | weight | high pass | vel. term |"
-             " robust before | robust after | gain | report |",
+             "| hash | star | run | n* | nE | weight | high pass |"
+             " vel. term | robust before | robust after | gain | report |",
              "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
-             " --- |"]
+             " --- | --- |"]
     for row in rows:
-        lines.append("| %s | %s | %s | %s | %s | %s | %s | %.2f | %.2f |"
-                     " **%.2f** | %s |"
-                     % (row["star"], row["run"], row["n_star"],
+        lines.append("| `%s` | %s | %s | %s | %s | %s | %s | %s | %.2f |"
+                     " %.2f | **%.2f** | %s |"
+                     % (row["hash"], row["star"], row["run"], row["n_star"],
                         row["n_earth"], row["weight"], row["high_pass_kms"],
                         row["velocity_term"], row["robust_before"],
                         row["robust_after"], row["gain_robust"] or 0,

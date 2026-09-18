@@ -2611,7 +2611,9 @@ def render(outdir, config=None, lbl_dir=None, out=None, stars=None):
     folder = os.path.join(outdir, "report")
     os.makedirs(os.path.join(folder, "figures"), exist_ok=True)
     tag = os.path.basename(outdir)
-    name = "%s_%s" % (config["input"].get("object") or "run", tag)
+    from .naming import report_name
+    name = report_name(config["input"].get("object") or "run", tag,
+                       (config.get("provenance") or {}).get("run_hash"))
     out = out or os.path.join(outdir, name + ".pdf")
 
     manifest = read_manifest(folder)

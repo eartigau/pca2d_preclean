@@ -280,21 +280,33 @@ def name_run(config, args):
     """Give this run its own folder and its own LBL object, if it needs one.
 
     `--name` when it was typed, otherwise the date window's own label when one
-    was given. A run that fits and corrects a different set of exposures is a
-    different result, and two of them must not write into one folder nor under
-    one LBL object name: LBL globs its science folder and would measure the
-    mixture without a word (the {tag} comment in config.yaml).
+    was given, and in both cases the hash of the command after it: two runs
+    called `earth3` at different settings are two results, and two of them
+    must not write into one folder nor under one LBL object name, since LBL
+    globs its science folder and would measure the mixture without a word
+    (the {tag} comment in config.yaml). `--name auto` is the hash with the
+    targets in front of it and nothing typed.
+
+    A folder `_<name>` that is already there is that run, and is used as it
+    is: runs made before the names carried a hash stay where they are, and a
+    resume lands where it left off. It is refused only when what is in it was
+    made by another command (its own provenance says so).
     """
+    from .naming import run_hash, run_name
+
     label = getattr(args, "name", None) or window_label(args)
     if not label:
         return None
+    stamp = run_hash(sys.argv[1:])
     if str(label).strip().lower() == "auto":
         # the command itself, which is what makes this run a different result
-        from .naming import run_name
         label = run_name(sys.argv[1:], getattr(args, "objects", None)
                          or ([args.object] if getattr(args, "object", None)
                              else []))
     label = re.sub(r"[^0-9A-Za-z._+-]", "_", str(label)).strip("_") or "run"
+    from .naming import label_with_hash
+    root = config["output"]["directory"]
+    label = older_run(root, label, stamp) or label_with_hash(label, stamp)
     config["output"]["directory"] = os.path.join(config["output"]["directory"],
                                                  "_" + label)
     config["lbl"]["suffix"] = "%s_%s" % (config["lbl"].get("suffix")
@@ -302,10 +314,64 @@ def name_run(config, args):
     return label
 
 
+def older_run(root, label, stamp):
+    """`label` when a run of that exact name is already on disk and is this
+    one, else None.
+
+    This one means: made by a command that hashed the same, or made before
+    2026-09-18, when names began to carry a hash and nothing recorded one.
+    Anything else is another run that happened to be given the same name,
+    and the hash is what keeps the two apart.
+    """
+    from . import runs as _runs
+
+    folder = os.path.join(root, "_" + label)
+    if not os.path.isdir(folder):
+        return None
+    found = [_runs.one(f) for f in _runs.folders(folder)]
+    hashes = {(run["config"].get("provenance") or {}).get("run_hash")
+              for run in found}
+    if not hashes or hashes <= {None, "", stamp}:
+        log("the folder %s is already there and is this run: it is used as it"
+            " is%s" % (folder, ", and was made before the names carried a"
+                       " hash" if hashes <= {None, ""} and hashes else ""),
+            "value")
+        return label
+    return None
+
+
 def reused_fit(root, base, object_name, tag):
-    """The run folder a correction-only variant takes its fit from: the
-    nominal's (reuse_fit: nominal) or another variant's."""
-    parent = root if base == "nominal" else os.path.join(root, "_" + str(base))
+    """The run folder a correction-only variant takes its fit from.
+
+    `reuse_fit: nominal` is the unnamed root; anything else names a run, and
+    a named run's folder is `_<name>`, which since 2026-09-18 carries a hash
+    after the name it was given. So a name matches the folder called exactly
+    that, or the one called that plus a hash; a hash on its own matches the
+    folder that ends with it; and a path is taken as given. The newest of
+    what matches, since a scenario run twice is the same scenario.
+    """
+    base = str(base)
+    if os.sep in base:                       # a folder, said in full
+        here = base if os.path.isabs(base) else os.path.join(root, base)
+        return here if os.path.exists(os.path.join(here, "fit.npz")) \
+            else os.path.join(here, object_name, tag)
+    if base == "nominal" and os.path.isdir(os.path.join(root, object_name)):
+        return os.path.join(root, object_name, tag)
+    here = []
+    for name in sorted(os.listdir(root) if os.path.isdir(root) else []):
+        if not name.startswith("_"):
+            continue
+        label = name[1:]
+        if label == base or label.startswith(base + "_") \
+                or label.endswith("_" + base):
+            folder = os.path.join(root, name, object_name, tag)
+            if os.path.exists(os.path.join(folder, "fit.npz")):
+                here.append((os.path.getmtime(os.path.join(folder, "fit.npz")),
+                             folder))
+    if here:
+        return max(here)[1]
+    # nothing yet: the name check_reused_fit will report as missing
+    parent = root if base == "nominal" else os.path.join(root, "_" + base)
     return os.path.join(parent, object_name, tag)
 
 
@@ -423,7 +489,10 @@ def joint_plan(args, variant):
     named = name_run(config, args)
     if named:
         log("run named %s: its own folder and its own LBL object, since it fits"
-            " and corrects its own set of exposures" % named, "value")
+            " and corrects its own set of exposures. The six characters are"
+            " the hash of this command, with --stages, --dry-run,"
+            " --rebuild-cube, --clean-cache and --lbl-before left out of it,"
+            " so a run resumed keeps its name" % named, "value")
     name = _joint.joint_name(args.objects)
     config["input"]["object"] = name
     # a variant names its own folder and its own LBL objects here, exactly as it
@@ -510,7 +579,10 @@ def resolve(args):
     named = name_run(config, args)
     if named:
         log("run named %s: its own folder and its own LBL object, since it fits"
-            " and corrects its own set of exposures" % named, "value")
+            " and corrects its own set of exposures. The six characters are"
+            " the hash of this command, with --stages, --dry-run,"
+            " --rebuild-cube, --clean-cache and --lbl-before left out of it,"
+            " so a run resumed keeps its name" % named, "value")
     if args.windows:
         config["output"]["windows"] = list(args.windows)
     if args.rebuild_cube:
@@ -1267,6 +1339,9 @@ def main(argv=None):
     # without going by the file times of what each one happened to write
     plan["config"]["provenance"]["started"] = datetime.datetime.now(
     ).astimezone().isoformat(timespec="seconds")
+    # and which run this is: the hash of the command, as the name carries it
+    from .naming import run_hash
+    plan["config"]["provenance"]["run_hash"] = run_hash(sys.argv[1:])
     log("code        pca2d %s" % code_stamp(plan["config"]["provenance"]), "value")
     import yaml
     with open(plan["written_config"], "w") as fh:
@@ -1296,8 +1371,11 @@ def main(argv=None):
     log("done in %s" % human(time.time() - started), "info")
     # the run's own name for its target: A+B+C for a joint run, as the report
     # and the RV pages name their file
+    from .naming import report_name
     name = plan["config"]["input"].get("object") or args.object
-    bundle = os.path.join(plan["outdir"], "%s_%s.pdf" % (name, plan["tag"]))
+    bundle = os.path.join(plan["outdir"], report_name(
+        name, plan["tag"],
+        (plan["config"].get("provenance") or {}).get("run_hash")) + ".pdf")
     if os.path.exists(bundle):
         log("everything this run produced: %s" % bundle, "value")
     return None

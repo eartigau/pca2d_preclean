@@ -16,11 +16,29 @@ in what order, and what to write down after each run.
    (`<target>_PCA2D_<counts>_<name>`); an unnamed one does not, so two
    scenarios of the same target with the same component counts would be one
    LBL object and the second would overwrite the first's velocities.
-   `--name auto` calls the run after its targets and a hash of the whole
-   command line: the roots, the counts, the stages, every LBL setting. The
-   instrument is in that line through `--data-dir`, `--out-dir` and
-   `--lbl-dir`, so the same target on two instruments is two runs by
-   construction.
+
+   Since 2026-09-18 (commit after `0807e4c`) the name is followed by the hash
+   of the command line: `--name earth3` makes `_earth3_a1b2c3` and
+   `GL406_PCA2D_0-7_earth3_a1b2c3`, and the compilation PDF is
+   `GL406_0-7_a1b2c3.pdf`. `--name auto` is the targets and the hash, nothing
+   typed. The hash covers everything the command says except how much of the
+   run happens this time: `--stages`, `--dry-run`, `--rebuild-cube`,
+   `--clean-cache` and `--lbl-before` are left out, so **a run resumed with
+   `--stages lbl` keeps its name and lands in the folder it left.** The
+   instrument is in the line through `--data-dir`, `--out-dir` and
+   `--lbl-dir`, so the same target on two instruments is two runs.
+
+   **Runs made before that stay where they are.** A folder `_<name>` already
+   on disk is that run, and is used as it is, when it was made by the same
+   command or before any hash was recorded; only one made by another command
+   sends the new run to `_<name>_<hash>`. `pca2d.runs` and `megarun/score.py`
+   read both, and give an old run the hash its own recorded command gives.
+   The one change a resume of an old run sees: its PDF, written again, takes
+   the new name with the hash beside the old one.
+
+   `reuse_fit` (the correction-only variants) now reaches named runs: it takes
+   a name (`nominal`, `earth3`, matching `_earth3` or `_earth3_<hash>`), a
+   hash alone, or a folder, and the newest fit of what matches.
 
 ## What is already there, verified on 2026-09-17
 

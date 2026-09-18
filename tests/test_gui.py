@@ -318,35 +318,57 @@ def test_the_run_name_and_the_dates_reach_the_command():
         "empty is the nominal path, not a run called nothing"
 
 
-def test_the_command_line_names_a_run_the_same_way_the_window_does():
-    """The window shows `--name X`; the run must put it where the window says."""
+def test_the_command_line_names_a_run_the_same_way_the_window_does(monkeypatch,
+                                                                   tmp_path):
+    """The window shows `--name X`; the run must put it where the window says,
+    with the hash of the command after it."""
     import types
 
+    from pca2d import naming
     from pca2d.cli import name_run, window_label
 
-    config = {"output": {"directory": "outputs"}, "lbl": {"suffix": "_PCA2D_{tag}"}}
-    args = types.SimpleNamespace(name="saison1", min_rjd=None, max_rjd=None)
-    assert name_run(config, args) == "saison1"
-    assert config["output"]["directory"] == "outputs/_saison1"
-    assert config["lbl"]["suffix"] == "_PCA2D_{tag}_saison1"
+    argv = ["--object", "TOI2120", "--n-earth", "7"]
+    monkeypatch.setattr("sys.argv", ["pca2d-preclean"] + argv)
+    stamp = naming.run_hash(argv)
+    root = str(tmp_path)
 
-    # no name: the dates name it themselves
-    config = {"output": {"directory": "outputs"}, "lbl": {"suffix": "_PCA2D_{tag}"}}
-    args = types.SimpleNamespace(name=None, min_rjd=58383.0, max_rjd=58700.0)
+    def fresh(name, **extra):
+        config = {"output": {"directory": root},
+                  "lbl": {"suffix": "_PCA2D_{tag}"}}
+        args = types.SimpleNamespace(name=name, min_rjd=None, max_rjd=None,
+                                     object="TOI2120", objects=None, **extra)
+        return config, name_run(config, args)
+
+    config, label = fresh("saison1")
+    assert label == "saison1_" + stamp
+    assert config["output"]["directory"] == os.path.join(root, "_" + label)
+    assert config["lbl"]["suffix"] == "_PCA2D_{tag}_" + label
+
+    # no name: the dates name it themselves, and carry the hash too
+    config = {"output": {"directory": root}, "lbl": {"suffix": "_PCA2D_{tag}"}}
+    args = types.SimpleNamespace(name=None, min_rjd=58383.0, max_rjd=58700.0,
+                                 object="TOI2120", objects=None)
     assert window_label(args) == "rjd58383-58700"
-    assert name_run(config, args) == "rjd58383-58700"
-    assert config["output"]["directory"] == "outputs/_rjd58383-58700"
+    assert name_run(config, args) == "rjd58383-58700_" + stamp
 
     # neither: the nominal path, untouched
-    config = {"output": {"directory": "outputs"}, "lbl": {"suffix": "_PCA2D_{tag}"}}
-    args = types.SimpleNamespace(name=None, min_rjd=None, max_rjd=None)
+    config = {"output": {"directory": root}, "lbl": {"suffix": "_PCA2D_{tag}"}}
+    args = types.SimpleNamespace(name=None, min_rjd=None, max_rjd=None,
+                                 object="TOI2120", objects=None)
     assert name_run(config, args) is None
-    assert config["output"]["directory"] == "outputs"
+    assert config["output"]["directory"] == root
 
     # a name with a slash in it cannot climb out of the output root
-    config = {"output": {"directory": "outputs"}, "lbl": {"suffix": "_P"}}
-    args = types.SimpleNamespace(name="../../etc", min_rjd=None, max_rjd=None)
+    config = {"output": {"directory": root}, "lbl": {"suffix": "_P"}}
+    args = types.SimpleNamespace(name="../../etc", min_rjd=None, max_rjd=None,
+                                 object="TOI2120", objects=None)
     assert "/" not in name_run(config, args)
+
+    # a folder of that name already there is that run, hash or no hash
+    (tmp_path / "_saison1").mkdir()
+    assert fresh("saison1")[1] == "saison1"
+    assert fresh("saison1_" + stamp)[1] == "saison1_" + stamp, \
+        "a name that carries the hash already is not given a second one"
 
 
 def test_a_finished_scan_redraws_the_panels_it_filled():
@@ -1000,21 +1022,35 @@ def test_the_window_knows_which_pdf_is_this_run_s(tmp_path):
     state = {"objects": ["TOI2120"], "n_star": 0, "n_earth": 3,
              "velocity_term": False, "run_name": ""}
     assert run_folder(state, str(tmp_path)) == str(tmp_path / "TOI2120" / "0-3")
-    assert report_pdf(state, str(tmp_path)).endswith("0-3/TOI2120_0-3.pdf")
+    from pca2d import naming
+    from pca2d.gui import build_command
+    stamp = naming.run_hash(build_command(state))
+    assert report_pdf(state, str(tmp_path)).endswith(
+        "0-3/TOI2120_0-3_%s.pdf" % stamp), "the PDF carries the run's hash"
 
-    # the velocity term is another run, and another folder
-    assert report_pdf({**state, "velocity_term": True},
-                      str(tmp_path)).endswith("0-3v/TOI2120_0-3v.pdf")
-    # a named run keeps its own root, joint runs their own subfolder
-    assert run_folder({**state, "run_name": "test1"}, str(tmp_path)) == \
-        str(tmp_path / "_test1" / "TOI2120" / "0-3")
+    # the velocity term is another run, another folder and another hash
+    other = {**state, "velocity_term": True}
+    assert report_pdf(other, str(tmp_path)).endswith(
+        "0-3v/TOI2120_0-3v_%s.pdf" % naming.run_hash(build_command(other)))
+    # a named run keeps its own root, its name followed by the hash, as
+    # cli.name_run gives it; joint runs their own subfolder
+    named = {**state, "run_name": "test1"}
+    assert run_folder(named, str(tmp_path)) == str(
+        tmp_path / ("_test1_" + naming.run_hash(build_command(named)))
+        / "TOI2120" / "0-3")
     assert run_folder({**state, "objects": ["PROXIMA", "GJ1"]},
                       str(tmp_path)) == str(tmp_path / "joint" / "PROXIMA+GJ1"
                                             / "0-3")
     # and a joint run's PDF carries the joint name, as its folder does
-    assert report_pdf({**state, "objects": ["PROXIMA", "GJ1"]},
-                      str(tmp_path)) == str(tmp_path / "joint" / "PROXIMA+GJ1"
-                                            / "0-3" / "PROXIMA+GJ1_0-3.pdf")
+    joint = {**state, "objects": ["PROXIMA", "GJ1"]}
+    assert report_pdf(joint, str(tmp_path)) == str(
+        tmp_path / "joint" / "PROXIMA+GJ1" / "0-3" /
+        ("PROXIMA+GJ1_0-3_%s.pdf" % naming.run_hash(build_command(joint))))
+    # a run from before the names carried a hash keeps its shorter PDF name
+    old = tmp_path / "TOI2120" / "0-3"
+    old.mkdir(parents=True)
+    (old / "TOI2120_0-3.pdf").write_bytes(b"%PDF")
+    assert report_pdf(state, str(tmp_path)) == str(old / "TOI2120_0-3.pdf")
     assert run_folder({"objects": []}, str(tmp_path)) is None
 
 
@@ -1381,8 +1417,9 @@ def test_the_runs_tab_lists_what_was_run_and_finds_its_pdf(tmp_path):
     rows = window.runs_tree.get_children()
     assert len(rows) == 1
     values = window.runs_tree.item(rows[0], "values")
-    assert values[0] == "2026-09-17 06:53:09" and values[1] == "GL406"
-    assert values[2] == "0-7" and values[4] == "yes"
+    assert values[0] and len(values[0]) == 6, "the hash comes first"
+    assert values[1] == "2026-09-17 06:53:09" and values[2] == "GL406"
+    assert values[3] == "0-7" and values[5] == "yes"
     assert "1 run(s)" in window.runs_totals.cget("text")
 
     window.runs_tree.selection_set(rows[0])
@@ -1390,6 +1427,7 @@ def test_the_runs_tab_lists_what_was_run_and_finds_its_pdf(tmp_path):
     options = [window.runs_options.item(i, "values")
                for i in window.runs_options.get_children()]
     assert ("twoframe.n_earth", "7") in options
+    assert options[0][0] == "run hash" and len(options[0][1]) == 6
     assert "--object GL406" in window.runs_command.cget("text")
     App.open_run_pdf(window)
     assert opened and opened[0].endswith("GL406_0-7.pdf")

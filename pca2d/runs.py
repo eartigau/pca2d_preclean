@@ -45,12 +45,41 @@ def folders(root, depth=DEPTH):
 
 
 def report_pdf(folder, config):
-    """The compilation PDF of a run, or None: <object>_<tag>.pdf, the object
-    being the joint set for a joint run, as cli and texreport name it."""
+    """The compilation PDF of a run, or None.
+
+    `<object>_<tag>_<hash>.pdf` as cli and texreport name it, the object
+    being the joint set for a joint run; `<object>_<tag>.pdf` for a run from
+    before the names carried a hash.
+    """
+    from .naming import report_name
+
     name = ((config.get("input") or {}).get("object")
             or os.path.basename(os.path.dirname(folder)))
-    path = os.path.join(folder, "%s_%s.pdf" % (name, os.path.basename(folder)))
-    return path if os.path.exists(path) else None
+    tag = os.path.basename(folder)
+    stamp = (config.get("provenance") or {}).get("run_hash")
+    for stem in (report_name(name, tag, stamp), report_name(name, tag)):
+        path = os.path.join(folder, stem + ".pdf")
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def run_hash(provenance):
+    """Which run this is: the hash its name carries, or the one its own
+    command gives, for a run from before the names carried one."""
+    from .naming import run_hash as hashed
+
+    recorded = (provenance or {}).get("run_hash")
+    if recorded:
+        return str(recorded)
+    command = (provenance or {}).get("command")
+    if not command:
+        return ""
+    import shlex
+    try:
+        return hashed(shlex.split(command))
+    except ValueError:
+        return ""
 
 
 def one(folder):
@@ -66,7 +95,7 @@ def one(folder):
     provenance = config.get("provenance") or {}
     twoframe = config.get("twoframe") or {}
     objects = str((config.get("input") or {}).get("object") or "")
-    return {"folder": folder, "config": config,
+    return {"folder": folder, "config": config, "hash": run_hash(provenance),
             "objects": objects, "targets": objects.split("+"),
             "tag": os.path.basename(folder),
             "name": os.path.basename(os.path.dirname(folder)),
@@ -107,7 +136,8 @@ def settings(run):
     from .config import WINDOW_SETTINGS, setting_value
 
     config = run.get("config") or {}
-    rows = [("targets", run["objects"]),
+    rows = [("run hash", run.get("hash") or "not recorded"),
+            ("targets", run["objects"]),
             ("components (star + observer)", run["components"]),
             ("started", run["started"] or "not recorded"),
             ("folder", run["folder"])]
@@ -126,9 +156,9 @@ def settings(run):
 def main(argv=None):
     for root in (argv if argv is not None else sys.argv[1:]):
         for run in listed(root):
-            print("%-20s %-28s %-8s %s" % (run["started"][:19], run["objects"],
-                                           run["tag"],
-                                           run["report"] or "(no PDF)"))
+            print("%-8s %-20s %-26s %-8s %s"
+                  % (run["hash"], run["started"][:19], run["objects"],
+                     run["tag"], run["report"] or "(no PDF)"))
 
 
 if __name__ == "__main__":

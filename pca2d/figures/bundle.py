@@ -311,7 +311,9 @@ def main(argv=None):
     fit = np.load(fit_path) if os.path.exists(fit_path) else None
     obj = object_name(config, args)
     tag = os.path.basename(os.path.normpath(args.outdir))
-    out = args.out or os.path.join(args.outdir, "%s_%s.pdf" % (obj, tag))
+    from pca2d.naming import report_name
+    out = args.out or os.path.join(args.outdir, report_name(
+        obj, tag, (config.get("provenance") or {}).get("run_hash")) + ".pdf")
     tmp = tempfile.mkdtemp(prefix="bundle_")
     failures = []
 

@@ -67,7 +67,7 @@ def test_each_run_is_scored_by_what_it_did_to_the_robust_sigma(tmp_path):
     text = open(status).read()
     assert "| GL406 |" in text and "**" in text
     assert "TOI782" in text and "no velocities yet" in text
-    assert open(csv_path).readline().startswith("star,run,started")
+    assert open(csv_path).readline().startswith("star,run,hash,started")
 
 
 def test_a_joint_run_is_scored_star_by_star(tmp_path):

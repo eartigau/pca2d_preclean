@@ -273,7 +273,8 @@ EN = {
     "runs_pick": "pick a run in the list first",
     "runs_no_pdf": "no compilation PDF in %s yet",
     "runs_command": "the command it was given",
-    "col_started": "started", "col_targets": "targets", "col_tag": "counts",
+    "col_hash": "hash", "col_started": "started",
+    "col_targets": "targets", "col_tag": "counts",
     "col_components": "star + observer", "col_report": "PDF",
     "col_setting": "setting", "col_value": "this run",
     "clean_title": "what pca2d has left on these disks",
@@ -843,7 +844,8 @@ FR = {
     "runs_pick": "choisissez d'abord un passage dans la liste",
     "runs_no_pdf": "pas encore de PDF de compilation dans %s",
     "runs_command": "la commande reçue",
-    "col_started": "démarré", "col_targets": "cibles", "col_tag": "compteurs",
+    "col_hash": "hachage", "col_started": "démarré",
+    "col_targets": "cibles", "col_tag": "compteurs",
     "col_components": "étoile + observateur", "col_report": "PDF",
     "col_setting": "réglage", "col_value": "ce passage",
     "clean_title": "ce que pca2d a laissé sur ces disques",
@@ -1407,6 +1409,25 @@ def absolute(path):
     return os.path.abspath(os.path.expanduser(str(path)))
 
 
+def run_label(state, out_root):
+    """The folder name the run will take: what was typed, with the hash of
+    its command after it, as cli.name_run gives it.
+
+    A folder of that name already on the disk is that run, and is used as it
+    is: a run made before the names carried a hash, or one this window
+    launched and is being asked about again.
+    """
+    from .naming import label_with_hash, run_hash
+
+    typed = re.sub(r"[^0-9A-Za-z._+-]", "_",
+                   str(state.get("run_name") or "").strip()).strip("_")
+    if not typed:
+        return ""
+    if os.path.isdir(os.path.join(absolute(out_root), "_" + typed)):
+        return typed
+    return label_with_hash(typed, run_hash(build_command(state)))
+
+
 def run_folder(state, out_root):
     """The folder the run these settings describe writes into, or None.
 
@@ -1422,7 +1443,7 @@ def run_folder(state, out_root):
         return None
     tag = "%s-%s%s" % (state.get("n_star") or 0, state.get("n_earth") or 3,
                        "v" if state.get("velocity_term") else "")
-    named = str(state.get("run_name") or "").strip()
+    named = run_label(state, out_root)
     where = os.path.join(absolute(out_root), "_" + named if named else "")
     if len(names) > 1:
         return os.path.join(where, "joint", "+".join(names), tag)
@@ -1479,9 +1500,18 @@ def report_pdf(state, out_root):
     folder = run_folder(state, out_root)
     if not folder:
         return None
+    from .naming import report_name, run_hash
+
     names = state.get("objects") or [""]
-    return os.path.join(folder, "%s_%s.pdf" % ("+".join(names),
-                                               os.path.basename(folder)))
+    stem = report_name("+".join(names), os.path.basename(folder),
+                       run_hash(build_command(state)))
+    hashed = os.path.join(folder, stem + ".pdf")
+    if os.path.exists(hashed):
+        return hashed
+    # a run from before the names carried a hash keeps the shorter one
+    plain = os.path.join(folder, report_name("+".join(names),
+                                             os.path.basename(folder)) + ".pdf")
+    return plain if os.path.exists(plain) else hashed
 
 
 def corrected_dir(data_root):
@@ -4118,14 +4148,17 @@ class App:
         self._register(box, "runs_title")
 
         self.runs_tree = ttk.Treeview(
-            box, columns=("started", "targets", "tag", "components", "report"),
+            box, columns=("hash", "started", "targets", "tag", "components",
+                          "report"),
             show="headings", selectmode="browse", height=9)
-        self.runs_headings = (("started", "col_started"),
+        # the hash first: it is what tells two runs of the same targets and
+        # the same counts apart, and what their folder and their PDF carry
+        self.runs_headings = (("hash", "col_hash"), ("started", "col_started"),
                               ("targets", "col_targets"), ("tag", "col_tag"),
                               ("components", "col_components"),
                               ("report", "col_report"))
-        for column, width, anchor in (("started", 150, "w"),
-                                      ("targets", 260, "w"), ("tag", 70, "w"),
+        for column, width, anchor in (("hash", 80, "w"), ("started", 150, "w"),
+                                      ("targets", 240, "w"), ("tag", 70, "w"),
                                       ("components", 110, "w"),
                                       ("report", 60, "center")):
             self.runs_tree.column(column, width=width, anchor=anchor)
@@ -4199,7 +4232,8 @@ class App:
         for i, run in enumerate(found):
             self.runs_tree.insert(
                 "", "end", iid=str(i),
-                values=((run["started"] or "")[:19].replace("T", " "),
+                values=(run.get("hash", ""),
+                        (run["started"] or "")[:19].replace("T", " "),
                         run["objects"], run["tag"], run["components"],
                         "yes" if run["report"] else ""))
         self.runs_totals.configure(

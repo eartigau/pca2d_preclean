@@ -191,8 +191,10 @@ it was given word for word, the code it ran and the time it started
 same disk, is therefore in the list too, and one that is going appears as soon
 as it has started.
 
-The list gives the time it started, its targets, its counts, its components and
-whether its compilation PDF is there; picking one fills the table under it with
+The list gives the run's hash first (the six characters its folder and its PDF
+carry, the hash of its command: two runs of the same targets and the same
+counts are told apart by it), then the time it started, its targets, its
+counts, its components and whether its compilation PDF is there; picking one fills the table under it with
 every option that run was given, and the two buttons open its PDF or its folder.
 A double-click opens the PDF.
 
