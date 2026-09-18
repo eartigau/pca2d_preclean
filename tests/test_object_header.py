@@ -35,6 +35,28 @@ def test_both_barnard_folders_name_the_header_they_match():
                            config["input"]["object_header"])
 
 
+def test_a_folder_named_star_underscore_instrument_matches_the_star():
+    """tfiles_repo names every campaign <STAR>_<INSTRUMENT>, and the first
+    joint run from it skipped every file of TOI1078_NIRPS (OBJECT TOI-1078)."""
+    from pca2d.config import instrument_stem
+
+    config = load_config("config.yaml", object_name="TOI1078_NIRPS",
+                         instrument="NIRPS")
+    assert config["input"]["object"] == "TOI1078_NIRPS", "the folder is the object"
+    assert config["input"]["object_header"] == "TOI1078"
+    assert same_object({"object": "TOI-1078", "drsobjn": "TOI1078"},
+                       config["input"]["object_header"])
+    assert load_config("config.yaml", object_name="GJ3622_SPIROU",
+                       instrument="SPIROU")["input"]["object_header"] == "GJ3622"
+    # the suffix has to be the instrument the files declare
+    assert instrument_stem("TOI1078_SPIROU", "NIRPS") is None
+    assert instrument_stem("TOI1078_NIRPS_HE", "NIRPS") == "TOI1078"
+    assert instrument_stem("SMETHELLS_20", "NIRPS") is None
+    # and a name config.yaml gives is not overridden
+    assert load_config("config.yaml", object_name="GL699_NIRPS",
+                       instrument="NIRPS")["input"]["object_header"] == "Gl699"
+
+
 def test_an_unset_header_name_does_not_re_key_every_cube():
     """Adding the knob must not orphan cubes that took twenty minutes to build."""
     config = load_config("config.yaml", object_name="PROXIMA",

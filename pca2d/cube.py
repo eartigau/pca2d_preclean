@@ -435,8 +435,9 @@ def _build_tfits(config: dict, files: list[str], grid: np.ndarray,
         meta = dict(payload["meta"])
         if inp["object"] is not None and not same_object(
                 meta, inp.get("object_header") or inp["object"]):
-            log("skipping %s (OBJECT=%s, not %s)"
-                % (meta["filename"], meta["object"], inp["object"]), "warn")
+            log("skipping %s (OBJECT=%s, DRSOBJN=%s, not %s)"
+                % (meta["filename"], meta["object"], meta.get("drsobjn"),
+                   inp.get("object_header") or inp["object"]), "warn")
             continue
         meta["snr_band"] = sptf.band_snr(payload, dom["wave_min"], dom["wave_max"])
         usable = np.isfinite(payload["flux"]) & (payload["flux"] > 0)
@@ -551,8 +552,9 @@ def _build_s1d(config: dict, files: list[str], grid: np.ndarray):
 
         if inp["object"] is not None and not same_object(
                 meta, inp.get("object_header") or inp["object"]):
-            log("skipping %s (OBJECT=%s, not %s)"
-                % (meta["filename"], meta["object"], inp["object"]), "warn")
+            log("skipping %s (OBJECT=%s, DRSOBJN=%s, not %s)"
+                % (meta["filename"], meta["object"], meta.get("drsobjn"),
+                   inp.get("object_header") or inp["object"]), "warn")
             continue
         reason = _quality_reason(meta, wave, config["quality"])
         if reason is not None:

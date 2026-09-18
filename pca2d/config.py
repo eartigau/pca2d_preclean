@@ -836,6 +836,20 @@ def setting_value(config, path):
     return node
 
 
+def instrument_stem(folder, instrument):
+    """The star a folder named <STAR>_<INSTRUMENT> is a campaign of, or None.
+
+    The suffix has to be the instrument the files themselves declare (NIRPS
+    may carry its mode, _NIRPS_HE or _NIRPS_HA): a name that merely ends in
+    another word is a name, and is left alone.
+    """
+    if not folder or not instrument:
+        return None
+    match = re.match(r"^(.+?)_%s(?:_H[AE])?$" % re.escape(str(instrument)),
+                     str(folder), re.I)
+    return match.group(1) if match else None
+
+
 def load_config(path: str | None, object_name: str | None = None,
                 data_dir: str | None = None, out_dir: str | None = None,
                 instrument: str | None = None, variant: dict | None = None) -> dict:
@@ -895,6 +909,15 @@ def load_config(path: str | None, object_name: str | None = None,
 
     if object_name and layered:
         cfg = _deep_update(cfg, (user.get("objects") or {}).get(object_name, {}))
+    # A folder named <STAR>_<INSTRUMENT> is that star's campaign on that
+    # spectrograph, and its headers name the star: tfiles_repo holds every
+    # campaign that way (TOI1078_NIRPS, OBJECT = TOI-1078, DRSOBJN = TOI1078),
+    # and matched on the folder's own name every file of the first joint run
+    # made from it was skipped (2026-09-18). Only when nothing names the
+    # header already: GL699_NIRPS's Gl699 stays what config.yaml says.
+    stem = instrument_stem(object_name, cfg["input"].get("instrument"))
+    if stem and not cfg["input"].get("object_header"):
+        cfg["input"]["object_header"] = stem
     # a variant, the nominal plus what it changes, on top of everything else
     if variant:
         cfg = _deep_update(cfg, {k: v for k, v in variant.items()
