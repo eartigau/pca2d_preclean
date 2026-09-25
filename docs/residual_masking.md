@@ -173,6 +173,30 @@ structure à +0,57 sigma ressort à 10 sigma. Elle avait été écartée trop vi
    - **Attention à la clé de cache** : un masque qui dépend de l'ajustement
      n'est plus décrit par la configuration, et deux passages nominalement
      identiques pourraient diverger.
+   - **Le poids doit percoler jusqu'aux fichiers corrigés** (Étienne,
+     2026-09-25). Il y a deux masques et il ne faut pas les confondre : le
+     poids dans l'ajustement dit « cet échantillon ne doit pas tirer la base »,
+     le NaN du fichier corrigé dit « LBL ne doit pas mesurer de vitesse
+     là-dessus ». Baisser le poids sans propager laisserait un échantillon jugé
+     indigne de contraindre le modèle être livré à LBL comme une mesure
+     ordinaire, corrigé par un modèle qu'il n'a pas aidé à construire.
+     - Il faut donc un **seuil de sortie distinct du poids** : un poids à 0,3
+       reste une mesure, mais sous un plancher de quelques pour cent du
+       nominal l'échantillon n'a plus été modélisé et doit devenir NaN
+       (`correct.weight_floor_nan`, à créer).
+     - Le chemin existe déjà : `reconstruct.fit_weights_mask` met déjà à NaN ce
+       que l'ajustement n'a pas pondéré (`PCA2WNAN`, 26 550 échantillons par
+       fichier sur ce passage). Un poids sous le plancher rejoindrait ce même
+       masque, donc le panneau 3 de la figure de séquence continuerait de
+       montrer ce que les fichiers contiennent, ce qui est la règle du dépôt.
+     - Le masque de sortie doit rester **commun à toutes les poses**
+       (`correct.mask: common`, le nominal) : on masque là où le poids MOYEN
+       sur les poses tombe sous le plancher, sinon chaque pose porte un jeu de
+       raies différent et LBL mesure des séries incomparables.
+     - Et le poids final de la boucle est sans doute **un meilleur critère de
+       masquage** que les statistiques essayées ici : il agrège ce que
+       l'ajustement a appris sur tous les balayages, au lieu de juger le
+       résidu final une seule fois.
    - Gain attendu : **faible sur la rms** (ces régions ne valent que +0,27 m/s
      enlevées après coup), mais c'est la **stabilité de K** qu'on cherche, pas
      la dispersion.
