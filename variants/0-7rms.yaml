@@ -1,0 +1,25 @@
+# 0-7rms: what stands still in the OBSERVER's frame, which is what the river
+# plots of the LBL report show (seen by eye at 1541.5 and 1249 nm on 2026-09-25).
+#
+# Not the mean of the residual, which a leftover need not have: its SCATTER.
+# The chi2 of a column over the 316 exposures, averaged over two resolution
+# elements, is certain to sqrt(2 / (N * independent columns)) = 0.04, so 20
+# sigmas of excess is a windowed chi2 of 1.08 and the threshold of 1.25 is what
+# makes it worth removing. On TOI-2120 the 1.27 um O2 band reaches a column
+# chi2 of 222 and 1919 nm of 63; 5.7% of the columns are beyond 20 sigma.
+#
+# No per-sample clip and no excursions here: this is the region test alone, so
+# that what it is worth can be told from what the blunt 3 sigma clip is worth
+# (0-7point, +1.38 m/s).
+note: "TOI2120 0-7, 2026-09-25: the observer-frame excess-RMS regions alone"
+reuse_fit: nominal
+correct:
+  nsig_cut: null
+  excursion_nsig: null
+  column_frac: null
+  column_chi2: null
+  excess_nsig: 20.0
+  excess_chi2: 1.25
+  excess_elements: 2.0
+lbl:
+  before: false

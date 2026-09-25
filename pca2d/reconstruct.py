@@ -136,6 +136,14 @@ def parse_args(argv=None):
                    help="how wide those windows go, in grid samples; the"
                         " pipeline passes the instrument's resolution element"
                         " times correct.excursion_elements")
+    p.add_argument("--excess-nsig", type=float, default=None,
+                   help="with --excess-samples: drop from every exposure the"
+                        " observer columns whose chi2 over the exposures is this"
+                        " many sigmas above the noise (outliers.excess_rms)")
+    p.add_argument("--excess-chi2", type=float, default=None,
+                   help="and whose windowed chi2 is above this")
+    p.add_argument("--excess-samples", type=int, default=None,
+                   help="the width that chi2 is averaged over, in grid samples")
     p.add_argument("--column-frac", type=float, default=None,
                    help="with --column-chi2: drop an observer column from EVERY"
                         " exposure when more than this fraction of them is"
@@ -704,6 +712,15 @@ def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
                         "observer-frame parity mean divided out")
     if alive is not None:
         head["PCA2WNAN"] = (blanked, "samples the fit gave no weight, set to NaN")
+    if clipped is not None and clip_columns and clip_columns.get("excess"):
+        head["PCA2ESIG"] = (float(clip_columns["excess"]),
+                            "observer column dropped above this excess sigma")
+        head["PCA2ECHI"] = (float(clip_columns.get("excess_chi2") or 0),
+                            "and above this windowed chi2 of the column")
+        head["PCA2EWID"] = (int(clip_columns.get("excess_samples") or 0),
+                            "that chi2 averaged over this many samples")
+        head["PCA2ECOL"] = (int(clip_columns.get("excess_columns") or 0),
+                            "columns standing still in the observer frame")
     if clipped is not None and clip_columns and clip_columns.get("excursion"):
         head["PCA2XSIG"] = (float(clip_columns["excursion"]),
                             "excursion flagged beyond this aggregate sigma")
@@ -1095,7 +1112,9 @@ def correct_many(model, args):
     clip_report = None
     excursion = getattr(args, "excursion_nsig", None)
     samples = getattr(args, "excursion_samples", None)
-    if getattr(args, "nsig_cut", None) or (excursion and samples):
+    excess = getattr(args, "excess_nsig", None)
+    wide = getattr(args, "excess_samples", None)
+    if getattr(args, "nsig_cut", None) or (excursion and samples) or (excess and wide):
         if not getattr(args, "cube", None):
             raise SystemExit("--nsig-cut and --excursion-nsig need --cube: the"
                              " residual they read is the cube less the model")
@@ -1124,10 +1143,19 @@ def correct_many(model, args):
                 " more than %.0f%% of them is flagged and the survivors'"
                 " reduced chi2 is still above %.2f (noise gives %.3f)"
                 % (100 * float(frac), float(chi2), null))
+        if excess and wide:
+            log("  and looking for what stands still in the observer's frame:"
+                " the columns whose scatter over the exposures, averaged over"
+                " %d samples, is %.0f sigmas above the noise%s"
+                % (int(wide), float(excess),
+                   " and above a chi2 of %.2f" % float(args.excess_chi2)
+                   if getattr(args, "excess_chi2", None) else ""))
         clipped_by_file, clip_report = residual_outliers(
             args.cube, np.load(fit_path), args.nsig_cut, args.clip_window,
             column_frac=frac, column_chi2=chi2,
-            excursion_nsig=excursion, excursion_samples=samples)
+            excursion_nsig=excursion, excursion_samples=samples,
+            excess_nsig=excess, excess_chi2=getattr(args, "excess_chi2", None),
+            excess_samples=wide)
         if clip_report["rho"]:
             rho = clip_report["rho"]
             wide = clip_report["variance"][-1]
@@ -1142,7 +1170,17 @@ def correct_many(model, args):
                    float(excursion)), "value")
         log("  %d grid samples flagged, over %d exposures"
             % (sum(int(v.sum()) for v in clipped_by_file.values())
-               - clip_report["added"], len(clipped_by_file)), "value")
+               - clip_report["added"]
+               - (clip_report["excess"] or {}).get("added", 0),
+               len(clipped_by_file)), "value")
+        got = clip_report["excess"]
+        if got:
+            log("  %d of the %d measured columns stand still in the observer's"
+                " frame, %.2f%% of them, over a correlation length of %.1f"
+                " samples; that is %d more samples over the %d exposures"
+                % (got["n_columns"], got["measured"],
+                   100.0 * got["n_columns"] / max(got["measured"], 1),
+                   got["length"], got["added"], len(clipped_by_file)), "value")
         if frac and chi2:
             seen = clip_report["seen"]
             measured = int((seen > 0).sum())
@@ -1156,6 +1194,12 @@ def correct_many(model, args):
     if clip_report:
         column_cards = dict(excursion=excursion, samples=samples,
                             rho1=(clip_report["rho"] or [0])[0])
+        if clip_report.get("excess"):
+            column_cards.update(
+                excess=clip_report["excess"]["thresholds"][0],
+                excess_chi2=clip_report["excess"]["thresholds"][1],
+                excess_columns=clip_report["excess"]["n_columns"],
+                excess_samples=clip_report["excess"]["samples"])
         if clip_report.get("thresholds"):
             column_cards.update(frac=clip_report["thresholds"][0],
                                 chi2=clip_report["thresholds"][1],

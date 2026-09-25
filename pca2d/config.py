@@ -400,6 +400,18 @@ DEFAULTS = {
         # the values it was built for, and variants/0-7exc runs them.
         "excursion_nsig": None,
         "excursion_elements": 2.0,
+        # WHAT STANDS STILL IN THE OBSERVER'S FRAME. A leftover anchored there
+        # (a telluric line the correction does not reach, airglow, a detector
+        # feature) need not have one sign, but it always has scatter the noise
+        # does not account for: the chi2 of a column over the exposures, above
+        # 1. Averaged over excess_elements resolution elements, that average is
+        # certain to sqrt(2 / (N * independent columns)), so its excess becomes
+        # a significance: excess_nsig sigmas of it, and a windowed chi2 above
+        # excess_chi2, drop the region from every exposure. On TOI-2120 the
+        # 1.27 um O2 band reaches a column chi2 of 222 and 1919 nm of 63.
+        "excess_nsig": None,
+        "excess_chi2": 1.25,
+        "excess_elements": 2.0,
         "nsig_cut": None,            # NaN beyond this many running robust sigmas
         # And then the column the exposures agree is bad. With nsig_cut set,
         # an observer column where more than column_frac of the exposures is

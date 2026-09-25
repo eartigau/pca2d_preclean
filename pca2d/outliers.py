@@ -123,6 +123,51 @@ def window_variance(width, rho):
     return max(v, 1e-6)
 
 
+def excess_rms(chi2, count, width, length, min_rows=10):
+    """(the windowed chi2 of each column, the significance of its excess over 1).
+
+    A leftover anchored in the observer's frame need not have one sign, but it
+    always has SCATTER the noise does not account for: chi2(j), the mean of
+    z^2 over the exposures at that column, above 1. Averaged over a window of
+    `width` columns, that average has an uncertainty of
+
+        sqrt(2 / (N * width / length))
+
+    with N the exposures the column has and `length` the correlation length of
+    the residual in samples (1 + 2 sum rho), since a window of 17 samples on
+    this grid holds about 4.7 independent columns and not 17. Every column of
+    a window carries that window's verdict, so a region comes out whole.
+    """
+    chi2 = np.atleast_2d(np.asarray(chi2, dtype=float))
+    count = np.atleast_2d(np.asarray(count))
+    rows, m = chi2.shape
+    w = max(1, int(width))
+    ok = count >= int(min_rows)
+    windowed = np.zeros((rows, m))
+    sigma = np.zeros((rows, m))
+    for p in range(rows):
+        good = ok[p]
+        if not good.any():
+            continue
+        filled = np.where(good, chi2[p], 0.0)
+        csum = np.concatenate([[0.0], np.cumsum(filled)])
+        cnum = np.concatenate([[0], np.cumsum(good.astype(int))])
+        took = cnum[w:] - cnum[:-w]
+        mean = np.divide(csum[w:] - csum[:-w], took,
+                         out=np.zeros(m - w + 1), where=took > 0)
+        rooms = np.where(good, count[p], 10 ** 9)
+        least = np.minimum.reduce([rooms[i:m - w + 1 + i] for i in range(w)])
+        independent = np.maximum(took / max(float(length), 1.0), 1.0)
+        sd = np.sqrt(2.0 / np.maximum(least * independent, 1.0))
+        for k in range(w):
+            here = slice(k, k + m - w + 1)
+            windowed[p, here] = np.maximum(windowed[p, here], mean)
+            sigma[p, here] = np.maximum(sigma[p, here], sd)
+    excess = np.divide(windowed - 1.0, sigma, out=np.zeros((rows, m)),
+                       where=sigma > 0)
+    return windowed, excess
+
+
 def autocorrelation(z, lags, clip_at=5.0):
     """rho_1..rho_lags of rows of z, ignoring NaN and anything beyond clip_at.
 
@@ -328,7 +373,9 @@ def noise_correlation(cube, fit, window, lags, blocks=1, chunk=16, clip_at=5.0):
 
 def residual_outliers(cube, fit, nsig, window, block=40000, chunk=16,
                       column_frac=None, column_chi2=None, column_min_rows=10,
-                      excursion_nsig=None, excursion_samples=None, rho=None):
+                      excursion_nsig=None, excursion_samples=None, rho=None,
+                      excess_nsig=None, excess_chi2=None, excess_samples=None,
+                      excess_clip=10.0):
     """(file -> (2, grid) mask of what to NaN, a report).
 
     Row 0 of each mask is the even orders, row 1 the odd ones, as
@@ -360,6 +407,13 @@ def residual_outliers(cube, fit, nsig, window, block=40000, chunk=16,
     # per order parity and per OBSERVER column, over every exposure: how many
     # were measured there, how many were flagged, and the z^2 of the rest
     wanted = bool(column_frac) and bool(column_chi2)
+    # and, for the excess-RMS test, the chi2 of EVERY measured sample of the
+    # column, not only of what survived the flagging: what is being looked for
+    # is the scatter itself. Beyond excess_clip a sample is a cosmic ray rather
+    # than a region, and the per-sample flagging is what deals with it.
+    by_excess = bool(excess_nsig) and bool(excess_samples)
+    all_z2 = np.zeros((2, m))
+    all_n = np.zeros((2, m), dtype=np.int32)
     seen = np.zeros((2, m), dtype=np.int32)
     taken = np.zeros((2, m), dtype=np.int32)
     kept = np.zeros((2, m), dtype=np.int32)
@@ -375,6 +429,15 @@ def residual_outliers(cube, fit, nsig, window, block=40000, chunk=16,
         for i, r in enumerate(range(start, stop)):
             out[names[r]][int(parity[r])][c0:c1] = cut[i, inner]
         flagged += int(cut[:, inner].sum())
+        if by_excess:
+            inside = measured[:, inner] & (np.abs(z[:, inner]) <= float(excess_clip))
+            square = np.where(inside, z[:, inner] ** 2, 0.0)
+            rows_parity = parity[start:stop]
+            for p in (0, 1):
+                which = np.flatnonzero(rows_parity == p)
+                if which.size:
+                    all_z2[p, c0:c1] += square[which].sum(axis=0)
+                    all_n[p, c0:c1] += inside[which].sum(axis=0)
         if wanted:
             rows_parity = parity[start:stop]
             for p in (0, 1):
@@ -394,8 +457,32 @@ def residual_outliers(cube, fit, nsig, window, block=40000, chunk=16,
     columns = np.zeros((2, m), dtype=bool)
     report = dict(columns=columns, frac=frac, chi2=chi2, seen=seen,
                   n_columns=0, added=0, thresholds=None, flagged=flagged,
-                  rho=rho, widths=widths,
+                  rho=rho, widths=widths, excess=None,
                   variance=[window_variance(w, rho) for w in widths])
+    if by_excess:
+        # what stands still in the observer's frame: the columns whose scatter
+        # over the exposures is more than the noise, over a window as wide as
+        # the structures the river plots show
+        length = 1.0 + 2.0 * sum(rho) if rho else 1.0
+        column_chi2_all = np.divide(all_z2, all_n, out=np.zeros((2, m)),
+                                    where=all_n > 0)
+        windowed, excess = excess_rms(column_chi2_all, all_n,
+                                      int(excess_samples), length,
+                                      min_rows=int(column_min_rows))
+        regions = (excess > float(excess_nsig)) & (all_n >= int(column_min_rows))
+        if excess_chi2:
+            regions &= windowed > float(excess_chi2)
+        added = 0
+        for name in names:
+            added += int((regions & ~out[name]).sum())
+            out[name] |= regions
+        report["excess"] = dict(
+            chi2=column_chi2_all, windowed=windowed, excess=excess,
+            regions=regions, n_columns=int(regions.sum()), added=added,
+            length=length, measured=int((all_n >= int(column_min_rows)).sum()),
+            thresholds=(float(excess_nsig), float(excess_chi2 or 0)),
+            samples=int(excess_samples))
+        columns = columns | regions
     if wanted:
         columns = ((seen >= int(column_min_rows)) & (frac > float(column_frac))
                    & (chi2 > float(column_chi2)))

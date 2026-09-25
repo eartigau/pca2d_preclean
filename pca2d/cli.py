@@ -72,6 +72,13 @@ SETTING_FLAGS = (
      " pixels at 3 sigma"),
     ("--excursion-elements", "correct.excursion_elements", float,
      "how wide those windows go, in resolution elements of the instrument"),
+    ("--excess-nsig", "correct.excess_nsig", float,
+     "drop from every exposure the observer columns whose scatter over the"
+     " exposures is this many sigmas above the noise"),
+    ("--excess-chi2", "correct.excess_chi2", float,
+     "and whose windowed chi2 is above this"),
+    ("--excess-elements", "correct.excess_elements", float,
+     "the width that scatter is averaged over, in resolution elements"),
     ("--column-frac", "correct.column_frac", float,
      "with --column-chi2: drop an observer column from every exposure when"
      " more than this fraction of them is clipped there"),
@@ -1158,7 +1165,7 @@ def clip_args(cfg):
     nsig = corr.get("nsig_cut")
     excursion = corr.get("excursion_nsig")
     elements = corr.get("excursion_elements")
-    if not nsig and not (excursion and elements):
+    if not nsig and not (excursion and elements) and not corr.get("excess_nsig"):
         return []
     out = ["--clip-window", str(int(cfg["highpass"]["window"]))]
     if excursion and elements:
@@ -1171,6 +1178,20 @@ def clip_args(cfg):
                float(excursion)), "info")
         out += ["--excursion-nsig", str(float(excursion)),
                 "--excursion-samples", str(int(samples))]
+    excess = corr.get("excess_nsig")
+    if excess:
+        resolution = (cfg.get("twoframe") or {}).get("resolution") or 70000
+        wide = element_samples(resolution, cfg["domain"]["dv"],
+                               corr.get("excess_elements") or 2.0)
+        log("and dropping from every exposure the observer columns whose scatter"
+            " over the exposures, averaged over %d samples, is %.0f sigmas above"
+            " the noise and above a chi2 of %.2f: what stands still in the"
+            " observer's frame"
+            % (wide, float(excess), float(corr.get("excess_chi2") or 0)), "info")
+        out += ["--excess-nsig", str(float(excess)),
+                "--excess-samples", str(int(wide))]
+        if corr.get("excess_chi2"):
+            out += ["--excess-chi2", str(float(corr["excess_chi2"]))]
     if nsig:
         log("and setting to NaN every sample whose residual, panel 5, is beyond"
             " %.1f running robust sigmas" % float(nsig), "info")
