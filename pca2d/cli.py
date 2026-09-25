@@ -633,7 +633,32 @@ def resolve(args):
                                                 plan["key"]))
     if variant and variant.get("reuse_fit"):
         plan["fitdir"] = reused_fit(root, variant["reuse_fit"], args.object, tag)
+        refuse_to_overwrite_the_reused_fit(
+            plan["outdir"], plan["fitdir"],
+            (config.get("variant") or {}).get("name"), root)
     return plan
+
+
+def refuse_to_overwrite_the_reused_fit(outdir, fitdir, name, root):
+    """Stop a variant that borrows a fit and would write over that run.
+
+    Its corrected spectra would replace the ones the older run was measured
+    on, under the same names, while its own LBL object stays separate: that
+    run's velocities would no longer be the velocities of the files on disk.
+    It happens with an explicit --out-dir, which overrides the `_<name>`
+    folder name_variant gives a variant (2026-09-25: variants/0-7chi2 with
+    --out-dir outputs overwrote 19 of TOI2120 0-7's corrected spectra before
+    it was stopped).
+    """
+    if os.path.abspath(outdir) != os.path.abspath(fitdir):
+        return
+    raise SystemExit(
+        "variant %s reuses the fit in %s and would write its own corrected"
+        " spectra into that same folder, over the ones the run there was"
+        " measured on. Leave --out-dir out, so the variant writes to %s"
+        " instead, or give the variant its own output.directory."
+        % (name or "?", fitdir,
+           os.path.join(root or "outputs", "_" + str(name or "variant"))))
 
 
 def announce(args, plan):

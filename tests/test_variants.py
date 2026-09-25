@@ -107,3 +107,23 @@ def test_every_variant_in_the_repository_gives_what_it_sets():
                 continue
             for key, value in keys.items():
                 assert cfg[section][key] == value, (name, section, key)
+
+
+def test_a_variant_may_not_write_over_the_fit_it_reuses(tmp_path):
+    """A correction-only variant borrows another run's fit. Writing its own
+    corrected spectra into that run's folder would leave that run's velocities
+    describing files that are no longer there: on 2026-09-25 `--out-dir
+    outputs`, which overrides the variant's own `_<name>` folder, did exactly
+    that to 19 of TOI2120 0-7's spectra."""
+    from pca2d.cli import refuse_to_overwrite_the_reused_fit as refuse
+
+    base = str(tmp_path / "outputs" / "TOI2120" / "0-7")
+    # its own folder: nothing to say
+    refuse(str(tmp_path / "outputs" / "_v1" / "TOI2120" / "0-7"), base, "v1",
+           str(tmp_path / "outputs"))
+    with pytest.raises(SystemExit) as stopped:
+        refuse(base + "/", base, "0-7chi2", str(tmp_path / "outputs"))
+    said = str(stopped.value)
+    assert "0-7chi2" in said and base in said
+    assert "--out-dir" in said and "_0-7chi2" in said, \
+        "it has to say how to get the variant its own folder"
