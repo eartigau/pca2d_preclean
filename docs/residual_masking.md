@@ -180,10 +180,12 @@ structure à +0,57 sigma ressort à 10 sigma. Elle avait été écartée trop vi
      là-dessus ». Baisser le poids sans propager laisserait un échantillon jugé
      indigne de contraindre le modèle être livré à LBL comme une mesure
      ordinaire, corrigé par un modèle qu'il n'a pas aidé à construire.
-     - Il faut donc un **seuil de sortie distinct du poids** : un poids à 0,3
-       reste une mesure, mais sous un plancher de quelques pour cent du
-       nominal l'échantillon n'a plus été modélisé et doit devenir NaN
-       (`correct.weight_floor_nan`, à créer).
+     - **Un seul seuil, à 50% du poids nominal** (Étienne, 2026-09-25) : les
+       deux masques sont alors le même objet. Un échantillon écouté à moins de
+       la moitié n'est pas une demi-mesure, c'est une mesure que le modèle n'a
+       pas vraiment décrite, et elle devient NaN. Cela évite d'avoir un
+       plancher de poids d'un côté et un seuil de sortie de l'autre : une
+       valeur dit à la fois jusqu'où on écoute et à partir d'où on jette.
      - Le chemin existe déjà : `reconstruct.fit_weights_mask` met déjà à NaN ce
        que l'ajustement n'a pas pondéré (`PCA2WNAN`, 26 550 échantillons par
        fichier sur ce passage). Un poids sous le plancher rejoindrait ce même
@@ -191,7 +193,7 @@ structure à +0,57 sigma ressort à 10 sigma. Elle avait été écartée trop vi
        montrer ce que les fichiers contiennent, ce qui est la règle du dépôt.
      - Le masque de sortie doit rester **commun à toutes les poses**
        (`correct.mask: common`, le nominal) : on masque là où le poids MOYEN
-       sur les poses tombe sous le plancher, sinon chaque pose porte un jeu de
+       sur les poses tombe sous les 50%, sinon chaque pose porte un jeu de
        raies différent et LBL mesure des séries incomparables.
      - Et le poids final de la boucle est sans doute **un meilleur critère de
        masquage** que les statistiques essayées ici : il agrège ce que
