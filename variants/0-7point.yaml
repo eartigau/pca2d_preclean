@@ -1,6 +1,6 @@
-# pointclip: the residual clip alone, sample by sample, no column test. The
-# control for colclip: both clip every sample whose residual is beyond 3
-# running robust sigmas, and only colclip also drops the observer columns the
+# 0-7point: the residual clip alone, sample by sample, no column test. The
+# control for 0-7chi2: both clip every sample whose residual is beyond 3
+# running robust sigmas, and only 0-7chi2 also drops the observer columns the
 # exposures agree on. Correction only, on the nominal's fit.
 note: "TOI2120 0-7, 2026-09-25: 3 sigma samples only, columns left alone"
 reuse_fit: nominal
