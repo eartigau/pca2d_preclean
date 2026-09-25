@@ -1,0 +1,12 @@
+# 0-7both: the 2.5 sigma per-sample trim AND the observer-frame regions. Alone
+# they gave +2.40 and +0.26 m/s of rms on TOI2120 at 0-7 (and 1.78 and 1.06 of
+# robust rms): this says whether they find the same samples or different ones.
+note: "TOI2120 0-7, 2026-09-25: 2.5 sigma samples and the observer-frame regions"
+reuse_fit: nominal
+correct:
+  nsig_cut: 2.5
+  excess_nsig: 20.0
+  excess_chi2: 1.25
+  excess_elements: 2.0
+lbl:
+  before: false

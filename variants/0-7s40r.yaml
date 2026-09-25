@@ -1,0 +1,15 @@
+# 0-7s40r: la coupure a 4 sigma par echantillon ET les regions ancrees dans le
+# referentiel de l'observateur. Les deux sont les seuls essais qui ne deplacent
+# pas K sur TOI2120 (5.29 a 3 sigma, 5.85 pour les regions, contre 5.42 au
+# depart), alors que 2.5 sigma le fait tomber a 3.67, soit 1.6 sigma plus bas.
+# Chacun seul gagne peu sur sigma_K (+2.0% et +1.6% de rms) : ceci dit si les
+# deux s'additionnent sans toucher a l'amplitude de la planete.
+note: "TOI2120 0-7, 2026-09-25: 4 sigma par echantillon et les regions observateur"
+reuse_fit: nominal
+correct:
+  nsig_cut: 4.0
+  excess_nsig: 20.0
+  excess_chi2: 1.25
+  excess_elements: 2.0
+lbl:
+  before: false

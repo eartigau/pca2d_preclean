@@ -1158,16 +1158,19 @@ def correct_many(model, args):
             excess_samples=wide)
         if clip_report["rho"]:
             rho = clip_report["rho"]
-            wide = clip_report["variance"][-1]
             log("  the residual's own autocorrelation: rho_1 = %.3f, rho_2 ="
-                " %.3f, rho_4 = %.3f, so a window of %d samples has variance"
-                " %.1f, i.e. %.1f independent samples, and a flat excursion"
-                " needs %.2f sigma of depth to reach %.1f"
+                " %.3f, rho_4 = %.3f, a correlation length of %.1f samples"
                 % (rho[0], rho[1] if len(rho) > 1 else float("nan"),
-                   rho[3] if len(rho) > 3 else float("nan"), int(samples),
-                   wide, int(samples) ** 2 / wide,
-                   float(excursion) * wide ** 0.5 / int(samples),
-                   float(excursion)), "value")
+                   rho[3] if len(rho) > 3 else float("nan"),
+                   1 + 2 * sum(rho)), "value")
+            if clip_report["variance"]:
+                wide = clip_report["variance"][-1]
+                log("    so a window of %d samples has variance %.1f, i.e. %.1f"
+                    " independent samples, and a flat excursion needs %.2f sigma"
+                    " of depth to reach %.1f"
+                    % (int(samples), wide, int(samples) ** 2 / wide,
+                       float(excursion) * wide ** 0.5 / int(samples),
+                       float(excursion)), "value")
         log("  %d grid samples flagged, over %d exposures"
             % (sum(int(v.sum()) for v in clipped_by_file.values())
                - clip_report["added"]

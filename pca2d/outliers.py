@@ -302,7 +302,8 @@ def _pieces(cube, fit, window):
                 margin=reach + 16 + window)
 
 
-def residual_z(cube, fit, window, block=40000, chunk=16, blocks=None):
+def residual_z(cube, fit, window, block=40000, chunk=16, blocks=None,
+               columns=None):
     """Yield the residual's z, chunk by chunk: (rows, c0, c1, inner, z).
 
     The residual is panel 5's: the cube less the star block carried into each
@@ -314,6 +315,8 @@ def residual_z(cube, fit, window, block=40000, chunk=16, blocks=None):
     covering the largest shift, the Lanczos kernel and half the window, so
     every column comes out as from the whole cube; `block=None` reads it whole,
     and `blocks` stops after that many (for a measurement rather than a pass).
+    `columns` restricts the pass to a (first, last) range of the grid, which is
+    what a figure of one window needs.
     """
     from .twoframe import (LanczosShifter, carried_means, fit_means,
                            fit_templates, load_cube, star_model)
@@ -325,11 +328,13 @@ def residual_z(cube, fit, window, block=40000, chunk=16, blocks=None):
     T, tgroup = fit_templates(fit, part["meta"], n, m)
     step = m if block is None else int(block)
     done = 0
-    for c0 in range(0, m, step):
+    first, last = (0, m) if columns is None else (max(0, int(columns[0])),
+                                                 min(m, int(columns[1])))
+    for c0 in range(first, last, step):
         if blocks is not None and done >= int(blocks):
             return
         done += 1
-        c1 = min(c0 + step, m)
+        c1 = min(c0 + step, last)
         a0, b0 = max(0, c0 - part["margin"]), min(m, c1 + part["margin"])
         _, data, w, _ = load_cube(cube, dtype=np.float32,
                                   columns=np.arange(a0, b0))
@@ -400,9 +405,14 @@ def residual_outliers(cube, fit, nsig, window, block=40000, chunk=16,
     by_excursion = bool(excursion_nsig) and bool(excursion_samples)
     widths = (list(range(1, int(excursion_samples) + 1)) if by_excursion
               else [])
-    if by_excursion and rho is None:
-        rho = noise_correlation(cube, fit, window, max(1, len(widths) - 1),
-                                blocks=1, chunk=chunk)
+    # the residual's own correlation, which BOTH tests need: the excursions to
+    # know what a window's sum is worth, the regions to know how many
+    # independent columns a window holds. Measured with a correlation length of
+    # 1 the regions came out 15% of the spectrum instead of 6% (2026-09-25).
+    by_excess = bool(excess_nsig) and bool(excess_samples)
+    if (by_excursion or by_excess) and rho is None:
+        lags = max(len(widths) - 1, int(excess_samples or 0), 8)
+        rho = noise_correlation(cube, fit, window, lags, blocks=1, chunk=chunk)
     rho = list(rho or [])
     # per order parity and per OBSERVER column, over every exposure: how many
     # were measured there, how many were flagged, and the z^2 of the rest
@@ -411,7 +421,6 @@ def residual_outliers(cube, fit, nsig, window, block=40000, chunk=16,
     # column, not only of what survived the flagging: what is being looked for
     # is the scatter itself. Beyond excess_clip a sample is a cosmic ray rather
     # than a region, and the per-sample flagging is what deals with it.
-    by_excess = bool(excess_nsig) and bool(excess_samples)
     all_z2 = np.zeros((2, m))
     all_n = np.zeros((2, m), dtype=np.int32)
     seen = np.zeros((2, m), dtype=np.int32)
@@ -424,8 +433,12 @@ def residual_outliers(cube, fit, nsig, window, block=40000, chunk=16,
         measured = np.isfinite(z)
         if by_excursion:
             cut = excursions(z, widths, rho, excursion_nsig)
-        else:
+        elif nsig:
             cut = measured & (np.abs(z) > float(nsig))
+        else:
+            # the region test alone: nothing is flagged sample by sample, and
+            # every measured sample counts towards its column's scatter
+            cut = np.zeros(z.shape, dtype=bool)
         for i, r in enumerate(range(start, stop)):
             out[names[r]][int(parity[r])][c0:c1] = cut[i, inner]
         flagged += int(cut[:, inner].sum())

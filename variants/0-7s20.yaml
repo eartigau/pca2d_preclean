@@ -1,0 +1,13 @@
+# 0-7s20: the per-sample trim at 2 sigma, to find where the gain stops. The
+# scan so far, in rms gained over the uncleaned 0-7: 4 sigma +0.33, 3 sigma
+# +1.37, 2.5 sigma +2.40, and the reported error growing with each step
+# (7.94, 8.22, 9.06 m/s) as fewer samples are left to measure with.
+note: "TOI2120 0-7, 2026-09-25: per-sample clip at 2 sigma alone"
+reuse_fit: nominal
+correct:
+  nsig_cut: 2.0
+  excess_nsig: null
+  column_frac: null
+  column_chi2: null
+lbl:
+  before: false

@@ -574,6 +574,14 @@ objects:
   TOI2120:
     target:
       planets: [5.7998164]
+  TOI2120P2:
+    input:
+      # une DEUXIEME passe de pca2d sur les spectres que la premiere a
+      # corriges (outputs/_0-7s40r/.../corrected, relies dans local_data2):
+      # le dossier dit quelle passe, les en-tetes disent l'etoile
+      object_header: TOI2120
+    target:
+      planets: [5.7998164]
   TOI4552:
     target:
       planets: [0.30110032]             # ultra-short period, below the figure's
