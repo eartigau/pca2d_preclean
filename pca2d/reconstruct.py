@@ -1115,11 +1115,15 @@ def correct_many(model, args):
         chi2 = getattr(args, "column_chi2", None)
         if frac and chi2:
             from .outliers import expected_chi2
+            # what noise itself leaves behind: a per-sample clip takes the
+            # tails with it and the survivors carry less than one, while
+            # flagging whole excursions barely touches the noise at all
+            null = (expected_chi2(args.nsig_cut) if getattr(args, "nsig_cut", None)
+                    else 1.0)
             log("  and dropping from every exposure each observer column where"
-                " more than %.0f%% of them is clipped and the survivors' reduced"
-                " chi2 is still above %.2f (noise gives %.3f)"
-                % (100 * float(frac), float(chi2),
-                   expected_chi2(args.nsig_cut)))
+                " more than %.0f%% of them is flagged and the survivors'"
+                " reduced chi2 is still above %.2f (noise gives %.3f)"
+                % (100 * float(frac), float(chi2), null))
         clipped_by_file, clip_report = residual_outliers(
             args.cube, np.load(fit_path), args.nsig_cut, args.clip_window,
             column_frac=frac, column_chi2=chi2,
