@@ -17,32 +17,57 @@ The corrected files take it through reconstruct's NaN mask, beside the samples
 the fit gave no weight, when correct.nsig_cut is set in config.yaml; null
 leaves every sample in.
 
-ONE SAMPLE, AND THEN THE WHOLE COLUMN. Dividing the residual by that local
-sigma turns it into a z, and a z is comparable from one exposure to the next:
-so the same residual that clips a sample of one exposure also says, column by
-column in the OBSERVER's frame, how the exposures agree there. A column where
-too many of them are beyond the clip AND whose survivors still carry more
-variance than noise is a column the model cannot describe in any exposure: a
-detector defect, a telluric line the correction does not reach, a sky residual
-that stands still. It goes for every exposure rather than for the few that
-happened to be caught (asked for on 2026-09-25).
+A SAMPLE IS THE WRONG UNIT. One sample beyond 3 sigma is not an event: 0.27%
+of pure noise is, and 1% of these residuals were, which is what asking for
+correct.nsig_cut 3 threw away (2026-09-25). What is not noise is a run of
+samples leaning the same way, a bump as wide as a line rather than a spike, so
+the unit is the EXCURSION: every window from one sample up to
+correct.excursion_elements resolution elements, each judged by the aggregate
+significance of its sum,
 
-    frac    the fraction of exposures clipped in that column, > correct.column_frac
+    Z(w) = |sum of z over the window| / sqrt(V(w))
+
+and flagged, with every sample in it, when Z is beyond correct.excursion_nsig.
+Six sigma there is not six sigma on one sample: four samples at three sigma
+each make six when the noise is independent, which is the point.
+
+V(w) IS MEASURED, NEVER w. The grid oversamples the spectrograph on purpose
+(0.5 km/s against a SPIRou pixel of 2.3 and a resolution element of 4.3), and
+the Lanczos registration and the high pass correlate neighbours further, so
+neighbouring samples are anything but independent and sqrt(w) would inflate
+every excursion into a detection. The exact variance of a sum of w correlated
+samples is
+
+    V(w) = w + 2 * sum over k of (w - k) * rho_k
+
+with rho_k the autocorrelation of the residual at lag k, measured on the run's
+own cube by noise_correlation. On TOI-2120 (SPIRou, 0.5 km/s) rho_1 is about
+0.9, so V(17) is near 90 rather than 17: a window of two resolution elements
+holds about three independent measurements, not seventeen.
+
+    window_variance     V(w) from the measured rho
+    noise_correlation   rho_k of the residual, from the cube and the fit
+    excursions          the mask of every window whose Z is beyond the threshold
+
+ONE COLUMN, ACROSS THE EXPOSURES. The same z also says, column by column in
+the OBSERVER's frame, how the exposures agree there. A column where too many
+of them are flagged AND whose survivors still carry more variance than noise
+is a column the model cannot describe in any exposure: a detector defect, a
+telluric line the correction does not reach, a sky residual that stands still.
+It goes for every exposure rather than for the few that happened to be caught.
+
+    frac    the fraction of exposures flagged in that column, > correct.column_frac
     chi2    the reduced chi2 of the SURVIVORS, > correct.column_chi2
 
 Both, not either. What each threshold means, measured rather than assumed
-(scratchpad/null_chi2.py, 4096 columns of 321 rows of pure Gaussian noise):
-
-    the survivors' reduced chi2 is 0.973, not 1, because the clip takes the
-    tails with it (expected_chi2 below is the closed form). Its median over
-    columns was 0.979 and its highest 1.271, so 1.5 is well clear of noise.
-    The clipped fraction reached 2.2% at most, so the 10% of column_frac
-    cannot be met by noise alone: it is what keeps a column with a handful of
-    genuinely bad exposures, whose survivors are clean, from being thrown away
-    whole. Together they caught 39 of 40 columns given twice the noise of
-    their neighbours, 40 of 40 at three times, and not one of the 4056 good
-    ones. A column at 1.5 times the noise is NOT caught: its clipped fraction
-    is 4.8%, under the 10%.
+(scratchpad/null_chi2.py, 4096 columns of 321 rows of pure Gaussian noise, at
+the 3 sigma per-sample clip): the survivors' reduced chi2 is 0.973, not 1,
+because the clip takes the tails with it (expected_chi2 below is the closed
+form). Its median over columns was 0.979 and its highest 1.271, so 1.5 is well
+clear of noise. The clipped fraction reached 2.2% at most, so the 10% of
+column_frac cannot be met by noise alone: it is what keeps a column with a
+handful of genuinely bad exposures, whose survivors are clean, from being
+thrown away whole.
 """
 
 from __future__ import annotations
@@ -54,6 +79,9 @@ import warnings
 import numpy as np
 
 from .grids import pixel_shift
+
+#: the light speed the resolution element is measured with, km/s
+C_KMS = 299792.458
 
 
 def expected_chi2(nsig):
@@ -67,6 +95,98 @@ def expected_chi2(nsig):
     phi = math.exp(-0.5 * a * a) / math.sqrt(2.0 * math.pi)
     inside = math.erf(a / math.sqrt(2.0))
     return (inside - 2.0 * a * phi) / inside
+
+
+def element_samples(resolution, dv, elements=1.0):
+    """How many grid samples `elements` resolution elements cover.
+
+    One element is c/R km/s wide, 4.28 for R = 70000, and the grid step is
+    dv: at 0.5 km/s that is 8.6 samples, and two elements 17.
+    """
+    return max(1, int(round(float(elements) * (C_KMS / float(resolution))
+                            / float(dv))))
+
+
+def window_variance(width, rho):
+    """The variance of the sum of `width` consecutive samples of unit variance
+    whose autocorrelation is `rho` (rho[0] is lag 1).
+
+        V(w) = w + 2 * sum over k < w of (w - k) * rho_k
+
+    With rho all zero this is w, the independent case, and sqrt(V) is what an
+    excursion's sum must be divided by to become a significance.
+    """
+    w = int(width)
+    v = float(w)
+    for k in range(1, min(w, len(rho) + 1)):
+        v += 2.0 * (w - k) * float(rho[k - 1])
+    return max(v, 1e-6)
+
+
+def autocorrelation(z, lags, clip_at=5.0):
+    """rho_1..rho_lags of rows of z, ignoring NaN and anything beyond clip_at.
+
+    Measured on the residual itself, because what correlates neighbouring
+    samples is the grid's oversampling, the Lanczos registration and the high
+    pass together, and no formula for the three is worth trusting over the
+    thing they did. The excursions themselves are left out (clip_at), so this
+    is the correlation of the NOISE and not of what is being looked for.
+    """
+    z = np.atleast_2d(np.asarray(z, dtype=float))
+    good = np.isfinite(z) & (np.abs(z) <= float(clip_at))
+    x = np.where(good, z, 0.0)
+    out = []
+    var = float((x * x).sum())
+    pairs = float(good.sum())
+    if not var or not pairs:
+        return [0.0] * int(lags)
+    for k in range(1, int(lags) + 1):
+        both = good[:, :-k] & good[:, k:]
+        if not both.any():
+            out.append(0.0)
+            continue
+        a, b = x[:, :-k][both], x[:, k:][both]
+        # normalised by the variance of the samples that enter the product, so
+        # rho_0 is 1 by construction whatever was thrown out
+        norm = math.sqrt(float((a * a).sum()) * float((b * b).sum()))
+        out.append(float((a * b).sum() / norm) if norm else 0.0)
+    return out
+
+
+def excursions(z, widths, rho, nsig):
+    """The mask of every sample inside a window whose aggregate Z is beyond nsig.
+
+    `z` is (rows, columns), `widths` the window lengths in samples, in
+    ascending order; a window is judged only where all of its samples were
+    measured. Every sample of a flagged window is flagged, which is why a wide
+    excursion comes out as the band it is rather than as its centre.
+    """
+    z = np.atleast_2d(np.asarray(z, dtype=float))
+    n, m = z.shape
+    finite = np.isfinite(z)
+    filled = np.where(finite, z, 0.0)
+    zero = np.zeros((n, 1))
+    csum = np.concatenate([zero, np.cumsum(filled, axis=1)], axis=1)
+    cfin = np.concatenate([zero, np.cumsum(finite, axis=1)], axis=1)
+    out = np.zeros((n, m), dtype=bool)
+    for w in widths:
+        w = int(w)
+        if w < 1 or w > m:
+            continue
+        limit = float(nsig) * math.sqrt(window_variance(w, rho))
+        total = csum[:, w:] - csum[:, :-w]
+        count = cfin[:, w:] - cfin[:, :-w]
+        hit = (count == w) & (np.abs(total) > limit)
+        if not hit.any():
+            continue
+        # every sample covered by a flagged window: a start in [i - w + 1, i]
+        starts = np.zeros((n, m), dtype=np.int32)
+        starts[:, :m - w + 1] = hit
+        run = np.cumsum(starts, axis=1)
+        covered = run.copy()
+        covered[:, w:] -= run[:, :-w]
+        out |= covered > 0
+    return out
 
 
 def running_stats(values, window, step=None, min_valid=0.5, origin=0):
@@ -119,97 +239,163 @@ def clip(values, window, nsig, **kwargs):
     return np.where(cut, np.nan, values), cut
 
 
-def residual_outliers(cube, fit, nsig, window, block=40000, chunk=16,
-                      column_frac=None, column_chi2=None, column_min_rows=10):
-    """(file -> (2, grid) mask of what to NaN, a report on the columns).
-
-    The residual is panel 5's: the cube less the star block carried into each
-    row's frame, the star-frame means if the fit has them, the observer block
-    and the parity offset, NaN where the fit gave no weight. It is clipped row
-    by row with running_stats over `window` samples. The cube is read `block`
-    columns at a time, each with a margin covering the largest shift, the
-    Lanczos kernel and half the window, so every column comes out as from the
-    whole cube; `block=None` reads it whole. Row 0 of each mask is the even
-    orders, row 1 the odd ones, as reconstruct.fit_weights_mask.
-
-    With `column_frac` and `column_chi2`, every exposure also loses the columns
-    the exposures disagree on as a body: more than `column_frac` of them
-    clipped there and the survivors' reduced chi2 still above `column_chi2`,
-    over at least `column_min_rows` exposures of that parity. The report holds
-    that mask, the two statistics per column and what they cost.
-    """
-    from .twoframe import (LanczosShifter, carried_means, cube_grid, fit_means,
-                           fit_templates, load_cube, row_parity, star_model)
+def _pieces(cube, fit, window):
+    """What every pass over a cube's residual needs, read once."""
+    from .twoframe import (cube_grid, load_cube, row_parity)
     m = np.asarray(cube_grid(cube)).size
     _, _, w1, meta = load_cube(cube, dtype=np.float32, columns=np.arange(0, 1))
     n = w1.shape[0]
     if len(fit["berv"]) != n:
         raise SystemExit("the fit has %d rows and the cube %d: it was not made on"
                          " this cube" % (len(fit["berv"]), n))
-    parity = row_parity(meta, n) % 2
-    names = [os.path.basename(str(v)) for v in meta["filename"]]
     delta = -pixel_shift(np.asarray(fit["berv"], dtype=float), float(fit["dv"]))
     reach = int(np.ceil(np.abs(delta).max())) + 2
     window = int(window) | 1
-    margin = reach + 16 + window
+    return dict(n=n, m=m, meta=meta, parity=row_parity(meta, n) % 2,
+                names=[os.path.basename(str(v)) for v in meta["filename"]],
+                delta=delta, reach=reach, window=window,
+                margin=reach + 16 + window)
+
+
+def residual_z(cube, fit, window, block=40000, chunk=16, blocks=None):
+    """Yield the residual's z, chunk by chunk: (rows, c0, c1, inner, z).
+
+    The residual is panel 5's: the cube less the star block carried into each
+    row's frame, the star-frame means if the fit has them, the observer block
+    and the parity offset, NaN where the fit gave no weight. It is divided by
+    the local robust sigma around it (running_stats over `window` samples), so
+    what comes out is comparable from one exposure and one wavelength to the
+    next. The cube is read `block` columns at a time, each with a margin
+    covering the largest shift, the Lanczos kernel and half the window, so
+    every column comes out as from the whole cube; `block=None` reads it whole,
+    and `blocks` stops after that many (for a measurement rather than a pass).
+    """
+    from .twoframe import (LanczosShifter, carried_means, fit_means,
+                           fit_templates, load_cube, star_model)
+    part = _pieces(cube, fit, window)
+    n, m = part["n"], part["m"]
     P, a = np.asarray(fit["P"], dtype=float), np.asarray(fit["a"], dtype=float)
     Q, b = np.asarray(fit["Q"], dtype=float), np.asarray(fit["b"], dtype=float)
-    means, group = fit_means(fit, meta, n, m)
-    T, tgroup = fit_templates(fit, meta, n, m)
-    out = {name: np.zeros((2, m), dtype=bool) for name in names}
-    # per order parity and per OBSERVER column, over every exposure: how many
-    # were measured there, how many the clip took, and the z^2 of the rest
-    wanted = bool(column_frac) and bool(column_chi2)
-    seen = np.zeros((2, m), dtype=np.int32)
-    taken = np.zeros((2, m), dtype=np.int32)
-    kept = np.zeros((2, m), dtype=np.int32)
-    sum_z2 = np.zeros((2, m), dtype=float)
+    means, group = fit_means(fit, part["meta"], n, m)
+    T, tgroup = fit_templates(fit, part["meta"], n, m)
     step = m if block is None else int(block)
+    done = 0
     for c0 in range(0, m, step):
+        if blocks is not None and done >= int(blocks):
+            return
+        done += 1
         c1 = min(c0 + step, m)
-        a0, b0 = max(0, c0 - margin), min(m, c1 + margin)
-        _, data, w, _ = load_cube(cube, dtype=np.float32, columns=np.arange(a0, b0))
-        shifter = LanczosShifter(b0 - a0, a=8, max_shift=reach)
+        a0, b0 = max(0, c0 - part["margin"]), min(m, c1 + part["margin"])
+        _, data, w, _ = load_cube(cube, dtype=np.float32,
+                                  columns=np.arange(a0, b0))
+        shifter = LanczosShifter(b0 - a0, a=8, max_shift=part["reach"])
         Tf = shifter.prepare(T[:, a0:b0]) if np.any(T[:, a0:b0]) else None
         inner = slice(c0 - a0, c1 - a0)
         for start in range(0, n, chunk):
             stop = min(start + chunk, n)
             rows = slice(start, stop)
-            model = star_model(P[:, a0:b0], a[rows], shifter, delta[rows],
-                               stop - start, b0 - a0)
+            model = star_model(P[:, a0:b0], a[rows], shifter,
+                               part["delta"][rows], stop - start, b0 - a0)
             if Tf is not None:
-                model += carried_means(Tf, tgroup, shifter, delta, start, stop)
+                model += carried_means(Tf, tgroup, shifter, part["delta"],
+                                       start, stop)
             model += b[rows] @ Q[:, a0:b0]
             model += means[:, a0:b0][group[rows]]
             resid = np.where(w[rows] > 0, data[rows] - model, np.nan)
-            # the local median and sigma once, for the clip and for the z the
-            # column test needs: dividing by that sigma is what makes one
-            # exposure's residual comparable with another's
-            med, sig = running_stats(resid, window, origin=a0)
+            med, sig = running_stats(resid, part["window"], origin=a0)
             with np.errstate(invalid="ignore"):
                 z = (resid - med) / sig
-            measured = np.isfinite(z)
-            cut = measured & (np.abs(z) > float(nsig))
-            for i, r in enumerate(range(start, stop)):
-                out[names[r]][int(parity[r])][c0:c1] = cut[i, inner]
-            if wanted:
-                rows_parity = parity[start:stop]
-                for p in (0, 1):
-                    which = np.flatnonzero(rows_parity == p)
-                    if not which.size:
-                        continue
-                    ok = measured[which][:, inner]
-                    gone = cut[which][:, inner]
-                    survivor = np.where(ok & ~gone, z[which][:, inner], np.nan)
-                    seen[p, c0:c1] += ok.sum(axis=0)
-                    taken[p, c0:c1] += gone.sum(axis=0)
-                    kept[p, c0:c1] += np.isfinite(survivor).sum(axis=0)
-                    sum_z2[p, c0:c1] += np.nansum(survivor ** 2, axis=0)
+            yield (start, stop), c0, c1, inner, z
         del data, w
+
+
+def noise_correlation(cube, fit, window, lags, blocks=1, chunk=16, clip_at=5.0):
+    """The residual's rho_1..rho_lags, measured on the run's own cube.
+
+    A block of columns is enough: the whole point is the shape of the noise's
+    correlation, which the grid step, the registration and the high pass set,
+    not the wavelength. Averaged over the chunks of rows it sees.
+    """
+    weights, total = 0.0, np.zeros(int(lags))
+    for (start, stop), _c0, _c1, inner, z in residual_z(
+            cube, fit, window, chunk=chunk, blocks=blocks):
+        rho = autocorrelation(z[:, inner], lags, clip_at=clip_at)
+        count = float(np.isfinite(z[:, inner]).sum())
+        total += count * np.asarray(rho)
+        weights += count
+    return list(total / weights) if weights else [0.0] * int(lags)
+
+
+def residual_outliers(cube, fit, nsig, window, block=40000, chunk=16,
+                      column_frac=None, column_chi2=None, column_min_rows=10,
+                      excursion_nsig=None, excursion_samples=None, rho=None):
+    """(file -> (2, grid) mask of what to NaN, a report).
+
+    Row 0 of each mask is the even orders, row 1 the odd ones, as
+    reconstruct.fit_weights_mask.
+
+    What is flagged, per exposure:
+      * with `excursion_nsig` and `excursion_samples`, every window from one
+        sample to `excursion_samples` whose aggregate significance is beyond
+        `excursion_nsig`, the whole window (excursions, window_variance). `rho`
+        is the noise's autocorrelation; it is measured here when not given.
+      * otherwise every sample beyond `nsig` robust sigmas on its own, which
+        is what correct.nsig_cut asked for before the excursions existed.
+
+    Then, with `column_frac` and `column_chi2`, every exposure also loses the
+    columns the exposures disagree on as a body: more than `column_frac` of
+    them flagged there and the survivors' reduced chi2 still above
+    `column_chi2`, over at least `column_min_rows` exposures of that parity.
+    """
+    part = _pieces(cube, fit, window)
+    n, m, names, parity = part["n"], part["m"], part["names"], part["parity"]
+    out = {name: np.zeros((2, m), dtype=bool) for name in names}
+    by_excursion = bool(excursion_nsig) and bool(excursion_samples)
+    widths = (list(range(1, int(excursion_samples) + 1)) if by_excursion
+              else [])
+    if by_excursion and rho is None:
+        rho = noise_correlation(cube, fit, window, max(1, len(widths) - 1),
+                                blocks=1, chunk=chunk)
+    rho = list(rho or [])
+    # per order parity and per OBSERVER column, over every exposure: how many
+    # were measured there, how many were flagged, and the z^2 of the rest
+    wanted = bool(column_frac) and bool(column_chi2)
+    seen = np.zeros((2, m), dtype=np.int32)
+    taken = np.zeros((2, m), dtype=np.int32)
+    kept = np.zeros((2, m), dtype=np.int32)
+    sum_z2 = np.zeros((2, m), dtype=float)
+    flagged = 0
+    for (start, stop), c0, c1, inner, z in residual_z(
+            cube, fit, window, block=block, chunk=chunk):
+        measured = np.isfinite(z)
+        if by_excursion:
+            cut = excursions(z, widths, rho, excursion_nsig)
+        else:
+            cut = measured & (np.abs(z) > float(nsig))
+        for i, r in enumerate(range(start, stop)):
+            out[names[r]][int(parity[r])][c0:c1] = cut[i, inner]
+        flagged += int(cut[:, inner].sum())
+        if wanted:
+            rows_parity = parity[start:stop]
+            for p in (0, 1):
+                which = np.flatnonzero(rows_parity == p)
+                if not which.size:
+                    continue
+                ok = measured[which][:, inner]
+                gone = cut[which][:, inner]
+                survivor = np.where(ok & ~gone, z[which][:, inner], np.nan)
+                seen[p, c0:c1] += ok.sum(axis=0)
+                taken[p, c0:c1] += gone.sum(axis=0)
+                kept[p, c0:c1] += np.isfinite(survivor).sum(axis=0)
+                sum_z2[p, c0:c1] += np.nansum(survivor ** 2, axis=0)
 
     frac = np.divide(taken, seen, out=np.zeros((2, m)), where=seen > 0)
     chi2 = np.divide(sum_z2, kept, out=np.zeros((2, m)), where=kept > 0)
     columns = np.zeros((2, m), dtype=bool)
+    report = dict(columns=columns, frac=frac, chi2=chi2, seen=seen,
+                  n_columns=0, added=0, thresholds=None, flagged=flagged,
+                  rho=rho, widths=widths,
+                  variance=[window_variance(w, rho) for w in widths])
     if wanted:
         columns = ((seen >= int(column_min_rows)) & (frac > float(column_frac))
                    & (chi2 > float(column_chi2)))
@@ -217,10 +403,7 @@ def residual_outliers(cube, fit, nsig, window, block=40000, chunk=16,
         for name in names:
             added += int((columns & ~out[name]).sum())
             out[name] |= columns
-        report = dict(columns=columns, frac=frac, chi2=chi2, seen=seen,
-                      n_columns=int(columns.sum()), added=added,
+        report.update(columns=columns, n_columns=int(columns.sum()),
+                      added=added,
                       thresholds=(float(column_frac), float(column_chi2)))
-    else:
-        report = dict(columns=columns, frac=frac, chi2=chi2, seen=seen,
-                      n_columns=0, added=0, thresholds=None)
     return out, report

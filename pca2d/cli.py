@@ -66,6 +66,12 @@ SETTING_FLAGS = (
     ("--nsig-cut", "correct.nsig_cut", float,
      "NaN every sample whose residual, panel 5, is beyond this many running"
      " robust sigmas; 0 or nothing leaves them all in"),
+    ("--excursion-nsig", "correct.excursion_nsig", float,
+     "flag every window of the residual, up to --excursion-elements wide,"
+     " whose aggregate significance is beyond this; 6 is four independent"
+     " pixels at 3 sigma"),
+    ("--excursion-elements", "correct.excursion_elements", float,
+     "how wide those windows go, in resolution elements of the instrument"),
     ("--column-frac", "correct.column_frac", float,
      "with --column-chi2: drop an observer column from every exposure when"
      " more than this fraction of them is clipped there"),
@@ -1146,14 +1152,29 @@ def correct_mode(plan):
 def clip_args(cfg):
     """The correct stage's residual clip, when correct.nsig_cut asks for one:
     panel 5 beyond that many running robust sigmas over the high pass's window."""
+    from .outliers import element_samples
+
     corr = cfg.get("correct") or {}
     nsig = corr.get("nsig_cut")
-    if not nsig:
+    excursion = corr.get("excursion_nsig")
+    elements = corr.get("excursion_elements")
+    if not nsig and not (excursion and elements):
         return []
-    log("and setting to NaN every sample whose residual, panel 5, is beyond %.1f"
-        " running robust sigmas" % float(nsig), "info")
-    out = ["--nsig-cut", str(float(nsig)),
-           "--clip-window", str(int(cfg["highpass"]["window"]))]
+    out = ["--clip-window", str(int(cfg["highpass"]["window"]))]
+    if excursion and elements:
+        resolution = (cfg.get("twoframe") or {}).get("resolution") or 70000
+        samples = element_samples(resolution, cfg["domain"]["dv"], elements)
+        log("and flagging every excursion of the residual, panel 5, up to %.1f"
+            " resolution elements wide (%d samples at R = %d and %.2f km/s),"
+            " whose aggregate significance is beyond %.1f sigma"
+            % (float(elements), samples, int(resolution), cfg["domain"]["dv"],
+               float(excursion)), "info")
+        out += ["--excursion-nsig", str(float(excursion)),
+                "--excursion-samples", str(int(samples))]
+    if nsig:
+        log("and setting to NaN every sample whose residual, panel 5, is beyond"
+            " %.1f running robust sigmas" % float(nsig), "info")
+        out += ["--nsig-cut", str(float(nsig))]
     frac, chi2 = corr.get("column_frac"), corr.get("column_chi2")
     if frac and chi2:
         log("and dropping from every exposure each observer column where more"

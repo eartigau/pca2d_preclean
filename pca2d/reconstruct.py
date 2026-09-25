@@ -126,6 +126,16 @@ def parse_args(argv=None):
     p.add_argument("--clip-window", type=int, default=151,
                    help="the running sigma's box in grid samples; the high"
                         " pass's own window is what the pipeline passes")
+    p.add_argument("--excursion-nsig", type=float, default=None,
+                   help="with --excursion-samples: flag every window of the"
+                        " residual up to that many samples wide whose aggregate"
+                        " significance is beyond this, the whole window"
+                        " (outliers.excursions). The variance of a window's sum"
+                        " is measured from the residual's own autocorrelation")
+    p.add_argument("--excursion-samples", type=int, default=None,
+                   help="how wide those windows go, in grid samples; the"
+                        " pipeline passes the instrument's resolution element"
+                        " times correct.excursion_elements")
     p.add_argument("--column-frac", type=float, default=None,
                    help="with --column-chi2: drop an observer column from EVERY"
                         " exposure when more than this fraction of them is"
@@ -694,12 +704,19 @@ def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
                         "observer-frame parity mean divided out")
     if alive is not None:
         head["PCA2WNAN"] = (blanked, "samples the fit gave no weight, set to NaN")
+    if clipped is not None and clip_columns and clip_columns.get("excursion"):
+        head["PCA2XSIG"] = (float(clip_columns["excursion"]),
+                            "excursion flagged beyond this aggregate sigma")
+        head["PCA2XWID"] = (int(clip_columns.get("samples") or 0),
+                            "widest excursion window, in grid samples")
+        head["PCA2XRHO"] = (float(clip_columns.get("rho1") or 0),
+                            "the residual's autocorrelation at lag 1")
     if clipped is not None:
         head["PCA2RSIG"] = (float(clip_nsig or 0), "residual clip, in running robust sigma")
         head["PCA2RNAN"] = (n_clipped, "samples beyond it in panel 5, set to NaN")
     # the columns every exposure lost together, and the two thresholds that
     # sent them: a file says by itself whether it was cleaned this way
-    if clip_columns:
+    if clip_columns and clip_columns.get("frac"):
         head["PCA2CFRC"] = (float(clip_columns.get("frac") or 0),
                             "column goes above this clipped fraction")
         head["PCA2CCHI"] = (float(clip_columns.get("chi2") or 0),
@@ -1076,17 +1093,24 @@ def correct_many(model, args):
             " which panel 3 of the sequence figure does not show", "warn")
     clipped_by_file = None
     clip_report = None
-    if getattr(args, "nsig_cut", None):
+    excursion = getattr(args, "excursion_nsig", None)
+    samples = getattr(args, "excursion_samples", None)
+    if getattr(args, "nsig_cut", None) or (excursion and samples):
         if not getattr(args, "cube", None):
-            raise SystemExit("--nsig-cut needs --cube: the residual it clips is"
-                             " the cube less the model")
+            raise SystemExit("--nsig-cut and --excursion-nsig need --cube: the"
+                             " residual they read is the cube less the model")
         from .outliers import residual_outliers
         fit_path = os.path.join(os.path.dirname(os.path.abspath(args.fits)), "fit.npz")
         if not os.path.exists(fit_path):
             raise SystemExit("--nsig-cut needs the fit's archive beside %s: %s"
                              % (args.fits, fit_path))
-        log("  clipping the residual, panel 5, beyond %.1f running robust sigmas"
-            " over %d samples" % (args.nsig_cut, args.clip_window))
+        if excursion and samples:
+            log("  flagging every excursion of the residual, panel 5, from 1 to"
+                " %d samples wide, beyond %.1f sigma of aggregate significance"
+                % (int(samples), float(excursion)))
+        if getattr(args, "nsig_cut", None):
+            log("  clipping the residual, panel 5, beyond %.1f running robust"
+                " sigmas over %d samples" % (args.nsig_cut, args.clip_window))
         frac = getattr(args, "column_frac", None)
         chi2 = getattr(args, "column_chi2", None)
         if frac and chi2:
@@ -1098,8 +1122,21 @@ def correct_many(model, args):
                    expected_chi2(args.nsig_cut)))
         clipped_by_file, clip_report = residual_outliers(
             args.cube, np.load(fit_path), args.nsig_cut, args.clip_window,
-            column_frac=frac, column_chi2=chi2)
-        log("  %d grid samples beyond it, over %d exposures"
+            column_frac=frac, column_chi2=chi2,
+            excursion_nsig=excursion, excursion_samples=samples)
+        if clip_report["rho"]:
+            rho = clip_report["rho"]
+            wide = clip_report["variance"][-1]
+            log("  the residual's own autocorrelation: rho_1 = %.3f, rho_2 ="
+                " %.3f, rho_4 = %.3f, so a window of %d samples has variance"
+                " %.1f, i.e. %.1f independent samples, and a flat excursion"
+                " needs %.2f sigma of depth to reach %.1f"
+                % (rho[0], rho[1] if len(rho) > 1 else float("nan"),
+                   rho[3] if len(rho) > 3 else float("nan"), int(samples),
+                   wide, int(samples) ** 2 / wide,
+                   float(excursion) * wide ** 0.5 / int(samples),
+                   float(excursion)), "value")
+        log("  %d grid samples flagged, over %d exposures"
             % (sum(int(v.sum()) for v in clipped_by_file.values())
                - clip_report["added"], len(clipped_by_file)), "value")
         if frac and chi2:
@@ -1112,10 +1149,13 @@ def correct_many(model, args):
                    clip_report["added"], len(clipped_by_file)), "value")
     # what the header will say about the column test, once per run
     column_cards = None
-    if clip_report and clip_report.get("thresholds"):
-        column_cards = dict(frac=clip_report["thresholds"][0],
-                            chi2=clip_report["thresholds"][1],
-                            columns=clip_report["n_columns"])
+    if clip_report:
+        column_cards = dict(excursion=excursion, samples=samples,
+                            rho1=(clip_report["rho"] or [0])[0])
+        if clip_report.get("thresholds"):
+            column_cards.update(frac=clip_report["thresholds"][0],
+                                chi2=clip_report["thresholds"][1],
+                                columns=clip_report["n_columns"])
     smooth_which = [int(v) - 1 for v in
                     str(getattr(args, "smooth_components", None) or "").split(",")
                     if v.strip()]

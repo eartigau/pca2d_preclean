@@ -386,6 +386,20 @@ DEFAULTS = {
     "correct": {
         "n_star": 0,
         "n_earth": None,             # None = every observer component the fit has
+        # THE UNIT IS AN EXCURSION, not a sample: one sample beyond 3 sigma is
+        # noise (0.27% of it is, and 1% of these residuals were), while a run
+        # of samples leaning the same way over a line's width is not. Every
+        # window from one sample to excursion_elements resolution elements is
+        # judged by the aggregate significance of its sum, and flagged, whole,
+        # beyond excursion_nsig. The variance of that sum is measured, never
+        # assumed: at 0.5 km/s the grid oversamples a 2.3 km/s SPIRou pixel and
+        # the residual's rho_1 is 0.935, so 17 samples hold 3.5 independent
+        # measurements and a flat 3.2 sigma bump two elements wide is the 6
+        # sigma event (outliers.window_variance, noise_correlation).
+        # null until it is measured on more than one target: 6.0 and 2.0 are
+        # the values it was built for, and variants/0-7exc runs them.
+        "excursion_nsig": None,
+        "excursion_elements": 2.0,
         "nsig_cut": None,            # NaN beyond this many running robust sigmas
         # And then the column the exposures agree is bad. With nsig_cut set,
         # an observer column where more than column_frac of the exposures is

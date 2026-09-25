@@ -102,8 +102,89 @@ def test_both_thresholds_reach_the_settings_of_a_run():
     cfg = apply_setting_flags(load_config("config.yaml", instrument="SPIROU"), args)
     assert cfg["correct"]["nsig_cut"] == 3.0
     passed = clip_args(cfg)
-    assert passed[:2] == ["--nsig-cut", "3.0"]
+    assert passed[passed.index("--nsig-cut") + 1] == "3.0"
     assert "--column-frac" in passed and "--column-chi2" in passed
-    # and nothing about the columns when the clip itself is off
+    # and nothing at all when neither the clip nor the excursions are asked for
     cfg["correct"]["nsig_cut"] = None
+    cfg["correct"]["excursion_nsig"] = None
     assert clip_args(cfg) == []
+    # the excursion alone is enough to make the stage read the cube
+    cfg["correct"]["excursion_nsig"] = 6.0
+    passed = clip_args(cfg)
+    assert passed[passed.index("--excursion-nsig") + 1] == "6.0"
+    assert passed[passed.index("--excursion-samples") + 1] == "17", \
+        "two resolution elements of SPIRou at 0.5 km/s"
+    assert "--nsig-cut" not in passed
+
+
+# ---------------------------------------- the excursion, not the sample ------
+def test_a_window_of_correlated_samples_is_worth_less_than_its_length():
+    """sqrt(w) is the independent case and this grid is not it: at 0.5 km/s a
+    2.3 km/s SPIRou pixel spans four samples, so four of them carry about one
+    measurement. Measured on TOI-2120: rho_1 = 0.935."""
+    from pca2d.outliers import element_samples, window_variance
+
+    rho = [0.935, 0.766, 0.539, 0.303, 0.100, -0.046, -0.125, -0.148, -0.133,
+           -0.101, -0.069, -0.048, -0.039, -0.040, -0.047, -0.055]
+    assert window_variance(1, rho) == 1.0
+    assert window_variance(4, rho) == pytest.approx(13.75, abs=0.05), \
+        "four samples are not four measurements"
+    assert window_variance(17, rho) == pytest.approx(83.4, abs=0.2)
+    # with independent noise it is the length itself
+    assert window_variance(4, [0.0] * 8) == 4.0
+    # and four INDEPENDENT samples at 3 sigma do make the 6 the user asked for
+    assert 4 * 3.0 / window_variance(4, [0.0] * 8) ** 0.5 == pytest.approx(6.0)
+    # two resolution elements of SPIRou on this grid
+    assert element_samples(70000, 0.5, 2.0) == 17
+    assert element_samples(70000, 0.5, 1.0) == 9
+
+
+def test_the_autocorrelation_is_measured_and_not_assumed():
+    from pca2d.outliers import autocorrelation
+
+    rng = np.random.default_rng(3)
+    white = rng.normal(size=(40, 4000))
+    rho = autocorrelation(white, 4)
+    assert max(abs(r) for r in rho) < 0.05, rho
+    # a three-sample boxcar leaves a known correlation: 2/3, 1/3, 0
+    smooth = np.apply_along_axis(
+        lambda row: np.convolve(row, np.ones(3) / 3, mode="same"), 1, white)
+    rho = autocorrelation(smooth, 4)
+    assert rho[0] == pytest.approx(2 / 3, abs=0.03)
+    assert rho[1] == pytest.approx(1 / 3, abs=0.03)
+    assert abs(rho[2]) < 0.05
+
+
+def test_one_sample_needs_the_whole_threshold_and_a_wide_bump_does_not():
+    """A spike has to reach the threshold on its own; a bump two resolution
+    elements wide reaches it at a third of the depth, which is the point of
+    looking at excursions at all."""
+    from pca2d.outliers import excursions, window_variance
+
+    rho = [0.9, 0.7, 0.45, 0.2] + [0.0] * 13
+    widths = list(range(1, 18))
+    z = np.zeros((4, 600))
+    z[0, 300] = 6.5                                   # a spike, on its own
+    z[1, 300] = 4.0                                   # not enough on its own
+    z[2, 300:317] = 3.3                               # a wide, shallow bump
+    z[3, 300:317] = 1.0                               # and one too shallow
+    flagged = excursions(z, widths, rho, 6.0)
+    assert flagged[0, 300] and flagged[0].sum() == 1
+    assert not flagged[1].any()
+    assert flagged[2, 300:317].all(), "the whole excursion goes, not its centre"
+    assert not flagged[3].any()
+    # what the threshold means for that width, from the variance itself
+    need = 6.0 * window_variance(17, rho) ** 0.5 / 17
+    assert 2.5 < need < 3.5, need
+
+
+def test_a_flagged_window_is_only_judged_where_everything_was_measured():
+    from pca2d.outliers import excursions
+
+    z = np.zeros((1, 100))
+    z[0, 40:57] = 4.0
+    z[0, 45] = np.nan                       # a hole inside the excursion
+    flagged = excursions(z, list(range(1, 18)), [0.0] * 17, 6.0)
+    assert not flagged[0, 45], "a sample that was never measured is not flagged"
+    assert flagged[0, 46:57].any() or flagged[0, 40:45].any(), \
+        "the halves on either side are still windows of their own"

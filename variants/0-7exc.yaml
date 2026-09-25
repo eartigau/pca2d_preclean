@@ -1,0 +1,23 @@
+# 0-7exc: the residual judged as EXCURSIONS rather than samples, and the
+# columns the exposures agree on, on the nominal's fit (asked for 2026-09-25,
+# after 0-7chi2 showed the per-sample 3 sigma clip doing all of the work and
+# the column test on top of it adding +0.06 m/s, 95% interval -0.08 to +0.20).
+#
+# Every window from one sample to two resolution elements (17 samples at R =
+# 70000 and 0.5 km/s) is judged by the aggregate significance of its sum, with
+# the variance of that sum taken from the residual's own autocorrelation, and
+# flagged whole beyond 6 sigma. On TOI-2120 that means a single sample at 6
+# sigma, or a bump two elements wide at 3.2 sigma of depth: four independent
+# pixels at 3 sigma, which four GRID samples are not.
+#
+# No per-sample 3 sigma clip here: that is what this replaces.
+note: "TOI2120 0-7, 2026-09-25: 6 sigma excursions to 2 resolution elements, plus the columns"
+reuse_fit: nominal
+correct:
+  nsig_cut: null
+  excursion_nsig: 6.0
+  excursion_elements: 2.0
+  column_frac: 0.10
+  column_chi2: 1.5
+lbl:
+  before: false

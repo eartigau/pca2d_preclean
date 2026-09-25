@@ -372,6 +372,35 @@ general:
                             # measure. Only what is fixed in the observer's
                             # frame comes off.
     n_earth: null           # null means every observer component the fit has
+    excursion_nsig: null    # THE UNIT IS AN EXCURSION, NOT A SAMPLE. One sample
+    excursion_elements: 2.0 # beyond 3 sigma is noise: 0.27% of pure noise is,
+                            # and 1% of these residuals were. A run of samples
+                            # leaning the same way over a line's width is not.
+                            # So every window from one sample up to
+                            # excursion_elements resolution elements is judged
+                            # by the aggregate significance of its sum,
+                            #
+                            #   Z(w) = |sum of z| / sqrt(V(w))
+                            #
+                            # and flagged, whole, beyond excursion_nsig sigmas.
+                            #
+                            # V(w) IS MEASURED, NEVER w: the grid oversamples
+                            # the spectrograph (0.5 km/s against a 2.3 km/s
+                            # SPIRou pixel, one resolution element 4.3), and the
+                            # registration and the high pass correlate
+                            # neighbours further. On TOI-2120 the residual's
+                            # autocorrelation is rho_1 = 0.935, rho_2 = 0.766,
+                            # rho_4 = 0.303, so V(4) = 13.8, not 4: four samples
+                            # at 3 sigma are 3.2 sigma and not 6, because they
+                            # are one pixel. Over 17 samples (two elements, four
+                            # pixels) V = 83 and a flat 3.2 sigma bump reaches
+                            # 6, which is four INDEPENDENT pixels at 3 sigma:
+                            # the rule of thumb, with the arithmetic done
+                            # (outliers.noise_correlation, window_variance).
+                            #
+                            # 6.0 is the threshold this was built for; null
+                            # until it is measured on more than one target.
+                            # Header: PCA2XSIG, PCA2XWID, PCA2XRHO.
     nsig_cut: null          # also NaN every sample whose residual (panel 5 of
                             # the sequence figure: the data less everything the
                             # fit models) is beyond this many running robust
