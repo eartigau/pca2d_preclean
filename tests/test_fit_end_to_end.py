@@ -145,15 +145,48 @@ def test_the_residual_clip_finds_a_spike_and_reads_the_cube_in_blocks(cube, tmp_
     data = np.load(os.path.join(cube, "data.npy"))
     data[4, 1000] += 0.5
     np.save(os.path.join(cube, "data.npy"), data)
-    whole = residual_outliers(cube, fit, 8.0, 151, block=None)
-    blocks = residual_outliers(cube, fit, 8.0, 151, block=300)
+    whole, _ = residual_outliers(cube, fit, 8.0, 151, block=None)
+    blocks, report = residual_outliers(cube, fit, 8.0, 151, block=300)
     assert whole.keys() == blocks.keys()
+    assert report["n_columns"] == 0, "no column test was asked for"
     for name in whole:
         assert np.array_equal(whole[name], blocks[name]), name
     row = whole["0002t.fits"][0]                  # row 4: exposure 2, even orders
     assert row[1000]
     assert not row[985:1000].any() and not row[1001:1016].any(), (
         "the noise beside the spike is left alone")
+
+
+def test_a_column_every_exposure_disagrees_on_goes_from_all_of_them(cube, tmp_path):
+    """The same cube with one observer column given four times its noise in
+    every exposure: the column leaves every file, and a spike in one exposure
+    still leaves only that one."""
+    from pca2d.outliers import residual_outliers
+    run(cube, tmp_path / "fit")
+    fit = np.load(tmp_path / "fit" / "fit.npz")
+    data = np.load(os.path.join(cube, "data.npy"))
+    rng = np.random.default_rng(11)
+    # 1800 is clear of every line of the toy cube: a deep one is clipped out
+    # of the fit's weights, so nothing is measured there to disagree about
+    data[:, 1800] += rng.normal(scale=0.04, size=data.shape[0])   # noise is 0.01
+    data[4, 1000] += 0.5
+    np.save(os.path.join(cube, "data.npy"), data)
+    masks, report = residual_outliers(cube, fit, 3.0, 151, block=None,
+                                      column_frac=0.10, column_chi2=1.5,
+                                      column_min_rows=2)
+    assert report["columns"][:, 1800].all(), (
+        "frac %s, chi2 %s" % (report["frac"][:, 1800], report["chi2"][:, 1800]))
+    assert all(m[0][1800] and m[1][1800] for m in masks.values()), \
+        "every exposure loses it, whatever its own residual there was"
+    assert masks["0002t.fits"][0][1000], "and the one-exposure spike is still cut"
+    # Six exposures per parity is too few for the rule to tell a bad column
+    # from one bad exposure: a single clipped exposure is already 17% of them.
+    # That discrimination is tested on 120 rows in test_column_outliers.py;
+    # what this cube shows is the guard that refuses to judge on too few.
+    _, careful = residual_outliers(cube, fit, 3.0, 151, block=None,
+                                  column_frac=0.10, column_chi2=1.5,
+                                  column_min_rows=8)
+    assert careful["n_columns"] == 0, "six exposures of a parity give no verdict"
 
 
 def test_the_last_iterate_can_be_kept_rather_than_the_best(cube, tmp_path):

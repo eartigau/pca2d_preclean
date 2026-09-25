@@ -389,6 +389,31 @@ PT = {
         " um fator três, as duas são indistinguíveis: 15.4 +- 1.2 contra"
         " 15.0 +- 1.2 m/s. Os alvos onde a correção CUSTA são os que vão"
         " decidir.",
+    "opt_nsig_cut": "corte do resíduo (sigma)",
+    "opt_column_frac": "coluna: fração cortada",
+    "opt_column_chi2": "coluna: chi2 do resto",
+    "help_nsig_cut":
+        "Põe a NaN cada amostra cujo resíduo, painel 5 da figura de sequência,"
+        " passe este número de sigmas robustos deslizantes do ruído que a"
+        " rodeia: um raio cósmico que passou o corte MAD, um píxel quente, um"
+        " resíduo de céu. Vazio deixa todas as amostras, que é o nominal. 3 é o"
+        " valor para o qual isto foi construído.",
+    "help_column_frac":
+        "Com os dois ajustes ao lado: o resíduo dividido por esse sigma local é"
+        " um z, pelo que as exposições se comparam coluna a coluna no"
+        " referencial do OBSERVADOR. Uma coluna onde mais do que esta fração"
+        " delas é cortada, E cujos sobreviventes continuam ruidosos, sai de"
+        " TODAS as exposições: nenhuma a descreve, logo é um defeito, uma linha"
+        " telúrica fora do alcance da correção ou um resíduo de céu, não a"
+        " estrela. O ruído sozinho nunca chega aos 10%, e é isso que impede"
+        " deitar fora uma coluna inteira por umas poucas exposições realmente"
+        " más.",
+    "help_column_chi2":
+        "O chi2 reduzido que os sobreviventes desse corte têm de exceder para a"
+        " coluna sair. Mede-se contra 0,97 e não contra 1: cortar a 3 sigmas"
+        " leva as caudas, e ruído puro nunca passou de 1,27 em 4096 colunas. 1,5"
+        " apanha uma coluna que carrega o dobro do ruído das vizinhas e deixa"
+        " uma coluna cujos sobreviventes estão limpos.",
     "opt_width_kms": "passa-alto (km/s)",
     "opt_dv": "passo da grelha (km/s)",
     "opt_nightly_stack": "combinar cada noite",

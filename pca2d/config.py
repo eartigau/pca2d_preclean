@@ -387,6 +387,16 @@ DEFAULTS = {
         "n_star": 0,
         "n_earth": None,             # None = every observer component the fit has
         "nsig_cut": None,            # NaN beyond this many running robust sigmas
+        # And then the column the exposures agree is bad. With nsig_cut set,
+        # an observer column where more than column_frac of the exposures is
+        # clipped AND whose survivors' reduced chi2 is still above
+        # column_chi2 is dropped from every exposure (outliers.py). Pure noise
+        # gives 0.973 after a 3 sigma clip and never reaches 10% clipped, so
+        # these two defaults are measured thresholds and not guesses; null in
+        # either leaves the columns alone.
+        "column_frac": 0.10,
+        "column_chi2": 1.5,
+        "column_min_rows": 10,       # fewer exposures than this: no verdict
         # The metric the amplitudes are measured in when they are refitted at
         # correction time. "flux": every sample as the fit saw it, the older
         # behaviour. "velocity": each sample weighted by (dT/dv)^2, the star's own
@@ -802,6 +812,9 @@ WINDOW_SETTINGS = (
     ("twoframe.iters", "sweeps at most"),
     ("correct.shrink", "divide each observer component out only where"
                        " significant"),
+    ("correct.nsig_cut", "residual clip, in running robust sigmas"),
+    ("correct.column_frac", "clipped fraction above which a column goes whole"),
+    ("correct.column_chi2", "and the survivors' reduced chi2 above which"),
     ("correct.weight", "metric the correction's amplitudes are measured in"),
     ("highpass.width_kms", "the Savitzky-Golay high pass, in km/s"),
     ("domain.dv", "the grid step, in km/s"),

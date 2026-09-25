@@ -126,6 +126,14 @@ def parse_args(argv=None):
     p.add_argument("--clip-window", type=int, default=151,
                    help="the running sigma's box in grid samples; the high"
                         " pass's own window is what the pipeline passes")
+    p.add_argument("--column-frac", type=float, default=None,
+                   help="with --column-chi2: drop an observer column from EVERY"
+                        " exposure when more than this fraction of them is"
+                        " clipped there and the survivors are still noisy")
+    p.add_argument("--column-chi2", type=float, default=None,
+                   help="the survivors' reduced chi2 above which such a column"
+                        " goes; pure noise gives 0.97 after a 3 sigma clip"
+                        " (outliers.expected_chi2)")
     p.add_argument("--shrink", action="store_true",
                    help="keep each observer component at a column only where it"
                         " is significant there, all exposures together: Q_ji"
@@ -602,7 +610,8 @@ def weighted_on_pixels(alive, wave, grid):
 
 def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
                  halfwidth=8, overwrite=False, max_sky=None, alive=None,
-                 clipped=None, clip_nsig=None, refit=False, weight="flux"):
+                 clipped=None, clip_nsig=None, refit=False, weight="flux",
+                 clip_columns=None):
     """Write a t.fits with the model divided out. Returns the new path.
 
     The model lives in `ln f - savgol(ln f)`, so removing it from the flux is a
@@ -688,6 +697,15 @@ def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
     if clipped is not None:
         head["PCA2RSIG"] = (float(clip_nsig or 0), "residual clip, in running robust sigma")
         head["PCA2RNAN"] = (n_clipped, "samples beyond it in panel 5, set to NaN")
+    # the columns every exposure lost together, and the two thresholds that
+    # sent them: a file says by itself whether it was cleaned this way
+    if clip_columns:
+        head["PCA2CFRC"] = (float(clip_columns.get("frac") or 0),
+                            "column goes above this clipped fraction")
+        head["PCA2CCHI"] = (float(clip_columns.get("chi2") or 0),
+                            "and above this reduced chi2 of the survivors")
+        head["PCA2CCOL"] = (int(clip_columns.get("columns") or 0),
+                            "observer columns dropped from every exposure")
     head["PCA2REJ"] = (bool(row["rejected"]), "exposure was MAD-rejected")
     head["PCA2RFIT"] = (bool(refit), "coefficients solved for this file, basis fixed")
     head["PCA2WGHT"] = (str(weight), "metric the amplitudes were measured in")
@@ -1057,6 +1075,7 @@ def correct_many(model, args):
         log("  no --cube: samples the fit gave no weight to keep their flux,"
             " which panel 3 of the sequence figure does not show", "warn")
     clipped_by_file = None
+    clip_report = None
     if getattr(args, "nsig_cut", None):
         if not getattr(args, "cube", None):
             raise SystemExit("--nsig-cut needs --cube: the residual it clips is"
@@ -1068,11 +1087,35 @@ def correct_many(model, args):
                              % (args.fits, fit_path))
         log("  clipping the residual, panel 5, beyond %.1f running robust sigmas"
             " over %d samples" % (args.nsig_cut, args.clip_window))
-        clipped_by_file = residual_outliers(args.cube, np.load(fit_path),
-                                            args.nsig_cut, args.clip_window)
+        frac = getattr(args, "column_frac", None)
+        chi2 = getattr(args, "column_chi2", None)
+        if frac and chi2:
+            from .outliers import expected_chi2
+            log("  and dropping from every exposure each observer column where"
+                " more than %.0f%% of them is clipped and the survivors' reduced"
+                " chi2 is still above %.2f (noise gives %.3f)"
+                % (100 * float(frac), float(chi2),
+                   expected_chi2(args.nsig_cut)))
+        clipped_by_file, clip_report = residual_outliers(
+            args.cube, np.load(fit_path), args.nsig_cut, args.clip_window,
+            column_frac=frac, column_chi2=chi2)
         log("  %d grid samples beyond it, over %d exposures"
-            % (sum(int(v.sum()) for v in clipped_by_file.values()),
-               len(clipped_by_file)), "value")
+            % (sum(int(v.sum()) for v in clipped_by_file.values())
+               - clip_report["added"], len(clipped_by_file)), "value")
+        if frac and chi2:
+            seen = clip_report["seen"]
+            measured = int((seen > 0).sum())
+            log("  %d of the %d measured columns go whole, %.2f%% of them; that"
+                " is %d more samples over the %d exposures"
+                % (clip_report["n_columns"], measured,
+                   100.0 * clip_report["n_columns"] / max(measured, 1),
+                   clip_report["added"], len(clipped_by_file)), "value")
+    # what the header will say about the column test, once per run
+    column_cards = None
+    if clip_report and clip_report.get("thresholds"):
+        column_cards = dict(frac=clip_report["thresholds"][0],
+                            chi2=clip_report["thresholds"][1],
+                            columns=clip_report["n_columns"])
     smooth_which = [int(v) - 1 for v in
                     str(getattr(args, "smooth_components", None) or "").split(",")
                     if v.strip()]
@@ -1157,7 +1200,8 @@ def correct_many(model, args):
             model, row, path, args.corrected_dir, args.n_star, args.n_earth,
             args.kernel_halfwidth, args.overwrite, max_sky=args.max_sky_ratio,
             alive=alive, clipped=clipped, clip_nsig=getattr(args, "nsig_cut", None),
-            refit=bool(args.refit), weight=getattr(args, "weight", "flux"))
+            refit=bool(args.refit), weight=getattr(args, "weight", "flux"),
+            clip_columns=column_cards)
         written += 1
         # onto the bar, not onto its own line: three hundred of these scroll
         # the narration off the screen and say nothing a total cannot

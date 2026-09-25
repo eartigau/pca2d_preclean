@@ -1,0 +1,21 @@
+# colclip: the residual clip, and then the whole observer column the exposures
+# agree is bad (asked for on 2026-09-25). Correction only, on the nominal's fit:
+# what changes is which samples a corrected file keeps, never the fit.
+#
+# The residual divided by its own local sigma is a z, so at a fixed observer
+# column the exposures are comparable: a column where more than 10% of them is
+# beyond 3 sigma AND whose survivors' reduced chi2 is still above 1.5 belongs
+# to no exposure's star. It is a defect, a telluric line the correction does
+# not reach or a sky residual, so it goes from every exposure rather than from
+# the few that happened to be caught.
+#
+# Its twin, pointclip, clips the samples and leaves the columns, which is what
+# says whether the column half is what pays.
+note: "TOI2120 0-7, 2026-09-25: 3 sigma samples AND the columns they agree on"
+reuse_fit: nominal
+correct:
+  nsig_cut: 3.0
+  column_frac: 0.10
+  column_chi2: 1.5
+lbl:
+  before: false       # the delivered spectra are measured by the reference run

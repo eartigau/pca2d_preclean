@@ -378,6 +378,28 @@ general:
                             # sigmas, 1.4826 MAD over highpass.window samples.
                             # The count goes in the header as PCA2RNAN. null
                             # keeps them all.
+    column_frac: 0.10       # AND THEN THE WHOLE COLUMN. With nsig_cut set, the
+    column_chi2: 1.5        # residual divided by that local sigma is a z, so
+                            # the exposures can be compared column by column in
+                            # the OBSERVER's frame. A column where more than
+                            # column_frac of them is clipped AND whose
+                            # survivors' reduced chi2 is still above
+                            # column_chi2 is dropped from EVERY exposure: no
+                            # exposure can describe it, so it is a defect, a
+                            # telluric line the correction does not reach or a
+                            # sky residual, not a measurement of the star.
+                            # Both conditions, not either.
+                            #
+                            # The numbers are measured (outliers.py, and
+                            # scratchpad/null_chi2.py): pure Gaussian noise
+                            # gives 0.973 after a 3 sigma clip, never above
+                            # 1.27 over 4096 columns, and never more than 2.2%
+                            # of exposures clipped, so 10% cannot be met by
+                            # noise. Together they caught 39 of 40 columns
+                            # given twice their neighbours' noise and none of
+                            # the 4056 good ones. Header: PCA2CFRC, PCA2CCHI,
+                            # PCA2CCOL. null in either leaves the columns in.
+    column_min_rows: 10     # fewer exposures of a parity than this: no verdict
     shrink: true            # nominal since 2026-09-11: divide each observer
                             # component out only where it is significant at
                             # that column, all exposures together: Q_ji times

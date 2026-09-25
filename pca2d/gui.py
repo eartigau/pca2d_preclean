@@ -80,6 +80,11 @@ OPTIONS = [
     ("velocity_term", "twoframe.velocity_term", "bool"),
     ("iters", "twoframe.iters", "int"),
     ("shrink", "correct.shrink", "bool"),
+    # the residual clip and, with it, the column the exposures agree is bad
+    # (2026-09-25). Empty is the configuration's own value, which is no clip.
+    ("nsig_cut", "correct.nsig_cut", "float"),
+    ("column_frac", "correct.column_frac", "float"),
+    ("column_chi2", "correct.column_chi2", "float"),
     # two buttons, one of which is always down: the metric is a choice between
     # two spellings of the same thing, and a tick box can only name one of them.
     # The kind carries (value, what the button says), and the DEFAULT is the
@@ -480,6 +485,30 @@ EN = {
         " Measured on TOI-2120, where the correction gains a factor three, the"
         " two are indistinguishable: 15.4 +- 1.2 against 15.0 +- 1.2 m/s. The"
         " targets where the correction COSTS are the ones that will decide.",
+    "opt_nsig_cut": "residual clip (sigma)",
+    "opt_column_frac": "column: clipped fraction",
+    "opt_column_chi2": "column: chi2 of the rest",
+    "help_nsig_cut":
+        "Sets to NaN every sample whose residual, panel 5 of the sequence"
+        " figure, is beyond this many running robust sigmas of the noise around"
+        " it: a cosmic ray the MAD cut let through, a hot pixel, a sky residual."
+        " Empty leaves every sample in, which is the nominal. 3 is the value"
+        " this was built for.",
+    "help_column_frac":
+        "With the two beside it: the residual divided by that local sigma is a"
+        " z, so the exposures can be compared column by column in the"
+        " OBSERVER's frame. A column where more than this fraction of them is"
+        " clipped, AND whose survivors are still noisy, is dropped from EVERY"
+        " exposure: no exposure describes it, so it is a defect, a telluric"
+        " line the correction does not reach or a sky residual, not the star."
+        " Noise alone never reaches 10%, so this is what keeps a column with a"
+        " few genuinely bad exposures from being thrown away whole.",
+    "help_column_chi2":
+        "The reduced chi2 the survivors of that clip must exceed for the column"
+        " to go. It is measured against 0.97, not 1: clipping at 3 sigma takes"
+        " the tails with it, and pure noise never passed 1.27 over 4096"
+        " columns. 1.5 catches a column carrying twice its neighbours' noise"
+        " and leaves a column whose survivors are clean.",
     "opt_width_kms": "high pass (km/s)", "opt_dv": "grid step (km/s)",
     "opt_nightly_stack": "coadd each night", "opt_run": "run LBL (hours)",
     "opt_lbl_prepare": "write LBL's tree",
@@ -1074,6 +1103,32 @@ FR = {
         " gagne un facteur trois, les deux sont indiscernables : 15,4 +- 1,2"
         " contre 15,0 +- 1,2 m/s. Ce sont les cibles où la correction COÛTE qui"
         " trancheront.",
+    "opt_nsig_cut": "coupure du résidu (sigma)",
+    "opt_column_frac": "colonne : fraction coupée",
+    "opt_column_chi2": "colonne : chi2 du reste",
+    "help_nsig_cut":
+        "Met à NaN tout échantillon dont le résidu, panneau 5 de la figure de"
+        " séquence, dépasse ce nombre de sigmas robustes glissants du bruit qui"
+        " l'entoure : un rayon cosmique passé à travers la coupure MAD, un"
+        " pixel chaud, un résidu de ciel. Vide garde tous les échantillons,"
+        " c'est le nominal. 3 est la valeur pour laquelle ceci a été construit.",
+    "help_column_frac":
+        "Avec les deux réglages voisins : le résidu divisé par ce sigma local"
+        " est un z, donc les poses se comparent colonne par colonne dans le"
+        " référentiel de l'OBSERVATEUR. Une colonne où plus que cette fraction"
+        " des poses est coupée, ET dont les survivants restent bruyants, est"
+        " retirée de TOUTES les poses : aucune pose ne la décrit, c'est donc un"
+        " défaut, une raie tellurique hors d'atteinte de la correction ou un"
+        " résidu de ciel, pas l'étoile. Le bruit seul n'atteint jamais 10 %,"
+        " c'est ce qui empêche de jeter une colonne entière pour quelques poses"
+        " réellement mauvaises.",
+    "help_column_chi2":
+        "Le chi2 réduit que les survivants de cette coupure doivent dépasser"
+        " pour que la colonne s'en aille. Il se mesure contre 0,97 et non"
+        " contre 1 : couper à 3 sigmas emporte les ailes, et du bruit pur n'a"
+        " jamais dépassé 1,27 sur 4096 colonnes. 1,5 attrape une colonne qui"
+        " porte deux fois le bruit de ses voisines et laisse une colonne dont"
+        " les survivants sont propres.",
     "opt_width_kms": "passe-haut (km/s)", "opt_dv": "pas de grille (km/s)",
     "opt_nightly_stack": "empiler chaque nuit", "opt_run": "lancer LBL (heures)",
     "opt_lbl_prepare": "écrire l'arbre du LBL",
@@ -1663,7 +1718,10 @@ def build_command(state, defaults=None):
     for key, flag in (("velocity_term", "--velocity-term"),
                       ("iters", "--iters"), ("shrink", "--shrink"),
                       ("weight", "--weight"), ("width_kms", "--high-pass"),
-                      ("dv", "--dv"), ("nightly_stack", "--nightly-stack")):
+                      ("dv", "--dv"), ("nightly_stack", "--nightly-stack"),
+                      ("nsig_cut", "--nsig-cut"),
+                      ("column_frac", "--column-frac"),
+                      ("column_chi2", "--column-chi2")):
         if key not in state:
             continue
         value = state[key]

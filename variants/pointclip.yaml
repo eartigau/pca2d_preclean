@@ -1,0 +1,12 @@
+# pointclip: the residual clip alone, sample by sample, no column test. The
+# control for colclip: both clip every sample whose residual is beyond 3
+# running robust sigmas, and only colclip also drops the observer columns the
+# exposures agree on. Correction only, on the nominal's fit.
+note: "TOI2120 0-7, 2026-09-25: 3 sigma samples only, columns left alone"
+reuse_fit: nominal
+correct:
+  nsig_cut: 3.0
+  column_frac: null
+  column_chi2: null
+lbl:
+  before: false       # the delivered spectra are measured by the reference run

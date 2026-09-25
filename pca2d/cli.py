@@ -61,6 +61,17 @@ SETTING_FLAGS = (
     ("--iters", "twoframe.iters", int, "sweeps at most"),
     ("--shrink", "correct.shrink", "bool",
      "divide each observer component out only where it is significant"),
+    # the residual clip travelled under no flag at all until 2026-09-25, so a
+    # run asked for one on the command line took the configuration's value
+    ("--nsig-cut", "correct.nsig_cut", float,
+     "NaN every sample whose residual, panel 5, is beyond this many running"
+     " robust sigmas; 0 or nothing leaves them all in"),
+    ("--column-frac", "correct.column_frac", float,
+     "with --column-chi2: drop an observer column from every exposure when"
+     " more than this fraction of them is clipped there"),
+    ("--column-chi2", "correct.column_chi2", float,
+     "and the survivors' reduced chi2 is still above this; noise gives 0.97"
+     " after a 3 sigma clip"),
     ("--high-pass", "highpass.width_kms", float,
      "the Savitzky-Golay high pass, in km/s"),
     ("--dv", "domain.dv", float, "the grid step, in km/s"),
@@ -1110,13 +1121,22 @@ def correct_mode(plan):
 def clip_args(cfg):
     """The correct stage's residual clip, when correct.nsig_cut asks for one:
     panel 5 beyond that many running robust sigmas over the high pass's window."""
-    nsig = (cfg.get("correct") or {}).get("nsig_cut")
+    corr = cfg.get("correct") or {}
+    nsig = corr.get("nsig_cut")
     if not nsig:
         return []
     log("and setting to NaN every sample whose residual, panel 5, is beyond %.1f"
         " running robust sigmas" % float(nsig), "info")
-    return ["--nsig-cut", str(float(nsig)),
-            "--clip-window", str(int(cfg["highpass"]["window"]))]
+    out = ["--nsig-cut", str(float(nsig)),
+           "--clip-window", str(int(cfg["highpass"]["window"]))]
+    frac, chi2 = corr.get("column_frac"), corr.get("column_chi2")
+    if frac and chi2:
+        log("and dropping from every exposure each observer column where more"
+            " than %.0f%% of them is clipped and the survivors' reduced chi2 is"
+            " still above %.2f" % (100 * float(frac), float(chi2)), "info")
+        out += ["--column-frac", str(float(frac)),
+                "--column-chi2", str(float(chi2))]
+    return out
 
 
 def shrink_args(cfg):

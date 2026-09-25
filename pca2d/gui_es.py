@@ -390,6 +390,31 @@ ES = {
         " Medido en TOI-2120, donde la corrección gana un factor tres, las dos"
         " son indistinguibles: 15.4 +- 1.2 frente a 15.0 +- 1.2 m/s. Los"
         " objetivos donde la corrección CUESTA son los que decidirán.",
+    "opt_nsig_cut": "corte del residuo (sigma)",
+    "opt_column_frac": "columna: fracción cortada",
+    "opt_column_chi2": "columna: chi2 del resto",
+    "help_nsig_cut":
+        "Pone a NaN toda muestra cuyo residuo, panel 5 de la figura de"
+        " secuencia, supere este número de sigmas robustos deslizantes del ruido"
+        " que la rodea: un rayo cósmico que pasó el corte MAD, un píxel caliente,"
+        " un residuo de cielo. Vacío deja todas las muestras, que es lo nominal."
+        " 3 es el valor para el que se construyó esto.",
+    "help_column_frac":
+        "Junto con los dos ajustes vecinos: el residuo dividido por ese sigma"
+        " local es un z, así que las exposiciones se comparan columna por"
+        " columna en el marco del OBSERVADOR. Una columna donde se corta más que"
+        " esta fracción de ellas, Y cuyos supervivientes siguen siendo ruidosos,"
+        " se elimina de TODAS las exposiciones: ninguna la describe, así que es"
+        " un defecto, una línea telúrica fuera del alcance de la corrección o un"
+        " residuo de cielo, no la estrella. El ruido solo nunca llega al 10%, y"
+        " eso es lo que evita descartar una columna entera por unas pocas"
+        " exposiciones realmente malas.",
+    "help_column_chi2":
+        "El chi2 reducido que los supervivientes de ese corte deben superar para"
+        " que la columna se vaya. Se mide contra 0,97 y no contra 1: cortar a 3"
+        " sigmas se lleva las colas, y el ruido puro nunca pasó de 1,27 en 4096"
+        " columnas. 1,5 atrapa una columna que lleva el doble del ruido de sus"
+        " vecinas y deja una columna cuyos supervivientes están limpios.",
     "opt_width_kms": "paso alto (km/s)",
     "opt_dv": "paso de la rejilla (km/s)",
     "opt_nightly_stack": "combinar cada noche",

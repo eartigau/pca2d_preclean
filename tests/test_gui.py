@@ -772,7 +772,8 @@ def test_every_setting_the_window_shows_reaches_the_run():
 
     state = {"objects": ["X"], "n_star": 0, "n_earth": 3, "weight": "velocity",
              "width_kms": 100.0, "shrink": True, "iters": 16, "dv": 0.5,
-             "nightly_stack": "auto", "velocity_term": False, "mask": "common"}
+             "nightly_stack": "auto", "velocity_term": False, "mask": "common",
+             "nsig_cut": 3.0, "column_frac": 0.1, "column_chi2": 1.5}
     argv = build_command(state)
     carried = {flag for flag in argv if flag.startswith("--")}
 
