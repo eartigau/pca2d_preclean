@@ -5,6 +5,72 @@ variantes ne changent que la correction, `reuse_fit: nominal`), tous mesurés
 par LBL sur les mêmes 316 poses. Ce document existe pour que rien de tout cela
 ne soit à refaire.
 
+## Le nominal, depuis le 2026-09-26
+
+**`correct.nsig_cut: 3.0` et `correct.bias_nsig: 10.0`**, les deux ensemble.
+Sur TOI-2120 à 0-7, 316 poses : rms **17,01 → 14,63**, rms par nuit **14,57 →
+11,52**, et σ_K **1,23 → 1,05** avec K à 5,54 contre 5,42, donc **sans déplacer
+l'amplitude de la planète**. La coupure seule à 2,5 sigma donnait la même rms
+(14,60) mais faisait tomber K à 3,67, soit 1,6 σ.
+
+Les deux axes s'additionnent (biais seul 15,29, coupure seule 15,64, les deux
+14,63) parce qu'ils voient des choses différentes : la coupure les accidents
+d'une pose, le biais ce qu'aucun critère par pose ne peut voir.
+
+### Le troisième axe : le biais ancré dans le référentiel de l'observateur
+
+**Pourquoi rien ne marchait avant.** `clip_weights` compare chaque pose **aux
+autres poses à la même longueur d'onde**. Un résidu présent dans toutes les
+poses n'est donc aberrant pour aucune : sur la bande O₂ à 1267 nm son |z|
+médian vaut 0,67, exactement comme sur une région témoin à 1593,6 nm. La
+structure gonfle sa propre barre d'erreur et disparaît du critère, quel que
+soit le seuil. C'est pourquoi le plancher de poids n'a rien changé (+0,03 m/s
+[−0,08, +0,14]) alors que les figures montraient des résidus corrélés.
+
+**Ce qui le révèle** est la moyenne sur les poses : l'étoile se déplace avec le
+BERV et s'y moyenne, ce qui est ancré s'y ajoute, et avec 316 poses la moyenne
+gagne √N = 17,8. Un biais de 0,2 sigma ressort à 3,5.
+
+    Z(j) = |somme de la moyenne sur la fenêtre| / sqrt(V(w) / N)
+
+`outliers.coherent_bias`, avec V(w) la variance mesurée d'une somme
+d'échantillons corrélés, la même que pour les excursions.
+
+**Ce qu'il trouve sur TOI-2120**, et ce sont des régions entièrement
+différentes de celles de l'excès de dispersion : 1761, 1803, 1805 et 1764-1769
+nm (méthane et eau vers 1,76-1,81 µm), 1460 nm, 2165 nm (bande CO), 1016 nm.
+Larges de 35 à 51 échantillons, soit 4 à 6 éléments de résolution : **des raies
+entières mal corrigées, pas des accidents**. À 1761,2 nm le résidu moyen plonge
+à −2,8 sigma.
+
+**Les deux repérages d'Étienne à l'œil étaient deux phénomènes distincts** :
+1249/1267 nm est un biais (|Z| 20, chi2 de colonne 59), tandis que 1541,5 nm
+est une région **bruyante sans biais** (|Z| 1, chi2 3), que seul l'excès de
+dispersion voit. Les axes ne sont pas redondants.
+
+### Le balayage du paramètre
+
+| essai | masqué | rms | robuste | par nuit | err | K ± σ |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0-7 de départ | | 17.01 | 13.79 | 14.57 | 7.89 | 5.42 ± 1.23 |
+| coupure 2,5σ | | 14.60 | 12.01 | 11.72 | 9.06 | **3.67** ± 1.08 |
+| **biais 10σ + coupure 3σ** | 10,2% | **14.63** | 13.38 | **11.52** | 8.75 | **5.54 ± 1.05** |
+| biais 5σ | 29,7% | 15.11 | 13.07 | 11.85 | 9.22 | 6.07 ± 1.07 |
+| biais 10σ, fenêtre 1 élém. | 7,4% | 15.12 | 12.05 | 12.22 | 8.38 | 5.51 ± 1.09 |
+| biais 10σ | 10,2% | 15.29 | **10.94** | 12.41 | 8.41 | 5.72 ± 1.09 |
+| biais 15σ | 4,0% | 15.79 | 13.03 | 13.23 | 8.10 | 5.58 ± 1.14 |
+| biais 20σ | 1,7% | 16.66 | 12.87 | 14.19 | 7.97 | 5.52 ± 1.20 |
+| biais 30σ | 0,5% | 16.89 | 13.09 | 14.38 | 7.91 | 5.40 ± 1.22 |
+
+Le seuil optimal est **10 sigmas** : la courbe est monotone au-dessus et 5
+sigmas masque 29,7% du domaine pour une rms moins bonne. La **largeur compte
+peu**, et plutôt en faveur d'une fenêtre étroite (1 élément : 15,12 ; 2 :
+15,29 ; 4 : 15,40).
+
+**À essayer ensuite** : biais 10σ à fenêtre 1 élément + coupure 3σ, qui
+combine les deux meilleurs réglages de chaque axe. Et vérifier sur Proxima ou
+TOI-4552, qui se comportent à l'opposé de TOI-2120.
+
 ## Le résultat en une phrase
 
 La seule méthode qui gagne franchement sur la dispersion (14%) est aussi celle
@@ -215,6 +281,8 @@ structure à +0,57 sigma ressort à 10 sigma. Elle avait été écartée trop vi
 | les réglages | `correct.nsig_cut`, `excursion_nsig`, `excursion_elements`, `excess_nsig`, `excess_chi2`, `excess_elements` dans `config.yaml` |
 | les en-têtes | `PCA2RSIG`, `PCA2RNAN` (coupure), `PCA2XSIG`, `PCA2XWID`, `PCA2XRHO` (excursions), `PCA2ESIG`, `PCA2ECHI`, `PCA2EWID`, `PCA2ECOL` (régions) |
 | comparaison des vitesses | `outputs/TOI2120/rv_comparison_0-7_clip.pdf` |
+| river plots du biais | `outputs/TOI2120/river_0-7_vs_bias10.pdf` (8 régions, le résidu moyen et les deux autres statistiques sous le river plot) |
+| comparaison du nominal | `outputs/TOI2120/rv_comparison_nominal_2026-09-26.pdf` |
 | avant/après par fenêtre | `outputs/TOI2120/residuals_0-7_vs_0-7s40r.pdf` (une parité par fenêtre, celle la plus proche du centre de l'ordre ; en jaune ce qui devient NaN) |
 | rapports LBL complets | `outputs/lbl/lblreport/<objet>_<objet>/lbl_report_*.pdf`, 34 pages, recette `lbl_report` de la branche `developer-report` de LBL |
 | cartes de diagnostic | `scratchpad/observer_rms.py` et `observer_map.py` (à refaire tourner : le scratchpad est effacé périodiquement) |
