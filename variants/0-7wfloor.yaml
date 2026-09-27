@@ -1,0 +1,23 @@
+# 0-7wfloor: LE POIDS DE LA BOUCLE EST LE MASQUE. Rien d'autre ne change: meme
+# 0-7, memes composantes, memes amplitudes. Les echantillons que la boucle a
+# deprecies sous la moitie de leur poids nominal (twoframe.clip_weights, soit
+# |z| > 4.24 sigma avec le clip a 3) deviennent NaN dans les fichiers corriges,
+# au lieu d'etre livres a LBL corriges par un modele qu'ils n'ont pas aide a
+# construire.
+#
+# PAR POSE, parce que c'est ce que la chose est: 0.388% des echantillons, 2415
+# par pose, et au-dela de 20% des poses il ne reste que 13 colonnes sur 577 000.
+# Le jeu de raies commun continue de venir de fit_weights_mask.
+#
+# Cette variante REFAIT l'ajustement, contrairement aux autres: le facteur du
+# dernier balayage n'est ecrit dans fit.npz que depuis le 2026-09-26.
+note: "TOI2120 0-7, 2026-09-26: le poids de la boucle masque sous 50%"
+correct:
+  weight_floor: 0.5
+  nsig_cut: null
+  excursion_nsig: null
+  excess_nsig: null
+  column_frac: null
+  column_chi2: null
+lbl:
+  before: false

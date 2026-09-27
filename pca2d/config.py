@@ -409,10 +409,37 @@ DEFAULTS = {
         # a significance: excess_nsig sigmas of it, and a windowed chi2 above
         # excess_chi2, drop the region from every exposure. On TOI-2120 the
         # 1.27 um O2 band reaches a column chi2 of 222 and 1919 nm of 63.
+        # LE POIDS DE LA BOUCLE EST LE MASQUE. La boucle deprecie deja chaque
+        # echantillon par (clip/|z|)^2 au-dela de la coupure
+        # (twoframe.clip_weights); sous cette fraction de son poids nominal,
+        # l'echantillon n'a pas ete decrit par le modele et devient NaN dans le
+        # fichier corrige. 0.5 est |z| > 4.24 sigma avec le clip a 3, et coute
+        # 0.388% des echantillons sur TOI-2120, par pose et non en commun.
+        "weight_floor": None,
+        # LE BIAIS COHERENT SUR LES POSES, le troisieme axe et le seul que ni
+        # la coupure ni l'exces de dispersion ne peuvent voir: clip_weights
+        # compare chaque pose aux AUTRES POSES, donc un residu present dans
+        # toutes n'est aberrant pour aucune. La moyenne sur les poses, elle,
+        # gagne sqrt(N) = 17.8 avec 316 poses. Sur TOI-2120: 21.9% du domaine
+        # au-dela de 3 sigma, 2.8% au-dela de 10, et les pires regions sont
+        # 1761, 1803, 1805 et 1764-1769 nm (methane et eau), larges de 4 a 6
+        # elements de resolution: des raies entieres mal corrigees.
+        # NOMINAL depuis le 2026-09-26, avec nsig_cut 3.0: mesure sur
+        # TOI-2120 a 0-7, rms 17.01 -> 14.63, rms par nuit 14.57 -> 11.52, et
+        # sigma_K 1.23 -> 1.05 avec K a 5.54 contre 5.42, donc sans deplacer
+        # l'amplitude de la planete (la coupure seule a 2.5 sigma donnait
+        # 14.60 mais faisait tomber K a 3.67). Les deux axes s'additionnent
+        # parce qu'ils voient des choses differentes: la coupure les accidents
+        # d'une pose, le biais ce qui est ancre dans le referentiel de
+        # l'observateur et qu'aucun critere par pose ne peut voir.
+        "bias_nsig": 10.0,
+        "bias_elements": 2.0,
         "excess_nsig": None,
         "excess_chi2": 1.25,
         "excess_elements": 2.0,
-        "nsig_cut": None,            # NaN beyond this many running robust sigmas
+        # 3.0 est nominal depuis le 2026-09-26, avec bias_nsig 10.0. Seul, il
+        # gagne 1.37 m/s; 2.5 gagnait 2.41 mais deplacait K de 1.6 sigma.
+        "nsig_cut": 3.0,             # NaN beyond this many running robust sigmas
         # And then the column the exposures agree is bad. With nsig_cut set,
         # an observer column where more than column_frac of the exposures is
         # clipped AND whose survivors' reduced chi2 is still above

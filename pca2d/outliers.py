@@ -123,6 +123,58 @@ def window_variance(width, rho):
     return max(v, 1e-6)
 
 
+def coherent_bias(mean, count, width, rho, min_rows=10):
+    """(le Z du residu MOYEN sur les poses, colonne par colonne et sur `width`).
+
+    Le troisieme axe, et le seul que ni la coupure ni l'exces de dispersion ne
+    peuvent voir (2026-09-26). clip_weights compare chaque pose aux AUTRES
+    POSES a la meme longueur d'onde, donc un residu present dans toutes les
+    poses n'est aberrant pour aucune: sur la bande O2 a 1267 nm son |z| median
+    reste a 0.67, comme sur une region temoin. La coupure locale en lambda ne
+    le voit pas non plus tant qu'il reste sous son seuil dans chaque pose.
+
+    Ce qui le revele est la MOYENNE sur les poses: l'etoile se deplace avec le
+    BERV et s'y moyenne, ce qui est ancre dans le referentiel de l'observateur
+    s'y ajoute. Avec N poses la moyenne gagne sqrt(N) = 17.8 contre le bruit,
+    donc un biais de 0.2 sigma ressort a 3.5.
+
+        Z(j) = |somme de la moyenne sur la fenetre| / sqrt(V(w) / N)
+
+    avec V(w) la variance mesuree d'une somme de w echantillons correles
+    (window_variance) et N le nombre de poses de la colonne. Chaque colonne de
+    la fenetre porte le verdict de la fenetre, donc une region sort entiere.
+
+    Sur TOI-2120: 21.9% du domaine au-dela de 3 sigma, 2.8% au-dela de 10, et
+    les pires regions sont 1761, 1803, 1805 et 1764-1769 nm (methane et eau
+    vers 1.76-1.81 um), larges de 35 a 51 echantillons, soit 4 a 6 elements de
+    resolution: des raies entieres mal corrigees, pas des accidents.
+    """
+    mean = np.atleast_2d(np.asarray(mean, dtype=float))
+    count = np.atleast_2d(np.asarray(count))
+    rows, m = mean.shape
+    w = max(1, int(width))
+    ok = count >= int(min_rows)
+    out = np.zeros((rows, m))
+    variance = window_variance(w, rho)
+    for p in range(rows):
+        good = ok[p]
+        if not good.any():
+            continue
+        filled = np.where(good, mean[p], 0.0)
+        csum = np.concatenate([[0.0], np.cumsum(filled)])
+        cnum = np.concatenate([[0], np.cumsum(good.astype(int))])
+        took = cnum[w:] - cnum[:-w]
+        total = csum[w:] - csum[:-w]
+        rooms = np.where(good, count[p], 10 ** 9)
+        least = np.minimum.reduce([rooms[i:m - w + 1 + i] for i in range(w)])
+        sd = np.sqrt(variance / np.maximum(least, 1))
+        here = np.where((took == w) & (sd > 0), np.abs(total) / sd, 0.0)
+        for k in range(w):
+            span = slice(k, k + m - w + 1)
+            out[p, span] = np.maximum(out[p, span], here)
+    return out
+
+
 def excess_rms(chi2, count, width, length, min_rows=10):
     """(the windowed chi2 of each column, the significance of its excess over 1).
 
@@ -380,7 +432,8 @@ def residual_outliers(cube, fit, nsig, window, block=40000, chunk=16,
                       column_frac=None, column_chi2=None, column_min_rows=10,
                       excursion_nsig=None, excursion_samples=None, rho=None,
                       excess_nsig=None, excess_chi2=None, excess_samples=None,
-                      excess_clip=10.0):
+                      excess_clip=10.0, bias_nsig=None, bias_samples=None,
+                      bias_clip=5.0):
     """(file -> (2, grid) mask of what to NaN, a report).
 
     Row 0 of each mask is the even orders, row 1 the odd ones, as
@@ -410,8 +463,10 @@ def residual_outliers(cube, fit, nsig, window, block=40000, chunk=16,
     # independent columns a window holds. Measured with a correlation length of
     # 1 the regions came out 15% of the spectrum instead of 6% (2026-09-25).
     by_excess = bool(excess_nsig) and bool(excess_samples)
-    if (by_excursion or by_excess) and rho is None:
-        lags = max(len(widths) - 1, int(excess_samples or 0), 8)
+    by_bias = bool(bias_nsig) and bool(bias_samples)
+    if (by_excursion or by_excess or by_bias) and rho is None:
+        lags = max(len(widths) - 1, int(excess_samples or 0),
+                   int(bias_samples or 0), 8)
         rho = noise_correlation(cube, fit, window, lags, blocks=1, chunk=chunk)
     rho = list(rho or [])
     # per order parity and per OBSERVER column, over every exposure: how many
@@ -423,6 +478,11 @@ def residual_outliers(cube, fit, nsig, window, block=40000, chunk=16,
     # than a region, and the per-sample flagging is what deals with it.
     all_z2 = np.zeros((2, m))
     all_n = np.zeros((2, m), dtype=np.int32)
+    # et, pour le biais coherent, la somme SIGNEE: ce qui est ancre dans le
+    # referentiel de l'observateur s'y ajoute alors que l'etoile, qui bouge
+    # avec le BERV, s'y moyenne
+    all_z = np.zeros((2, m))
+    bias_n = np.zeros((2, m), dtype=np.int32)
     seen = np.zeros((2, m), dtype=np.int32)
     taken = np.zeros((2, m), dtype=np.int32)
     kept = np.zeros((2, m), dtype=np.int32)
@@ -442,6 +502,15 @@ def residual_outliers(cube, fit, nsig, window, block=40000, chunk=16,
         for i, r in enumerate(range(start, stop)):
             out[names[r]][int(parity[r])][c0:c1] = cut[i, inner]
         flagged += int(cut[:, inner].sum())
+        if by_bias:
+            steady = measured[:, inner] & (np.abs(z[:, inner]) <= float(bias_clip))
+            signed = np.where(steady, z[:, inner], 0.0)
+            rows_parity = parity[start:stop]
+            for p in (0, 1):
+                which = np.flatnonzero(rows_parity == p)
+                if which.size:
+                    all_z[p, c0:c1] += signed[which].sum(axis=0)
+                    bias_n[p, c0:c1] += steady[which].sum(axis=0)
         if by_excess:
             inside = measured[:, inner] & (np.abs(z[:, inner]) <= float(excess_clip))
             square = np.where(inside, z[:, inner] ** 2, 0.0)
@@ -470,8 +539,23 @@ def residual_outliers(cube, fit, nsig, window, block=40000, chunk=16,
     columns = np.zeros((2, m), dtype=bool)
     report = dict(columns=columns, frac=frac, chi2=chi2, seen=seen,
                   n_columns=0, added=0, thresholds=None, flagged=flagged,
-                  rho=rho, widths=widths, excess=None,
+                  rho=rho, widths=widths, excess=None, bias=None,
                   variance=[window_variance(w, rho) for w in widths])
+    if by_bias:
+        mean_z = np.divide(all_z, bias_n, out=np.zeros((2, m)), where=bias_n > 0)
+        zbias = coherent_bias(mean_z, bias_n, int(bias_samples), rho,
+                              min_rows=int(column_min_rows))
+        regions = (zbias > float(bias_nsig)) & (bias_n >= int(column_min_rows))
+        added = 0
+        for name in names:
+            added += int((regions & ~out[name]).sum())
+            out[name] |= regions
+        report["bias"] = dict(mean=mean_z, z=zbias, regions=regions,
+                              n_columns=int(regions.sum()), added=added,
+                              measured=int((bias_n >= int(column_min_rows)).sum()),
+                              threshold=float(bias_nsig),
+                              samples=int(bias_samples))
+        columns = columns | regions
     if by_excess:
         # what stands still in the observer's frame: the columns whose scatter
         # over the exposures is more than the noise, over a window as wide as

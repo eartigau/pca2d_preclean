@@ -72,6 +72,16 @@ SETTING_FLAGS = (
      " pixels at 3 sigma"),
     ("--excursion-elements", "correct.excursion_elements", float,
      "how wide those windows go, in resolution elements of the instrument"),
+    ("--weight-floor", "correct.weight_floor", float,
+     "NaN la ou la boucle a deprecie l'echantillon sous cette fraction de son"
+     " poids nominal: le poids du fit est le masque"),
+    ("--bias-nsig", "correct.bias_nsig", float,
+     "retirer de toutes les poses les colonnes dont le residu MOYEN sur les"
+     " poses depasse ce nombre de sigmas: ce qui est ancre dans le referentiel"
+     " de l'observateur et a un signe"),
+    ("--bias-elements", "correct.bias_elements", float,
+     "la largeur sur laquelle cette moyenne est sommee, en elements de"
+     " resolution"),
     ("--excess-nsig", "correct.excess_nsig", float,
      "drop from every exposure the observer columns whose scatter over the"
      " exposures is this many sigmas above the noise"),
@@ -1165,7 +1175,10 @@ def clip_args(cfg):
     nsig = corr.get("nsig_cut")
     excursion = corr.get("excursion_nsig")
     elements = corr.get("excursion_elements")
-    if not nsig and not (excursion and elements) and not corr.get("excess_nsig"):
+    floor = corr.get("weight_floor")
+    if (not nsig and not (excursion and elements)
+            and not corr.get("excess_nsig") and not corr.get("bias_nsig")
+            and not floor):
         return []
     out = ["--clip-window", str(int(cfg["highpass"]["window"]))]
     if excursion and elements:
@@ -1178,6 +1191,22 @@ def clip_args(cfg):
                float(excursion)), "info")
         out += ["--excursion-nsig", str(float(excursion)),
                 "--excursion-samples", str(int(samples))]
+    if floor:
+        log("et mettant a NaN ce que la boucle a deprecie sous %.2f de son"
+            " poids nominal: le poids du fit est le masque" % float(floor),
+            "info")
+        out += ["--weight-floor", str(float(floor))]
+    bias = corr.get("bias_nsig")
+    if bias:
+        resolution = (cfg.get("twoframe") or {}).get("resolution") or 70000
+        wide = element_samples(resolution, cfg["domain"]["dv"],
+                               corr.get("bias_elements") or 2.0)
+        log("et retirant de toutes les poses les colonnes dont le residu MOYEN"
+            " sur les poses, somme sur %d echantillons, depasse %.0f sigmas:"
+            " ce qui est ancre dans le referentiel de l'observateur"
+            % (wide, float(bias)), "info")
+        out += ["--bias-nsig", str(float(bias)),
+                "--bias-samples", str(int(wide))]
     excess = corr.get("excess_nsig")
     if excess:
         resolution = (cfg.get("twoframe") or {}).get("resolution") or 70000

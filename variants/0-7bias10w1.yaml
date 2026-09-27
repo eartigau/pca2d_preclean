@@ -1,0 +1,18 @@
+# le biais a 10 sigmas, fenetre de 1 element(s): une raie mal corrigee fait 4 a 6 elements, donc la largeur decide autant que le seuil
+#
+# Le biais moyen sur les poses est le seul axe qui gagne sans
+# deplacer K (10 sigmas: rms 15.29, robuste 10.94, K 5.72 +- 1.09
+# contre 5.42 +- 1.23 au depart, la ou la coupure a 2.5 sigmas
+# gagnait plus mais faisait tomber K a 3.67).
+note: "TOI2120 0-7, 2026-09-26: le biais a 10 sigmas, fenetre de 1 element(s)"
+reuse_fit: nominal
+correct:
+  bias_nsig: 10.0
+  bias_elements: 1.0
+  excursion_nsig: null
+  excess_nsig: null
+  column_frac: null
+  column_chi2: null
+  nsig_cut: null
+lbl:
+  before: false

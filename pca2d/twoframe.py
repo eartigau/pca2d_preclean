@@ -2535,6 +2535,25 @@ def clip_weights(w0, residual, clip=3.0, min_spectra=20, sparse=False,
     return ClippedWeights(w0, *joined), hit
 
 
+def _clip_triplet(w):
+    """(rangees, colonnes, facteur) de ce que le dernier balayage a deprecie.
+
+    Le facteur est le rapport du poids clipe au poids d'origine: 1 la ou la
+    boucle n'a rien change, moins la ou elle a doute. Vide quand le fit n'a pas
+    clipe du tout, et vide aussi pour des poids denses, que seuls les petits
+    cubes des tests produisent.
+    """
+    if w is None or not hasattr(w, "ptr"):
+        return (np.empty(0, np.int32), np.empty(0, np.int32),
+                np.empty(0, np.float32))
+    rows = np.repeat(np.arange(len(w.ptr) - 1, dtype=np.int32),
+                     np.diff(w.ptr)).astype(np.int32)
+    base = np.asarray(w.w0)[rows, w.cols].astype(np.float64)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        factor = np.where(base > 0, w.values / base, 1.0)
+    return rows, np.asarray(w.cols, np.int32), factor.astype(np.float32)
+
+
 def coefficient_errors(data, w, P, Q, shifter, delta, a, b, chunk=64,
                        exposure=None, alpha=None, velocity_mask=None,
                        star_mean=None):
@@ -3162,6 +3181,9 @@ def main(argv=None):
         prev_chi2, flat = None, 0
         hit = 0.0
         a_prev = b_prev = None      # carried between iterations, see the clip step
+        # ce que le dernier balayage aura deprecie, pour la correction: None
+        # tant que la boucle n'a pas clipe (balayage 0, ou clip desactive)
+        last_clip = None
         # A sweep on a few hundred exposures takes minutes. There is no bar
         # over the sweeps: each phase INSIDE a sweep has its own, labelled
         # "sweep N: <phase>", which vanishes when the phase ends, and the
@@ -3199,6 +3221,15 @@ def main(argv=None):
                 # used to hold
                 w, hit = clip_weights(w0, resid_prev, clip=args.clip,
                                       sparse=True, desc="re-weighting, clip")
+                # CE QUE LA BOUCLE A CONCLU, garde pour la correction. Le
+                # facteur etait recalcule et jete a chaque balayage, donc les
+                # fichiers corriges ne savaient rien de ce que l'ajustement
+                # avait renonce a decrire: un echantillon juge indigne de
+                # contraindre le modele etait quand meme livre a LBL, corrige
+                # par un modele qu'il n'avait pas aide a construire
+                # (2026-09-25). Creux: 763 041 echantillons sur 197 millions
+                # sur TOI-2120.
+                last_clip = w
 
             # ---- E-step: coefficients for both blocks at fixed bases --------
             # Solved JOINTLY, never one block then the other. The off-diagonal
@@ -3480,7 +3511,12 @@ def main(argv=None):
         means, axis=0, weights=[np.sum(parity == g) for g in parity_groups])
     npz_path = os.path.join(args.outdir, "fit.npz")
     from .provenance import stamp as code_stamp
+    # le facteur du dernier balayage, en (rangee, colonne, facteur): ce que la
+    # correction lit pour masquer sous correct.weight_floor
+    clip_rows, clip_cols, clip_factor = _clip_triplet(last_clip)
     np.savez_compressed(npz_path, bjd=bjd, a=a, b=b, P=P, Q=Q, alpha=alpha,
+                        clip_rows=clip_rows, clip_cols=clip_cols,
+                        clip_factor=clip_factor, clip_nsig=float(args.clip),
                         velocity_term=bool(velocity_term),
                         anc_labels=np.asarray(anc_labels, dtype="U32"),
                         anc_values=np.asarray(anc_values, dtype=float),

@@ -401,7 +401,36 @@ general:
                             # 6.0 is the threshold this was built for; null
                             # until it is measured on more than one target.
                             # Header: PCA2XSIG, PCA2XWID, PCA2XRHO.
-    nsig_cut: null          # also NaN every sample whose residual (panel 5 of
+    bias_nsig: 10.0         # LE BIAIS ANCRE DANS LE REFERENTIEL DE
+    bias_elements: 2.0      # L'OBSERVATEUR, nominal depuis le 2026-09-26.
+                            # clip_weights compare chaque pose AUX AUTRES POSES
+                            # a la meme longueur d'onde, donc un residu present
+                            # dans toutes n'est aberrant pour aucune: sur la
+                            # bande O2 a 1267 nm son |z| median vaut 0.67,
+                            # comme sur une region temoin. La moyenne sur les
+                            # poses, elle, gagne sqrt(N) = 17.8 avec 316 poses,
+                            # et revele des raies entieres mal corrigees
+                            # (1761, 1803, 1805, 1764-1769 nm: methane et eau).
+                            # Une colonne dont le residu MOYEN, somme sur
+                            # bias_elements elements de resolution, depasse
+                            # bias_nsig sigmas part de TOUTES les poses.
+                            #
+                            # 10 sigmas masque 10.2% du domaine; le balayage
+                            # donne 15 sigmas a 15.79 de rms, 20 a 16.66, 30 a
+                            # 16.89, et 5 masque 29.7% pour 15.11. La largeur
+                            # compte peu (1 element: 15.12, 2: 15.29, 4: 15.40).
+                            # Header: PCA2BSIG, PCA2BWID, PCA2BCOL.
+    nsig_cut: 3.0           # AVEC le biais ci-dessus, nominal depuis le
+                            # 2026-09-26: les deux axes voient des choses
+                            # differentes et s'additionnent (biais seul 15.29,
+                            # coupure seule 15.64, les deux 14.63). Mesure sur
+                            # TOI-2120 a 0-7: rms 17.01 -> 14.63, par nuit
+                            # 14.57 -> 11.52, sigma_K 1.23 -> 1.05 et K a 5.54
+                            # contre 5.42, donc sans deplacer la planete. La
+                            # coupure seule a 2.5 sigma donnait 14.60 mais
+                            # faisait tomber K a 3.67, soit 1.6 sigma.
+                            #
+                            # also NaN every sample whose residual (panel 5 of
                             # the sequence figure: the data less everything the
                             # fit models) is beyond this many running robust
                             # sigmas, 1.4826 MAD over highpass.window samples.

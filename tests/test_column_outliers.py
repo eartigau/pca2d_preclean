@@ -104,10 +104,20 @@ def test_both_thresholds_reach_the_settings_of_a_run():
     passed = clip_args(cfg)
     assert passed[passed.index("--nsig-cut") + 1] == "3.0"
     assert "--column-frac" in passed and "--column-chi2" in passed
-    # and nothing at all when neither the clip nor the excursions are asked for
-    cfg["correct"]["nsig_cut"] = None
-    cfg["correct"]["excursion_nsig"] = None
+    # and nothing at all when NO test is asked for. The clip and the coherent
+    # bias are both nominal since 2026-09-26, so a configuration only falls
+    # silent once every one of them is off.
+    for key in ("nsig_cut", "excursion_nsig", "excess_nsig", "bias_nsig",
+                "weight_floor"):
+        cfg["correct"][key] = None
     assert clip_args(cfg) == []
+    # and the nominal configuration asks for both axes, which is what the
+    # defaults are now
+    nominal = load_config("config.yaml", instrument="SPIROU")
+    asked = clip_args(nominal)
+    assert asked[asked.index("--nsig-cut") + 1] == "3.0"
+    assert asked[asked.index("--bias-nsig") + 1] == "10.0"
+    assert asked[asked.index("--bias-samples") + 1] == "17"
     # the excursion alone is enough to make the stage read the cube
     cfg["correct"]["excursion_nsig"] = 6.0
     passed = clip_args(cfg)

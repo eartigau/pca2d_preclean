@@ -1,0 +1,24 @@
+# 0-7bias5: LE BIAIS COHERENT SUR LES POSES, a 5 sigmas. Le troisieme axe, et
+# le seul qu'aucun essai n'avait teste: clip_weights compare chaque pose aux
+# AUTRES POSES a la meme longueur d'onde, donc un residu present dans toutes
+# les poses n'est aberrant pour aucune et reste invisible quel que soit le
+# seuil. C'est ce qui explique que le plancher de poids n'ait rien change
+# (+0.03 m/s) alors que les figures montrent des residus correles.
+#
+# La moyenne sur les poses, elle, gagne sqrt(316) = 17.8 contre le bruit. Sur
+# TOI-2120 elle designe 2.8% du domaine au-dela de 10 sigmas et 11.4% au-dela
+# de 5, et ses pires regions (1761, 1803, 1805, 1764-1769 nm, methane et eau)
+# sont larges de 4 a 6 elements de resolution: des raies entieres mal
+# corrigees, et non les regions bruyantes que l'exces de dispersion trouvait.
+note: "TOI2120 0-7, 2026-09-26: le biais moyen sur les poses, a 5 sigmas"
+reuse_fit: nominal
+correct:
+  bias_nsig: 5.0
+  bias_elements: 2.0
+  nsig_cut: null
+  excursion_nsig: null
+  excess_nsig: null
+  column_frac: null
+  column_chi2: null
+lbl:
+  before: false

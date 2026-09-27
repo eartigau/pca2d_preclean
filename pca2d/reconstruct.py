@@ -136,6 +136,18 @@ def parse_args(argv=None):
                    help="how wide those windows go, in grid samples; the"
                         " pipeline passes the instrument's resolution element"
                         " times correct.excursion_elements")
+    p.add_argument("--weight-floor", type=float, default=None,
+                   help="NaN la ou la BOUCLE a deprecie l'echantillon sous"
+                        " cette fraction de son poids nominal: le poids du fit"
+                        " est le masque (clipped_weights_mask). 0.5 = |z| >"
+                        " 4.24 sigma avec le clip a 3")
+    p.add_argument("--bias-nsig", type=float, default=None,
+                   help="avec --bias-samples: retirer de toutes les poses les"
+                        " colonnes dont le residu MOYEN sur les poses depasse"
+                        " ce nombre de sigmas (outliers.coherent_bias)")
+    p.add_argument("--bias-samples", type=int, default=None,
+                   help="la largeur sur laquelle cette moyenne est sommee, en"
+                        " echantillons de grille")
     p.add_argument("--excess-nsig", type=float, default=None,
                    help="with --excess-samples: drop from every exposure the"
                         " observer columns whose chi2 over the exposures is this"
@@ -565,6 +577,49 @@ def star_support(model):
     return np.any(P != 0, axis=0)
 
 
+def clipped_weights_mask(cube, fit_path, floor=0.5):
+    """Les echantillons que la BOUCLE a deprecies sous `floor`: nom -> (2, grille).
+
+    Le poids de la boucle EST le masque (2026-09-25): un echantillon ecoute a
+    moins de la moitie de son poids nominal n'est pas une demi-mesure, c'est
+    une mesure que le modele n'a pas decrite, et la livrer a LBL corrigee par
+    un modele qu'elle n'a pas aide a construire n'a pas de sens.
+
+    PAR POSE, et non commun a toutes, parce que c'est ce que la chose est: sur
+    TOI-2120 le facteur tombe sous 0.5 pour 0.388% des echantillons, 2415 par
+    pose, et au-dela de 20% des poses il ne reste que 13 colonnes sur 577 000.
+    Ce sont des accidents locaux, pas des regions, et les masquer partout
+    reviendrait a jeter 316 fois trop. Le jeu de raies commun, lui, continue de
+    venir de fit_weights_mask.
+
+    Un facteur de 0.5 est |z| > clip * sqrt(2), soit 4.24 sigma a clip = 3.
+    """
+    fit = np.load(fit_path)
+    if "clip_factor" not in getattr(fit, "files", []):
+        return None
+    factor = np.asarray(fit["clip_factor"], dtype=float)
+    if not factor.size:
+        return {}
+    rows = np.asarray(fit["clip_rows"], dtype=np.int64)
+    cols = np.asarray(fit["clip_cols"], dtype=np.int64)
+    below = factor < float(floor)
+    rows, cols = rows[below], cols[below]
+    _, _, w, meta = _bcd.load_cube(cube, dtype=np.float32,
+                                   columns=np.arange(0, 1))
+    n_rows = w.shape[0]
+    grid = np.asarray(fit["grid"]) if "grid" in fit.files else None
+    n_cols = int(grid.size) if grid is not None else int(cols.max() + 1)
+    parity = _bcd.row_parity(meta, n_rows)
+    names = [os.path.basename(str(v)) for v in meta["filename"]]
+    out = {}
+    for i, name in enumerate(names):
+        out.setdefault(name, np.zeros((2, n_cols), dtype=bool))
+    for r, c in zip(rows, cols):
+        if r < n_rows and c < n_cols:
+            out[names[r]][int(parity[r]) % 2][c] = True
+    return out
+
+
 def fit_weights_mask(cube, mode="exposure"):
     """The grid samples the fit weighted, per exposure: file name -> (2, grid).
 
@@ -728,6 +783,9 @@ def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
                             "widest excursion window, in grid samples")
         head["PCA2XRHO"] = (float(clip_columns.get("rho1") or 0),
                             "the residual's autocorrelation at lag 1")
+    if clip_columns and clip_columns.get("floor"):
+        head["PCA2WFLR"] = (float(clip_columns["floor"]),
+                            "NaN below this fraction of the fit's own weight")
     if clipped is not None:
         head["PCA2RSIG"] = (float(clip_nsig or 0), "residual clip, in running robust sigma")
         head["PCA2RNAN"] = (n_clipped, "samples beyond it in panel 5, set to NaN")
@@ -1108,13 +1166,36 @@ def correct_many(model, args):
     else:
         log("  no --cube: samples the fit gave no weight to keep their flux,"
             " which panel 3 of the sequence figure does not show", "warn")
+    # ce que la BOUCLE a deprecie sous le plancher: un masque par pose, lu du
+    # fit lui-meme et non recalcule ici
+    floor = getattr(args, "weight_floor", None)
+    floored_by_file = None
+    if floor:
+        fit_path = os.path.join(os.path.dirname(os.path.abspath(args.fits)),
+                                "fit.npz")
+        if not getattr(args, "cube", None) or not os.path.exists(fit_path):
+            raise SystemExit("--weight-floor a besoin de --cube et du fit"
+                             " a cote de %s" % args.fits)
+        floored_by_file = clipped_weights_mask(args.cube, fit_path, floor)
+        if floored_by_file is None:
+            log("  le fit ne porte pas le facteur de la boucle (fit d'avant"
+                " 2026-09-26): --weight-floor ne peut rien masquer", "warn")
+        else:
+            total = sum(int(v.sum()) for v in floored_by_file.values())
+            log("  la boucle a deprecie %d echantillons sous %.2f de leur poids"
+                " nominal, soit %.0f par pose: ils deviennent NaN"
+                % (total, float(floor), total / max(len(floored_by_file), 1)),
+                "value")
     clipped_by_file = None
     clip_report = None
     excursion = getattr(args, "excursion_nsig", None)
     samples = getattr(args, "excursion_samples", None)
     excess = getattr(args, "excess_nsig", None)
     wide = getattr(args, "excess_samples", None)
-    if getattr(args, "nsig_cut", None) or (excursion and samples) or (excess and wide):
+    bias = getattr(args, "bias_nsig", None)
+    bias_wide = getattr(args, "bias_samples", None)
+    if (getattr(args, "nsig_cut", None) or (excursion and samples)
+            or (excess and wide) or (bias and bias_wide)):
         if not getattr(args, "cube", None):
             raise SystemExit("--nsig-cut and --excursion-nsig need --cube: the"
                              " residual they read is the cube less the model")
@@ -1155,7 +1236,7 @@ def correct_many(model, args):
             column_frac=frac, column_chi2=chi2,
             excursion_nsig=excursion, excursion_samples=samples,
             excess_nsig=excess, excess_chi2=getattr(args, "excess_chi2", None),
-            excess_samples=wide)
+            excess_samples=wide, bias_nsig=bias, bias_samples=bias_wide)
         if clip_report["rho"]:
             rho = clip_report["rho"]
             log("  the residual's own autocorrelation: rho_1 = %.3f, rho_2 ="
@@ -1176,6 +1257,14 @@ def correct_many(model, args):
                - clip_report["added"]
                - (clip_report["excess"] or {}).get("added", 0),
                len(clipped_by_file)), "value")
+        drift = clip_report.get("bias")
+        if drift:
+            log("  %d des %d colonnes mesurees portent un residu MOYEN"
+                " significatif sur les poses, %.2f%% du domaine; c'est %d"
+                " echantillons de plus sur les %d poses"
+                % (drift["n_columns"], drift["measured"],
+                   100.0 * drift["n_columns"] / max(drift["measured"], 1),
+                   drift["added"], len(clipped_by_file)), "value")
         got = clip_report["excess"]
         if got:
             log("  %d of the %d measured columns stand still in the observer's"
@@ -1192,11 +1281,14 @@ def correct_many(model, args):
                 % (clip_report["n_columns"], measured,
                    100.0 * clip_report["n_columns"] / max(measured, 1),
                    clip_report["added"], len(clipped_by_file)), "value")
-    # what the header will say about the column test, once per run
+    # what the header will say about the column test and the weight floor,
+    # once per run
     column_cards = None
+    if floor:
+        column_cards = dict(column_cards or {}, floor=float(floor))
     if clip_report:
-        column_cards = dict(excursion=excursion, samples=samples,
-                            rho1=(clip_report["rho"] or [0])[0])
+        column_cards = dict(column_cards or {}, excursion=excursion,
+                            samples=samples, rho1=(clip_report["rho"] or [0])[0])
         if clip_report.get("excess"):
             column_cards.update(
                 excess=clip_report["excess"]["thresholds"][0],
@@ -1287,6 +1379,10 @@ def correct_many(model, args):
                          os.path.basename(path))
         clipped = (clipped_by_file.get(os.path.basename(path))
                    if clipped_by_file is not None else None)
+        if floored_by_file is not None:
+            floored = floored_by_file.get(os.path.basename(path))
+            if floored is not None:
+                clipped = floored if clipped is None else (clipped | floored)
         new, touched, total = correct_file(
             model, row, path, args.corrected_dir, args.n_star, args.n_earth,
             args.kernel_halfwidth, args.overwrite, max_sky=args.max_sky_ratio,
