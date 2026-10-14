@@ -1,0 +1,65 @@
+[
+ {
+  "kind": "survey",
+  "key": "teklu25",
+  "reference": "Teklu et al. 2025",
+  "catalogue": "J/A+A/702/A68",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "not in the survey (its list of stars)"
+ },
+ {
+  "kind": "survey",
+  "key": "cls21",
+  "reference": "Rosenthal et al. 2021 (California Legacy Survey)",
+  "catalogue": "J/ApJS/255/8",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "not in the survey (its list of stars)"
+ },
+ {
+  "kind": "survey",
+  "key": "talor19",
+  "reference": "Tal-Or et al. 2019",
+  "catalogue": "J/MNRAS/484/L8",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "not in the survey (its list of stars)"
+ },
+ {
+  "kind": "survey",
+  "key": "fischer14",
+  "reference": "Fischer et al. 2014 (Lick)",
+  "catalogue": "J/ApJS/210/5",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "not in the survey (its list of stars)"
+ },
+ {
+  "kind": "survey",
+  "key": "rvbank20",
+  "reference": "Trifonov et al. 2020 (HARPS-RVBank)",
+  "catalogue": "J/A+A/636/A74",
+  "n": 4,
+  "instruments": {
+   "HARPS03 (RVBank)": 4
+  },
+  "file": "rvbank20.csv",
+  "note": "GJ166C: HARPS03 (RVBank) 4"
+ },
+ {
+  "kind": "paper",
+  "key": "J_AJ_166_16",
+  "reference": "Pass+ 2023",
+  "bibcode": "2023AJ....166...16P",
+  "catalogue": "J/AJ/166/16",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "J/AJ/166/16: table2 (4); no instrument below 20 m/s"
+ }
+]

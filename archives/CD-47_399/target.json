@@ -1,0 +1,41 @@
+{
+ "name": "CD-47 399",
+ "main": "CD-47 399",
+ "aliases": [
+  "BPM 30654",
+  "CD-47 399",
+  "CF 383",
+  "CNS5 365",
+  "GALEX J012145.2-464252",
+  "GJ 3090",
+  "HIC 6365",
+  "HIP 6365",
+  "2MASS J01214538-4642518",
+  "PM J01217-4642",
+  "Smethells 186",
+  "TIC 262530407",
+  "TOI-177",
+  "TYC 8033-1197-1",
+  "UCAC4 217-001312",
+  "[RHG95] 268",
+  "Gaia DR2 4933912198893332224",
+  "Gaia DR3 4933912198895807104",
+  "Gaia DR1 4933912194598735616"
+ ],
+ "gaia_dr3": "Gaia DR3 4933912198895807104",
+ "tic": "TIC 262530407",
+ "hip": "HIP 6365",
+ "hd": null,
+ "gj": "GJ 3090",
+ "ra": 20.43912571,
+ "dec": -46.71437916,
+ "sptype": "M3V",
+ "plx": 44.5348,
+ "star": {
+  "sptype": "M3V",
+  "mass": 0.37,
+  "mass_err": 0.037,
+  "source": "its spectral type (Pecaut & Mamajek 2013)"
+ },
+ "variability": []
+}

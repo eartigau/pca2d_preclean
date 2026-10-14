@@ -1,0 +1,133 @@
+{
+ "target": "Barnard's star",
+ "simbad": "NAME Barnard's star",
+ "folder": "/Users/eartigau/GitHubProjects/pca2d_preclean/archives/Barnard_s_star",
+ "created": "2026-10-04 00:35:34",
+ "archives": {
+  "dace": {
+   "status": "ok",
+   "files": [
+    "rv/dace/ESPRESSO18.csv",
+    "rv/dace/ESPRESSO19.csv",
+    "rv/dace/HARPS03.csv",
+    "rv/dace/HARPS15.csv",
+    "rv/dace/NIRPS.csv",
+    "rv/dace/NIRPS_HA.csv",
+    "rv/dace/raw_GJ699.csv"
+   ],
+   "instruments": {
+    "HARPS03": 232,
+    "HARPS15": 465,
+    "ESPRESSO18": 9,
+    "ESPRESSO19": 149,
+    "NIRPS_HA": 65,
+    "NIRPS": 716
+   },
+   "npoints": 1636,
+   "rjd": [
+    54194.89453335013,
+    61308.491028510034
+   ],
+   "indicators": [
+    "bis",
+    "contrast",
+    "fwhm",
+    "halpha",
+    "rhk",
+    "smw"
+   ],
+   "key": "the key of DACE_API_KEY: may hold data that are not public"
+  },
+  "carmenes": {
+   "status": "ok",
+   "files": [
+    "rv/carmenes/raw.csv",
+    "rv/carmenes/CARMENES.csv"
+   ],
+   "instruments": {
+    "CARMENES": 520
+   },
+   "npoints": 520,
+   "rjd": [
+    57422.74662070861,
+    59174.25596132176
+   ],
+   "indicators": [
+    "cai",
+    "cai_8498",
+    "cai_8542",
+    "cai_8698",
+    "ccf_bis",
+    "ccf_contrast",
+    "ccf_fwhm",
+    "dlw",
+    "halpha",
+    "nad1",
+    "nad2"
+   ],
+   "karmn": "J17578+046"
+  },
+  "published": {
+   "status": "ok",
+   "npoints": 686,
+   "instruments": {
+    "HIRES (Teklu+ 2025)": 225,
+    "Lick (CLS)": 18,
+    "HIRES-k (CLS)": 1,
+    "HIRES (CLS)": 11,
+    "APF (CLS)": 104,
+    "Lick-d13 (Fischer+ 2014)": 16,
+    "Lick-d6 (Fischer+ 2014)": 2,
+    "Lick-d8 (Fischer+ 2014)": 3,
+    "HARPS03 (RVBank)": 237,
+    "HARPS15 (RVBank)": 69
+   },
+   "sources": [
+    {
+     "reference": "Teklu et al. 2025",
+     "catalogue": "J/A+A/702/A68",
+     "n": 225,
+     "kind": "survey"
+    },
+    {
+     "reference": "Rosenthal et al. 2021 (California Legacy Survey)",
+     "catalogue": "J/ApJS/255/8",
+     "n": 134,
+     "kind": "survey"
+    },
+    {
+     "reference": "Fischer et al. 2014 (Lick)",
+     "catalogue": "J/ApJS/210/5",
+     "n": 21,
+     "kind": "survey"
+    },
+    {
+     "reference": "Trifonov et al. 2020 (HARPS-RVBank)",
+     "catalogue": "J/A+A/636/A74",
+     "n": 306,
+     "kind": "survey"
+    }
+   ],
+   "files": [
+    "rv/published/teklu25.csv",
+    "rv/published/cls21.csv",
+    "rv/published/fischer14.csv",
+    "rv/published/rvbank20.csv"
+   ],
+   "message": ""
+  }
+ },
+ "rv": {
+  "file": "rv/all_rv.csv",
+  "npoints": 2156,
+  "instruments": [
+   "HARPS03",
+   "CARMENES",
+   "HARPS15",
+   "ESPRESSO18",
+   "ESPRESSO19",
+   "NIRPS_HA",
+   "NIRPS"
+  ]
+ }
+}

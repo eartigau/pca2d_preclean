@@ -1,0 +1,10 @@
+# gj784_header: the folder is GJ784_NIRPS_T, the headers say GJ784.
+#
+# The campaign was rsynced from rali's APERO tree
+# (/cosmos99/nirps/apero-data/nirps_he_online/objects/GJ784), whose t.fits
+# carry OBJECT = DRSOBJN = GJ784. The folder says which instrument and which
+# flavour of the files it holds, as GL699_SPIROU and SMETHELLS_20 do, so the
+# header check needs to be told what the star is called.
+note: "GJ784 NIRPS HE, CADC-style t.fits from rali's apero-data objects tree"
+input:
+  object_header: GJ784

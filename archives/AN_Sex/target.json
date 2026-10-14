@@ -1,0 +1,114 @@
+{
+ "name": "AN Sex",
+ "main": "BD-03 2870",
+ "aliases": [
+  "G 162-25",
+  "AP J10121768-0344441",
+  "ASAS J101218-0344.8",
+  "ASAS J101217-0344.6",
+  "BD-03 2870",
+  "CNS5 2508",
+  "GALEX J101217.6-034445",
+  "GCRV 61131",
+  "GEN# -0.00302870",
+  "G 53-29",
+  "GJ 382",
+  "HIC 49986",
+  "HIP 49986",
+  "IRAS 10097-0329",
+  "JP11 247",
+  "Karmn J10122-037",
+  "LTT 3734",
+  "2MASS J10121768-0344441",
+  "MCC 569",
+  "NLTT 23680",
+  "8pc 127.99",
+  "PLX 2395.11",
+  "PM J10122-0344",
+  "PPM 193190",
+  "1RXS J101217.2-034442",
+  "SAO 137411",
+  "StKM 2-618",
+  "TIC 77612635",
+  "TYC 4907-704-1",
+  "UBV M 5136",
+  "UCAC4 432-051854",
+  "V* AN Sex",
+  "VVO 13",
+  "WEB 9193",
+  "WISEA J101217.55-034447.1",
+  "YZC 17 3945",
+  "YZ 93 3945",
+  "Zkh 139",
+  "[RHG95] 1595",
+  "Gaia DR3 3828238392559860992",
+  "Gaia DR2 3828238392559860992"
+ ],
+ "gaia_dr3": "Gaia DR3 3828238392559860992",
+ "tic": "TIC 77612635",
+ "hip": "HIP 49986",
+ "hd": null,
+ "gj": "GJ 382",
+ "ra": 153.07361771,
+ "dec": -3.74566446,
+ "sptype": "M2V",
+ "plx": 129.7544,
+ "star": {
+  "sptype": "M2V",
+  "mass": 0.44,
+  "mass_err": 0.044000000000000004,
+  "source": "its spectral type (Pecaut & Mamajek 2013)"
+ },
+ "variability": [
+  {
+   "type": "ROT",
+   "period": 21.56,
+   "bibcode": "2012AcA....62...67K"
+  },
+  {
+   "type": "ROT",
+   "period": 21.56,
+   "bibcode": "2012AcA....62...67K"
+  },
+  {
+   "type": "ROT",
+   "period": 21.6,
+   "bibcode": "2019A&A...621A.126D"
+  },
+  {
+   "type": "ROT",
+   "period": 21.7,
+   "bibcode": "2015MNRAS.452.2745S"
+  },
+  {
+   "type": "ROT",
+   "period": 21.32,
+   "bibcode": "2023A&A...672A..52F"
+  },
+  {
+   "type": "ROT",
+   "period": 23.0,
+   "bibcode": "2024A&A...684A...9S"
+  },
+  {
+   "type": "ROT",
+   "period": 21.41,
+   "bibcode": "2025A&A...696A.152O"
+  }
+ ],
+ "carmenes": {
+  "carmenes_id": "J10122-037",
+  "name": "AN Sex",
+  "nobs": "77",
+  "nspect": "78",
+  "mass": "0.497",
+  "radius": "0.494",
+  "teff": "3720.0",
+  "p_rot": "21.6",
+  "p_rot_source": "DA19",
+  "survey": " GTO",
+  "remarks": "",
+  "ra": "153.07362",
+  "dec": "-3.74566"
+ }
+}

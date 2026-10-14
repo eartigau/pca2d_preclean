@@ -1,0 +1,36 @@
+{
+ "name": "L 143-23",
+ "main": "L 143-23",
+ "aliases": [
+  "LHS 288",
+  "CNS5 2631",
+  "GJ 3618",
+  "LFT 734",
+  "L 143-23",
+  "LTT 3946",
+  "2MASS J10442131-6112384",
+  "NLTT 25245",
+  "PLX 2511.01",
+  "TIC 391039604",
+  "WISEA J104420.75-611218.4",
+  "[RHG95] 1673",
+  "Gaia DR3 5254061535106490112",
+  "Gaia DR2 5254061535097566848"
+ ],
+ "gaia_dr3": "Gaia DR3 5254061535106490112",
+ "tic": "TIC 391039604",
+ "hip": null,
+ "hd": null,
+ "gj": "GJ 3618",
+ "ra": 161.08847046,
+ "dec": -61.20979871,
+ "sptype": "M5.5V",
+ "plx": 206.9698,
+ "star": {
+  "sptype": "M5.5V",
+  "mass": 0.123,
+  "mass_err": 0.0123,
+  "source": "its spectral type (Pecaut & Mamajek 2013)"
+ },
+ "variability": []
+}

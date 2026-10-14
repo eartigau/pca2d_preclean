@@ -1,0 +1,81 @@
+{
+ "name": "Ross 619",
+ "main": "Ross 619",
+ "aliases": [
+  "LHS 35",
+  "Ci 20 462",
+  "CNS5 2033",
+  "CSI+09-08092",
+  "GCRV 5431",
+  "GEN# +9.80050022",
+  "GEN# +6.10010299",
+  "G 52-2",
+  "G 50-22",
+  "GJ 299",
+  "JP11 5129",
+  "JP11 5130",
+  "Karmn J08119+087",
+  "LFT 569",
+  "LSPM J0811+0846",
+  "LTT 12146",
+  "2MASS J08115757+0846220",
+  "NLTT 19094",
+  "8pc 146.30",
+  "PLX 1942",
+  "PLX 1942.00",
+  "PM 08092+0859",
+  "PM J08119+0846",
+  "Ross 619",
+  "TIC 334415465",
+  "UCAC4 494-048937",
+  "USNO-B1.0 0987-00174078",
+  "USNO 429",
+  "WEB 7832",
+  "Zkh 116",
+  "[RHG95] 1290",
+  "Gaia DR3 3098328182579892096",
+  "Gaia DR2 3098328216938651264"
+ ],
+ "gaia_dr3": "Gaia DR3 3098328182579892096",
+ "tic": "TIC 334415465",
+ "hip": null,
+ "hd": null,
+ "gj": "GJ 299",
+ "ra": 122.98987155,
+ "dec": 8.77304247,
+ "sptype": "M4.5V",
+ "plx": 147.7218,
+ "star": {
+  "sptype": "M4.5V",
+  "mass": 0.184,
+  "mass_err": 0.0184,
+  "source": "its spectral type (Pecaut & Mamajek 2013)"
+ },
+ "variability": [
+  {
+   "type": "ROT",
+   "period": 0.998,
+   "bibcode": "2016ApJ...821...93N"
+  },
+  {
+   "type": "ROT",
+   "period": 5.42,
+   "bibcode": "2019A&A...621A.126D"
+  }
+ ],
+ "carmenes": {
+  "carmenes_id": "J08119+087",
+  "name": "Ross 619",
+  "nobs": "15",
+  "nspect": "16",
+  "mass": "0.147",
+  "radius": "0.1621",
+  "teff": "3245.0",
+  "p_rot": "5.42",
+  "p_rot_source": "DA19",
+  "survey": " GTO",
+  "remarks": "",
+  "ra": "122.98987",
+  "dec": "8.77304"
+ }
+}

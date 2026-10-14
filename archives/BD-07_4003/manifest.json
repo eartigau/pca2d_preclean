@@ -1,0 +1,145 @@
+{
+ "target": "BD-07 4003",
+ "simbad": "BD-07 4003",
+ "folder": "/Users/eartigau/GitHubProjects/pca2d_preclean/archives/BD-07_4003",
+ "created": "2026-10-03 23:28:12",
+ "archives": {
+  "dace": {
+   "status": "ok",
+   "files": [
+    "rv/dace/HARPS03.csv",
+    "rv/dace/HARPS15.csv",
+    "rv/dace/NIRPS.csv",
+    "rv/dace/NIRPS_HA.csv",
+    "rv/dace/raw_GJ581.csv"
+   ],
+   "instruments": {
+    "HARPS03": 250,
+    "HARPS15": 146,
+    "NIRPS_HA": 22,
+    "NIRPS": 193
+   },
+   "npoints": 611,
+   "rjd": [
+    53152.71364834998,
+    60569.48157801991
+   ],
+   "indicators": [
+    "bis",
+    "contrast",
+    "fwhm",
+    "halpha",
+    "rhk",
+    "smw"
+   ],
+   "key": "the key of DACE_API_KEY: may hold data that are not public"
+  },
+  "carmenes": {
+   "status": "ok",
+   "files": [
+    "rv/carmenes/raw.csv",
+    "rv/carmenes/CARMENES.csv"
+   ],
+   "instruments": {
+    "CARMENES": 54
+   },
+   "npoints": 54,
+   "rjd": [
+    57415.76329703536,
+    58680.401291925926
+   ],
+   "indicators": [
+    "cai",
+    "cai_8498",
+    "cai_8542",
+    "cai_8698",
+    "ccf_bis",
+    "ccf_contrast",
+    "ccf_fwhm",
+    "dlw",
+    "halpha",
+    "nad1",
+    "nad2"
+   ],
+   "karmn": "J15194-077"
+  },
+  "published": {
+   "status": "ok",
+   "npoints": 788,
+   "instruments": {
+    "HIRES (Teklu+ 2025)": 415,
+    "HIRES (CLS)": 43,
+    "HARPS03 (RVBank)": 250,
+    "HARPS (Mignon+ 2024)": 1,
+    "CARMENES (von Stauffenberg+ 2024)": 54,
+    "Bryan+ 2019": 24,
+    "HIRES (Vogt+ 2010)": 1
+   },
+   "sources": [
+    {
+     "reference": "Teklu et al. 2025",
+     "catalogue": "J/A+A/702/A68",
+     "n": 415,
+     "kind": "survey"
+    },
+    {
+     "reference": "Rosenthal et al. 2021 (California Legacy Survey)",
+     "catalogue": "J/ApJS/255/8",
+     "n": 43,
+     "kind": "survey"
+    },
+    {
+     "reference": "Trifonov et al. 2020 (HARPS-RVBank)",
+     "catalogue": "J/A+A/636/A74",
+     "n": 250,
+     "kind": "survey"
+    },
+    {
+     "reference": "Mignon+ 2024",
+     "catalogue": "J/A+A/689/A32",
+     "n": 1,
+     "kind": "paper"
+    },
+    {
+     "reference": "von Stauffenberg+ 2024",
+     "catalogue": "J/A+A/688/A112",
+     "n": 54,
+     "kind": "paper"
+    },
+    {
+     "reference": "Bryan+ 2019",
+     "catalogue": "J/AJ/157/52",
+     "n": 24,
+     "kind": "paper"
+    },
+    {
+     "reference": "Vogt+ 2010",
+     "catalogue": "J/ApJ/723/954",
+     "n": 1,
+     "kind": "paper"
+    }
+   ],
+   "files": [
+    "rv/published/teklu25.csv",
+    "rv/published/cls21.csv",
+    "rv/published/rvbank20.csv",
+    "rv/published/J_A_A_689_A32.csv",
+    "rv/published/J_A_A_688_A112.csv",
+    "rv/published/J_AJ_157_52.csv",
+    "rv/published/J_ApJ_723_954.csv"
+   ],
+   "message": ""
+  }
+ },
+ "rv": {
+  "file": "rv/all_rv.csv",
+  "npoints": 665,
+  "instruments": [
+   "HARPS03",
+   "CARMENES",
+   "HARPS15",
+   "NIRPS_HA",
+   "NIRPS"
+  ]
+ }
+}

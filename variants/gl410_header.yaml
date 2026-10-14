@@ -1,0 +1,10 @@
+# gl410_header: the folder is GL410_T, the headers say Gl410 / GL410.
+#
+# The campaign was rsynced from rali's APERO tree
+# (/cosmos99/spirou/apero-data/spirou_offline/objects/GL410), whose t.fits
+# carry OBJECT = Gl410 and DRSOBJN = GL410. The folder name says which
+# flavour of the files it holds, as GJ784_NIRPS_T does, so the header check
+# needs to be told what the star is called.
+note: "GL410 SPIRou, CADC-style t.fits from rali's apero-data objects tree"
+input:
+  object_header: GL410

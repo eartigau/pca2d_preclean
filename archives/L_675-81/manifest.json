@@ -1,0 +1,144 @@
+{
+ "target": "L 675-81",
+ "simbad": "L 675-81",
+ "folder": "/Users/eartigau/GitHubProjects/pca2d_preclean/archives/L_675-81",
+ "created": "2026-10-04 00:11:15",
+ "archives": {
+  "dace": {
+   "status": "ok",
+   "files": [
+    "rv/dace/HARPS03.csv",
+    "rv/dace/HARPS15.csv",
+    "rv/dace/NIRPS.csv",
+    "rv/dace/raw_GJ317.csv"
+   ],
+   "instruments": {
+    "HARPS03": 80,
+    "HARPS15": 88,
+    "NIRPS": 56
+   },
+   "npoints": 224,
+   "rjd": [
+    55227.79799744021,
+    60820.46093210019
+   ],
+   "indicators": [
+    "bis",
+    "contrast",
+    "fwhm",
+    "halpha",
+    "rhk",
+    "smw"
+   ],
+   "key": "the key of DACE_API_KEY: may hold data that are not public"
+  },
+  "carmenes": {
+   "status": "ok",
+   "files": [
+    "rv/carmenes/raw.csv",
+    "rv/carmenes/CARMENES.csv"
+   ],
+   "instruments": {
+    "CARMENES": 25
+   },
+   "npoints": 25,
+   "rjd": [
+    58093.66695505101,
+    59172.6988781956
+   ],
+   "indicators": [
+    "cai",
+    "cai_8498",
+    "cai_8542",
+    "cai_8698",
+    "ccf_bis",
+    "ccf_contrast",
+    "ccf_fwhm",
+    "dlw",
+    "halpha",
+    "nad1",
+    "nad2"
+   ],
+   "karmn": "J08409-234"
+  },
+  "published": {
+   "status": "ok",
+   "npoints": 661,
+   "instruments": {
+    "HIRES (Teklu+ 2025)": 73,
+    "HIRES (CLS)": 1,
+    "HARPS03 (RVBank)": 84,
+    "HARPS15 (RVBank)": 48,
+    "VIS (Morales+ 2025)": 41,
+    "NIR (Morales+ 2025)": 38,
+    "HARPS (Mignon+ 2024)": 11,
+    "PFS (Feng+ 2020)": 32,
+    "Bryan+ 2016": 333
+   },
+   "sources": [
+    {
+     "reference": "Teklu et al. 2025",
+     "catalogue": "J/A+A/702/A68",
+     "n": 73,
+     "kind": "survey"
+    },
+    {
+     "reference": "Rosenthal et al. 2021 (California Legacy Survey)",
+     "catalogue": "J/ApJS/255/8",
+     "n": 1,
+     "kind": "survey"
+    },
+    {
+     "reference": "Trifonov et al. 2020 (HARPS-RVBank)",
+     "catalogue": "J/A+A/636/A74",
+     "n": 132,
+     "kind": "survey"
+    },
+    {
+     "reference": "Morales+ 2025",
+     "catalogue": "J/A+A/700/A242",
+     "n": 79,
+     "kind": "paper"
+    },
+    {
+     "reference": "Mignon+ 2024",
+     "catalogue": "J/A+A/689/A32",
+     "n": 11,
+     "kind": "paper"
+    },
+    {
+     "reference": "Feng+ 2020",
+     "catalogue": "J/ApJS/250/29",
+     "n": 32,
+     "kind": "paper"
+    },
+    {
+     "reference": "Bryan+ 2016",
+     "catalogue": "J/ApJ/821/89",
+     "n": 333,
+     "kind": "paper"
+    }
+   ],
+   "files": [
+    "rv/published/teklu25.csv",
+    "rv/published/cls21.csv",
+    "rv/published/rvbank20.csv",
+    "rv/published/J_A_A_700_A242.csv",
+    "rv/published/J_A_A_689_A32.csv",
+    "rv/published/J_ApJS_250_29.csv",
+    "rv/published/J_ApJ_821_89.csv"
+   ],
+   "message": ""
+  }
+ },
+ "rv": {
+  "file": "rv/all_rv.csv",
+  "npoints": 249,
+  "instruments": [
+   "HARPS03",
+   "HARPS15",
+   "CARMENES",
+   "NIRPS"
+  ]
+ }
+}

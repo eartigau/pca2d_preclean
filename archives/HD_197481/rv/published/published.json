@@ -1,0 +1,94 @@
+[
+ {
+  "kind": "survey",
+  "key": "teklu25",
+  "reference": "Teklu et al. 2025",
+  "catalogue": "J/A+A/702/A68",
+  "n": 65,
+  "instruments": {
+   "HIRES (Teklu+ 2025)": 65
+  },
+  "file": "teklu25.csv",
+  "note": "GL803: HIRES (Teklu+ 2025) 65"
+ },
+ {
+  "kind": "survey",
+  "key": "cls21",
+  "reference": "Rosenthal et al. 2021 (California Legacy Survey)",
+  "catalogue": "J/ApJS/255/8",
+  "n": 3,
+  "instruments": {
+   "HIRES (CLS)": 3
+  },
+  "file": "cls21.csv",
+  "note": "gl803: HIRES-k (CLS) 2, HIRES (CLS) 24"
+ },
+ {
+  "kind": "survey",
+  "key": "talor19",
+  "reference": "Tal-Or et al. 2019",
+  "catalogue": "J/MNRAS/484/L8",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "GL803: HIRES (Tal-Or+ 2019) 16; every spectrum already kept"
+ },
+ {
+  "kind": "survey",
+  "key": "fischer14",
+  "reference": "Fischer et al. 2014 (Lick)",
+  "catalogue": "J/ApJS/210/5",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "not in the survey (its list of stars)"
+ },
+ {
+  "kind": "survey",
+  "key": "rvbank20",
+  "reference": "Trifonov et al. 2020 (HARPS-RVBank)",
+  "catalogue": "J/A+A/636/A74",
+  "n": 48,
+  "instruments": {
+   "HARPS03 (RVBank)": 26,
+   "HARPS15 (RVBank)": 22
+  },
+  "file": "rvbank20.csv",
+  "note": "GJ803: HARPS03 (RVBank) 26, HARPS15 (RVBank) 22"
+ },
+ {
+  "kind": "paper",
+  "key": "J_A_A_693_A4",
+  "reference": "Osborne+ 2025",
+  "bibcode": "2025A&A...693A...4O",
+  "catalogue": "J/A+A/693/A4",
+  "n": 106,
+  "instruments": {
+   "HARPS (Osborne+ 2025)": 106
+  },
+  "file": "J_A_A_693_A4.csv",
+  "note": "J/A+A/693/A4: data (154)"
+ },
+ {
+  "kind": "paper",
+  "key": "J_A_A_689_A32",
+  "reference": "Mignon+ 2024",
+  "bibcode": "2024A&A...689A..32M",
+  "catalogue": "J/A+A/689/A32",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "J/A+A/689/A32: rv (61); every spectrum already kept"
+ },
+ {
+  "kind": "paper",
+  "key": "J_A_A_645_A30",
+  "reference": "Zuniga-Fernandez+ 2021",
+  "bibcode": "2021A&A...645A..30Z",
+  "catalogue": "J/A+A/645/A30",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "J/A+A/645/A30: rvindi (14); no instrument below 20 m/s"
+ }
+]

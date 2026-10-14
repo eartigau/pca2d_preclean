@@ -1,0 +1,119 @@
+{
+ "target": "CD-23 14742",
+ "simbad": "CD-23 14742",
+ "folder": "/Users/eartigau/GitHubProjects/pca2d_preclean/archives/CD-23_14742",
+ "created": "2026-10-03 23:49:10",
+ "archives": {
+  "dace": {
+   "status": "ok",
+   "files": [
+    "rv/dace/HARPS03.csv",
+    "rv/dace/HARPS15.csv",
+    "rv/dace/NIRPS.csv",
+    "rv/dace/raw_GJ729.csv"
+   ],
+   "instruments": {
+    "HARPS03": 8,
+    "HARPS15": 141,
+    "NIRPS": 111
+   },
+   "npoints": 260,
+   "rjd": [
+    53158.87116714008,
+    60817.930283899885
+   ],
+   "indicators": [
+    "bis",
+    "contrast",
+    "fwhm",
+    "halpha",
+    "rhk",
+    "smw"
+   ],
+   "key": "the key of DACE_API_KEY: may hold data that are not public"
+  },
+  "carmenes": {
+   "status": "ok",
+   "files": [
+    "rv/carmenes/raw.csv",
+    "rv/carmenes/CARMENES.csv"
+   ],
+   "instruments": {
+    "CARMENES": 53
+   },
+   "npoints": 53,
+   "rjd": [
+    57948.49050975405,
+    58315.45642365934
+   ],
+   "indicators": [
+    "cai",
+    "cai_8498",
+    "cai_8542",
+    "cai_8698",
+    "ccf_bis",
+    "ccf_contrast",
+    "ccf_fwhm",
+    "dlw",
+    "halpha",
+    "nad1",
+    "nad2"
+   ],
+   "karmn": "J18498-238"
+  },
+  "published": {
+   "status": "ok",
+   "npoints": 148,
+   "instruments": {
+    "HIRES (Teklu+ 2025)": 29,
+    "HIRES (CLS)": 2,
+    "HIRES (Tal-Or+ 2019)": 2,
+    "HARPS03 (RVBank)": 8,
+    "HARPS15 (RVBank)": 107
+   },
+   "sources": [
+    {
+     "reference": "Teklu et al. 2025",
+     "catalogue": "J/A+A/702/A68",
+     "n": 29,
+     "kind": "survey"
+    },
+    {
+     "reference": "Rosenthal et al. 2021 (California Legacy Survey)",
+     "catalogue": "J/ApJS/255/8",
+     "n": 2,
+     "kind": "survey"
+    },
+    {
+     "reference": "Tal-Or et al. 2019",
+     "catalogue": "J/MNRAS/484/L8",
+     "n": 2,
+     "kind": "survey"
+    },
+    {
+     "reference": "Trifonov et al. 2020 (HARPS-RVBank)",
+     "catalogue": "J/A+A/636/A74",
+     "n": 115,
+     "kind": "survey"
+    }
+   ],
+   "files": [
+    "rv/published/teklu25.csv",
+    "rv/published/cls21.csv",
+    "rv/published/talor19.csv",
+    "rv/published/rvbank20.csv"
+   ],
+   "message": ""
+  }
+ },
+ "rv": {
+  "file": "rv/all_rv.csv",
+  "npoints": 313,
+  "instruments": [
+   "HARPS03",
+   "HARPS15",
+   "CARMENES",
+   "NIRPS"
+  ]
+ }
+}

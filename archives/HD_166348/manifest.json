@@ -1,0 +1,77 @@
+{
+ "target": "HD 166348",
+ "simbad": "HD 166348",
+ "folder": "/Users/eartigau/GitHubProjects/pca2d_preclean/archives/HD_166348",
+ "created": "2026-10-03 23:45:41",
+ "archives": {
+  "dace": {
+   "status": "ok",
+   "files": [
+    "rv/dace/HARPS03.csv",
+    "rv/dace/HARPS15.csv",
+    "rv/dace/NIRPS.csv",
+    "rv/dace/raw_HD166348.csv"
+   ],
+   "instruments": {
+    "HARPS03": 19,
+    "HARPS15": 114,
+    "NIRPS": 127
+   },
+   "npoints": 260,
+   "rjd": [
+    52850.61733656982,
+    60949.47721512988
+   ],
+   "indicators": [
+    "bis",
+    "contrast",
+    "fwhm",
+    "halpha",
+    "rhk",
+    "smw"
+   ],
+   "key": "the key of DACE_API_KEY: may hold data that are not public"
+  },
+  "carmenes": {
+   "status": "none",
+   "message": "not in CARMENES DR1, or no velocity corrected for the nightly zero points"
+  },
+  "published": {
+   "status": "ok",
+   "npoints": 26,
+   "instruments": {
+    "HARPS03 (RVBank)": 17,
+    "HARPS15 (RVBank)": 3,
+    "HARPS (Mignon+ 2024)": 6
+   },
+   "sources": [
+    {
+     "reference": "Trifonov et al. 2020 (HARPS-RVBank)",
+     "catalogue": "J/A+A/636/A74",
+     "n": 20,
+     "kind": "survey"
+    },
+    {
+     "reference": "Mignon+ 2024",
+     "catalogue": "J/A+A/689/A32",
+     "n": 6,
+     "kind": "paper"
+    }
+   ],
+   "files": [
+    "rv/published/rvbank20.csv",
+    "rv/published/J_A_A_689_A32.csv"
+   ],
+   "message": ""
+  }
+ },
+ "rv": {
+  "file": "rv/all_rv.csv",
+  "npoints": 260,
+  "instruments": [
+   "HARPS03",
+   "HARPS15",
+   "NIRPS"
+  ]
+ }
+}

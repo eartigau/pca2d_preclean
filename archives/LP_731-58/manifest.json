@@ -1,0 +1,74 @@
+{
+ "target": "LP 731-58",
+ "simbad": "LP 731-58",
+ "folder": "/Users/eartigau/GitHubProjects/pca2d_preclean/archives/LP_731-58",
+ "created": "2026-10-03 23:20:47",
+ "archives": {
+  "dace": {
+   "status": "ok",
+   "files": [
+    "rv/dace/NIRPS.csv",
+    "rv/dace/raw_GJ3622.csv"
+   ],
+   "instruments": {
+    "NIRPS": 65
+   },
+   "npoints": 65,
+   "rjd": [
+    60335.82287169993,
+    60869.467864170205
+   ],
+   "indicators": [
+    "bis",
+    "contrast",
+    "fwhm"
+   ],
+   "key": "the key of DACE_API_KEY: may hold data that are not public"
+  },
+  "carmenes": {
+   "status": "ok",
+   "files": [
+    "rv/carmenes/raw.csv",
+    "rv/carmenes/CARMENES.csv"
+   ],
+   "instruments": {
+    "CARMENES": 75
+   },
+   "npoints": 75,
+   "rjd": [
+    57419.58445041906,
+    58807.73977606557
+   ],
+   "indicators": [
+    "cai",
+    "cai_8498",
+    "cai_8542",
+    "cai_8698",
+    "ccf_bis",
+    "ccf_contrast",
+    "ccf_fwhm",
+    "dlw",
+    "halpha",
+    "nad1",
+    "nad2"
+   ],
+   "karmn": "J10482-113"
+  },
+  "published": {
+   "status": "none",
+   "npoints": 0,
+   "instruments": {},
+   "sources": [],
+   "files": [],
+   "message": "no published velocity of the star in the surveys or its papers on VizieR"
+  }
+ },
+ "rv": {
+  "file": "rv/all_rv.csv",
+  "npoints": 140,
+  "instruments": [
+   "CARMENES",
+   "NIRPS"
+  ]
+ }
+}

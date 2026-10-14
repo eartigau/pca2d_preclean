@@ -1,0 +1,14 @@
+# apero_tcorr: spectra taken straight from an APERO reduction rather than
+# from CADC, which is the same product under another name.
+#
+# CADC renames APERO's telluric-corrected 2D spectrum
+# <NIRPS_2023-06-02T07_38_16_247>_pp_e2dsff_tcorr_A.fits to
+# NIRPS.2023-06-02T07:38:16.247t.fits, so a campaign rsynced from the
+# reduction machine (rali:/cosmos99/nirps/lbl-data/<mode>/science/<object>)
+# needs the APERO pattern here and APERO's reader in LBL. Nothing else
+# changes: the pixels are the same.
+note: "GJ784 NIRPS HE, rsynced from rali's nirps_he_offline lbl-data tree"
+input:
+  pattern: "*_pp_e2dsff_tcorr_A.fits"
+lbl:
+  data_source: APERO

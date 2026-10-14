@@ -1,0 +1,77 @@
+[
+ {
+  "kind": "survey",
+  "key": "teklu25",
+  "reference": "Teklu et al. 2025",
+  "catalogue": "J/A+A/702/A68",
+  "n": 225,
+  "instruments": {
+   "HIRES (Teklu+ 2025)": 225
+  },
+  "file": "teklu25.csv",
+  "note": "GL699: HIRES (Teklu+ 2025) 225"
+ },
+ {
+  "kind": "survey",
+  "key": "cls21",
+  "reference": "Rosenthal et al. 2021 (California Legacy Survey)",
+  "catalogue": "J/ApJS/255/8",
+  "n": 134,
+  "instruments": {
+   "Lick (CLS)": 18,
+   "HIRES-k (CLS)": 1,
+   "HIRES (CLS)": 11,
+   "APF (CLS)": 104
+  },
+  "file": "cls21.csv",
+  "note": "gl699: Lick (CLS) 18, HIRES-k (CLS) 72, HIRES (CLS) 156, APF (CLS) 104"
+ },
+ {
+  "kind": "survey",
+  "key": "talor19",
+  "reference": "Tal-Or et al. 2019",
+  "catalogue": "J/MNRAS/484/L8",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "GL699: HIRES (Tal-Or+ 2019) 233; every spectrum already kept"
+ },
+ {
+  "kind": "survey",
+  "key": "fischer14",
+  "reference": "Fischer et al. 2014 (Lick)",
+  "catalogue": "J/ApJS/210/5",
+  "n": 21,
+  "instruments": {
+   "Lick-d13 (Fischer+ 2014)": 16,
+   "Lick-d6 (Fischer+ 2014)": 2,
+   "Lick-d8 (Fischer+ 2014)": 3
+  },
+  "file": "fischer14.csv",
+  "note": "GL699: Lick-d2 (Fischer+ 2014) 11, Lick-d13 (Fischer+ 2014) 23, Lick-d6 (Fischer+ 2014) 2, Lick-d8 (Fischer+ 2014) 4"
+ },
+ {
+  "kind": "survey",
+  "key": "rvbank20",
+  "reference": "Trifonov et al. 2020 (HARPS-RVBank)",
+  "catalogue": "J/A+A/636/A74",
+  "n": 306,
+  "instruments": {
+   "HARPS03 (RVBank)": 237,
+   "HARPS15 (RVBank)": 69
+  },
+  "file": "rvbank20.csv",
+  "note": "GJ699: HARPS03 (RVBank) 237, HARPS15 (RVBank) 69"
+ },
+ {
+  "kind": "paper",
+  "key": "J_A_A_689_A32",
+  "reference": "Mignon+ 2024",
+  "bibcode": "2024A&A...689A..32M",
+  "catalogue": "J/A+A/689/A32",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "J/A+A/689/A32: rv (122); every spectrum already kept"
+ }
+]

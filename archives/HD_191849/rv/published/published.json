@@ -1,0 +1,76 @@
+[
+ {
+  "kind": "survey",
+  "key": "teklu25",
+  "reference": "Teklu et al. 2025",
+  "catalogue": "J/A+A/702/A68",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "not in the survey (its list of stars)"
+ },
+ {
+  "kind": "survey",
+  "key": "cls21",
+  "reference": "Rosenthal et al. 2021 (California Legacy Survey)",
+  "catalogue": "J/ApJS/255/8",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "not in the survey (its list of stars)"
+ },
+ {
+  "kind": "survey",
+  "key": "talor19",
+  "reference": "Tal-Or et al. 2019",
+  "catalogue": "J/MNRAS/484/L8",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "not in the survey (its list of stars)"
+ },
+ {
+  "kind": "survey",
+  "key": "fischer14",
+  "reference": "Fischer et al. 2014 (Lick)",
+  "catalogue": "J/ApJS/210/5",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "not in the survey (its list of stars)"
+ },
+ {
+  "kind": "survey",
+  "key": "rvbank20",
+  "reference": "Trifonov et al. 2020 (HARPS-RVBank)",
+  "catalogue": "J/A+A/636/A74",
+  "n": 40,
+  "instruments": {
+   "HARPS03 (RVBank)": 40
+  },
+  "file": "rvbank20.csv",
+  "note": "GJ784: HARPS03 (RVBank) 40"
+ },
+ {
+  "kind": "paper",
+  "key": "J_A_A_689_A32",
+  "reference": "Mignon+ 2024",
+  "bibcode": "2024A&A...689A..32M",
+  "catalogue": "J/A+A/689/A32",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "J/A+A/689/A32: rv (39); every spectrum already kept"
+ },
+ {
+  "kind": "paper",
+  "key": "J_A_A_632_A37",
+  "reference": "Brems+ 2019",
+  "bibcode": "2019A&A...632A..37B",
+  "catalogue": "J/A+A/632/A37",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "J/A+A/632/A37: tablee1 (39); every spectrum already kept"
+ }
+]

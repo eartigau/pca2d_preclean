@@ -1,0 +1,143 @@
+[
+ {
+  "kind": "survey",
+  "key": "teklu25",
+  "reference": "Teklu et al. 2025",
+  "catalogue": "J/A+A/702/A68",
+  "n": 415,
+  "instruments": {
+   "HIRES (Teklu+ 2025)": 415
+  },
+  "file": "teklu25.csv",
+  "note": "HIP74995: HIRES (Teklu+ 2025) 415"
+ },
+ {
+  "kind": "survey",
+  "key": "cls21",
+  "reference": "Rosenthal et al. 2021 (California Legacy Survey)",
+  "catalogue": "J/ApJS/255/8",
+  "n": 43,
+  "instruments": {
+   "HIRES (CLS)": 43
+  },
+  "file": "cls21.csv",
+  "note": "hip74995: HIRES-k (CLS) 12, HIRES (CLS) 434"
+ },
+ {
+  "kind": "survey",
+  "key": "talor19",
+  "reference": "Tal-Or et al. 2019",
+  "catalogue": "J/MNRAS/484/L8",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "HIP74995: HIRES (Tal-Or+ 2019) 413; every spectrum already kept"
+ },
+ {
+  "kind": "survey",
+  "key": "fischer14",
+  "reference": "Fischer et al. 2014 (Lick)",
+  "catalogue": "J/ApJS/210/5",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "not in the survey (its list of stars)"
+ },
+ {
+  "kind": "survey",
+  "key": "rvbank20",
+  "reference": "Trifonov et al. 2020 (HARPS-RVBank)",
+  "catalogue": "J/A+A/636/A74",
+  "n": 250,
+  "instruments": {
+   "HARPS03 (RVBank)": 250
+  },
+  "file": "rvbank20.csv",
+  "note": "GJ581: HARPS03 (RVBank) 250"
+ },
+ {
+  "kind": "paper",
+  "key": "J_A_A_689_A32",
+  "reference": "Mignon+ 2024",
+  "bibcode": "2024A&A...689A..32M",
+  "catalogue": "J/A+A/689/A32",
+  "n": 1,
+  "instruments": {
+   "HARPS (Mignon+ 2024)": 1
+  },
+  "file": "J_A_A_689_A32.csv",
+  "note": "J/A+A/689/A32: rv (242)"
+ },
+ {
+  "kind": "paper",
+  "key": "J_A_A_688_A112",
+  "reference": "von Stauffenberg+ 2024",
+  "bibcode": "2024A&A...688A.112V",
+  "catalogue": "J/A+A/688/A112",
+  "n": 54,
+  "instruments": {
+   "CARMENES (von Stauffenberg+ 2024)": 54
+  },
+  "file": "J_A_A_688_A112.csv",
+  "note": "J/A+A/688/A112: tablea2 (250), tablea3 (54)"
+ },
+ {
+  "kind": "paper",
+  "key": "J_AJ_157_52",
+  "reference": "Bryan+ 2019",
+  "bibcode": "2019AJ....157...52B",
+  "catalogue": "J/AJ/157/52",
+  "n": 24,
+  "instruments": {
+   "Bryan+ 2019": 24
+  },
+  "file": "J_AJ_157_52.csv",
+  "note": "J/AJ/157/52: table2 (531)"
+ },
+ {
+  "kind": "paper",
+  "key": "J_A_A_609_A117",
+  "reference": "Trifonov+ 2018",
+  "bibcode": "2018A&A...609A.117T",
+  "catalogue": "J/A+A/609/A117",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "J/A+A/609/A117: gj581 (20); every spectrum already kept"
+ },
+ {
+  "kind": "paper",
+  "key": "J_AJ_153_208",
+  "reference": "Butler+ 2017",
+  "bibcode": "2017AJ....153..208B",
+  "catalogue": "J/AJ/153/208",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "J/AJ/153/208: table1 (412); every spectrum already kept"
+ },
+ {
+  "kind": "paper",
+  "key": "J_ApJ_723_954",
+  "reference": "Vogt+ 2010",
+  "bibcode": "2010ApJ...723..954V",
+  "catalogue": "J/ApJ/723/954",
+  "n": 1,
+  "instruments": {
+   "HIRES (Vogt+ 2010)": 1
+  },
+  "file": "J_ApJ_723_954.csv",
+  "note": "J/ApJ/723/954: table1 (122)"
+ },
+ {
+  "kind": "paper",
+  "key": "J_A_A_507_487",
+  "reference": "Mayor+ 2009",
+  "bibcode": "2009A&A...507..487M",
+  "catalogue": "J/A+A/507/487",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "J/A+A/507/487: table1 (119); every spectrum already kept"
+ }
+]

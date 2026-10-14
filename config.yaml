@@ -603,6 +603,18 @@ objects:
   TOI2120:
     target:
       planets: [5.7998164]
+  GL410_AFTER:
+    input:
+      # les spectres DEJA corriges par pca2d (serie C), auxquels le masque de
+      # ciel d Andres a ete applique ensuite: l ordre qui laisse l ajustement
+      # voir le spectre entier avant de retirer la contamination locale
+      object_header: GL410
+  GL410_MASKED:
+    input:
+      # les memes spectres que GL410, avec le masque de ciel d'Andres Carmona
+      # applique (3 sigma) et la coupure a 50% de transmission: le dossier dit
+      # ce qui a ete fait, les en-tetes disent l'etoile
+      object_header: GL410
   TOI2120P2:
     input:
       # une DEUXIEME passe de pca2d sur les spectres que la premiere a

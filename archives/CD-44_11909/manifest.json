@@ -1,0 +1,79 @@
+{
+ "target": "CD-44 11909",
+ "simbad": "CD-44 11909",
+ "folder": "/Users/eartigau/GitHubProjects/pca2d_preclean/archives/CD-44_11909",
+ "created": "2026-10-03 23:40:48",
+ "archives": {
+  "dace": {
+   "status": "ok",
+   "files": [
+    "rv/dace/ESPRESSO18.csv",
+    "rv/dace/HARPS03.csv",
+    "rv/dace/HARPS15.csv",
+    "rv/dace/NIRPS.csv",
+    "rv/dace/raw_GJ682.csv"
+   ],
+   "instruments": {
+    "HARPS03": 21,
+    "ESPRESSO18": 7,
+    "NIRPS": 519,
+    "HARPS15": 130
+   },
+   "npoints": 677,
+   "rjd": [
+    53158.77679735003,
+    60949.49497999018
+   ],
+   "indicators": [
+    "bis",
+    "contrast",
+    "fwhm",
+    "halpha",
+    "rhk",
+    "smw"
+   ],
+   "key": "the key of DACE_API_KEY: may hold data that are not public"
+  },
+  "carmenes": {
+   "status": "none",
+   "message": "not in CARMENES DR1, or no velocity corrected for the nightly zero points"
+  },
+  "published": {
+   "status": "ok",
+   "npoints": 70,
+   "instruments": {
+    "HARPS03 (RVBank)": 21,
+    "UVES (Feng+ 2020)": 49
+   },
+   "sources": [
+    {
+     "reference": "Trifonov et al. 2020 (HARPS-RVBank)",
+     "catalogue": "J/A+A/636/A74",
+     "n": 21,
+     "kind": "survey"
+    },
+    {
+     "reference": "Feng+ 2020",
+     "catalogue": "J/ApJS/246/11",
+     "n": 49,
+     "kind": "paper"
+    }
+   ],
+   "files": [
+    "rv/published/rvbank20.csv",
+    "rv/published/J_ApJS_246_11.csv"
+   ],
+   "message": ""
+  }
+ },
+ "rv": {
+  "file": "rv/all_rv.csv",
+  "npoints": 677,
+  "instruments": [
+   "HARPS03",
+   "ESPRESSO18",
+   "NIRPS",
+   "HARPS15"
+  ]
+ }
+}

@@ -1,0 +1,89 @@
+[
+ {
+  "kind": "survey",
+  "key": "teklu25",
+  "reference": "Teklu et al. 2025",
+  "catalogue": "J/A+A/702/A68",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "not in the survey (its list of stars)"
+ },
+ {
+  "kind": "survey",
+  "key": "cls21",
+  "reference": "Rosenthal et al. 2021 (California Legacy Survey)",
+  "catalogue": "J/ApJS/255/8",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "not in the survey (its list of stars)"
+ },
+ {
+  "kind": "survey",
+  "key": "talor19",
+  "reference": "Tal-Or et al. 2019",
+  "catalogue": "J/MNRAS/484/L8",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "not in the survey (its list of stars)"
+ },
+ {
+  "kind": "survey",
+  "key": "fischer14",
+  "reference": "Fischer et al. 2014 (Lick)",
+  "catalogue": "J/ApJS/210/5",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "not in the survey (its list of stars)"
+ },
+ {
+  "kind": "survey",
+  "key": "rvbank20",
+  "reference": "Trifonov et al. 2020 (HARPS-RVBank)",
+  "catalogue": "J/A+A/636/A74",
+  "n": 21,
+  "instruments": {
+   "HARPS03 (RVBank)": 21
+  },
+  "file": "rvbank20.csv",
+  "note": "HIP86214: HARPS03 (RVBank) 21"
+ },
+ {
+  "kind": "paper",
+  "key": "J_A_A_689_A32",
+  "reference": "Mignon+ 2024",
+  "bibcode": "2024A&A...689A..32M",
+  "catalogue": "J/A+A/689/A32",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "J/A+A/689/A32: rv (21); every spectrum already kept"
+ },
+ {
+  "kind": "paper",
+  "key": "J_ApJS_246_11",
+  "reference": "Feng+ 2020",
+  "bibcode": "2020ApJS..246...11F",
+  "catalogue": "J/ApJS/246/11",
+  "n": 49,
+  "instruments": {
+   "UVES (Feng+ 2020)": 49
+  },
+  "file": "J_ApJS_246_11.csv",
+  "note": "J/ApJS/246/11: fig1 (89)"
+ },
+ {
+  "kind": "paper",
+  "key": "J_AJ_158_251",
+  "reference": "Butler+ 2019",
+  "bibcode": "2019AJ....158..251B",
+  "catalogue": "J/AJ/158/251",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "J/AJ/158/251: table2 (49); every spectrum already kept"
+ }
+]

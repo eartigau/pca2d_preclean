@@ -1,0 +1,56 @@
+{
+ "target": "G 109-35",
+ "simbad": "G 109-35",
+ "folder": "/Users/eartigau/GitHubProjects/pca2d_preclean/archives/G_109-35",
+ "created": "2026-10-04 17:02:29",
+ "archives": {
+  "dace": {
+   "status": "none",
+   "message": "DACE has no public velocities under the names of the star"
+  },
+  "carmenes": {
+   "status": "ok",
+   "files": [
+    "rv/carmenes/raw.csv",
+    "rv/carmenes/CARMENES.csv"
+   ],
+   "instruments": {
+    "CARMENES": 28
+   },
+   "npoints": 28,
+   "rjd": [
+    57688.68899773015,
+    59183.50122163445
+   ],
+   "indicators": [
+    "cai",
+    "cai_8498",
+    "cai_8542",
+    "cai_8698",
+    "ccf_bis",
+    "ccf_contrast",
+    "ccf_fwhm",
+    "dlw",
+    "halpha",
+    "nad1",
+    "nad2"
+   ],
+   "karmn": "J06594+193"
+  },
+  "published": {
+   "status": "none",
+   "npoints": 0,
+   "instruments": {},
+   "sources": [],
+   "files": [],
+   "message": "no published velocity of the star in the surveys or its papers on VizieR"
+  }
+ },
+ "rv": {
+  "file": "rv/all_rv.csv",
+  "npoints": 28,
+  "instruments": [
+   "CARMENES"
+  ]
+ }
+}

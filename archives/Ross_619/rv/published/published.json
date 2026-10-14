@@ -1,0 +1,89 @@
+[
+ {
+  "kind": "survey",
+  "key": "teklu25",
+  "reference": "Teklu et al. 2025",
+  "catalogue": "J/A+A/702/A68",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "not in the survey (its list of stars)"
+ },
+ {
+  "kind": "survey",
+  "key": "cls21",
+  "reference": "Rosenthal et al. 2021 (California Legacy Survey)",
+  "catalogue": "J/ApJS/255/8",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "not in the survey (its list of stars)"
+ },
+ {
+  "kind": "survey",
+  "key": "talor19",
+  "reference": "Tal-Or et al. 2019",
+  "catalogue": "J/MNRAS/484/L8",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "not in the survey (its list of stars)"
+ },
+ {
+  "kind": "survey",
+  "key": "fischer14",
+  "reference": "Fischer et al. 2014 (Lick)",
+  "catalogue": "J/ApJS/210/5",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "not in the survey (its list of stars)"
+ },
+ {
+  "kind": "survey",
+  "key": "rvbank20",
+  "reference": "Trifonov et al. 2020 (HARPS-RVBank)",
+  "catalogue": "J/A+A/636/A74",
+  "n": 28,
+  "instruments": {
+   "HARPS03 (RVBank)": 28
+  },
+  "file": "rvbank20.csv",
+  "note": "GJ299: HARPS03 (RVBank) 28"
+ },
+ {
+  "kind": "paper",
+  "key": "J_A_A_689_A32",
+  "reference": "Mignon+ 2024",
+  "bibcode": "2024A&A...689A..32M",
+  "catalogue": "J/A+A/689/A32",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "J/A+A/689/A32: rv (24); every spectrum already kept"
+ },
+ {
+  "kind": "paper",
+  "key": "J_AJ_166_11",
+  "reference": "Pass+ 2023",
+  "bibcode": "2023AJ....166...11P",
+  "catalogue": "J/AJ/166/11",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "J/AJ/166/11: table1 (1); no instrument below 20 m/s"
+ },
+ {
+  "kind": "paper",
+  "key": "J_A_A_616_A7",
+  "reference": "Soubiran+ 2018",
+  "bibcode": "2018A&A...616A...7S",
+  "catalogue": "J/A+A/616/A7",
+  "n": 4,
+  "instruments": {
+   "S (Soubiran+ 2018)": 4
+  },
+  "file": "J_A_A_616_A7.csv",
+  "note": "J/A+A/616/A7: rvstdcat (1), rvstdmes (6)"
+ }
+]

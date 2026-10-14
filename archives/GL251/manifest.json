@@ -1,0 +1,99 @@
+{
+ "target": "GL251",
+ "simbad": "HD 265866",
+ "folder": "/Users/eartigau/GitHubProjects/pca2d_preclean/archives/GL251",
+ "created": "2026-10-03 08:55:01",
+ "archives": {
+  "dace": {
+   "status": "none",
+   "message": "DACE has no public velocities under the names of the star"
+  },
+  "carmenes": {
+   "status": "ok",
+   "files": [
+    "rv/carmenes/raw.csv",
+    "rv/carmenes/CARMENES.csv"
+   ],
+   "instruments": {
+    "CARMENES": 282
+   },
+   "npoints": 282,
+   "rjd": [
+    57395.52637858037,
+    59212.52807230642
+   ],
+   "indicators": [
+    "cai",
+    "cai_8498",
+    "cai_8542",
+    "cai_8698",
+    "ccf_bis",
+    "ccf_contrast",
+    "ccf_fwhm",
+    "dlw",
+    "halpha",
+    "nad1",
+    "nad2"
+   ],
+   "karmn": "J06548+332"
+  },
+  "tess": {
+   "status": "ok",
+   "tic": 68581262,
+   "sectors": [
+    {
+     "sector": 20,
+     "pipeline": "SPOC",
+     "exposure": 120.0,
+     "npoints": 16536,
+     "file": "phot/tess/s0020_SPOC.csv"
+    },
+    {
+     "sector": 45,
+     "pipeline": "SPOC",
+     "exposure": 120.0,
+     "npoints": 16107,
+     "file": "phot/tess/s0045_SPOC.csv"
+    },
+    {
+     "sector": 47,
+     "pipeline": "SPOC",
+     "exposure": 120.0,
+     "npoints": 16598,
+     "file": "phot/tess/s0047_SPOC.csv"
+    },
+    {
+     "sector": 71,
+     "pipeline": "SPOC",
+     "exposure": 120.0,
+     "npoints": 14860,
+     "file": "phot/tess/s0071_SPOC.csv"
+    },
+    {
+     "sector": 72,
+     "pipeline": "SPOC",
+     "exposure": 120.0,
+     "npoints": 15186,
+     "file": "phot/tess/s0072_SPOC.csv"
+    },
+    {
+     "sector": 1751,
+     "pipeline": "TESS-SPOC",
+     "exposure": 200.0,
+     "npoints": 1719,
+     "file": "phot/tess/s1751_TESS-SPOC.csv"
+    }
+   ],
+   "files": [
+    "phot/tess.csv"
+   ]
+  }
+ },
+ "rv": {
+  "file": "rv/all_rv.csv",
+  "npoints": 282,
+  "instruments": [
+   "CARMENES"
+  ]
+ }
+}

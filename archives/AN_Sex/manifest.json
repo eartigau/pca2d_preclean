@@ -1,0 +1,109 @@
+{
+ "target": "AN Sex",
+ "simbad": "BD-03 2870",
+ "folder": "/Users/eartigau/GitHubProjects/pca2d_preclean/archives/AN_Sex",
+ "created": "2026-10-03 10:38:36",
+ "archives": {
+  "dace": {
+   "status": "ok",
+   "files": [
+    "rv/dace/HARPS03.csv",
+    "rv/dace/HARPS15.csv",
+    "rv/dace/raw_GJ382.csv"
+   ],
+   "instruments": {
+    "HARPS03": 32,
+    "HARPS15": 125
+   },
+   "npoints": 157,
+   "rjd": [
+    52986.84109053016,
+    58512.88699113019
+   ],
+   "indicators": [
+    "bis",
+    "contrast",
+    "fwhm",
+    "halpha",
+    "rhk",
+    "smw"
+   ],
+   "key": "the key of DACE_API_KEY: may hold data that are not public"
+  },
+  "carmenes": {
+   "status": "ok",
+   "files": [
+    "rv/carmenes/raw.csv",
+    "rv/carmenes/CARMENES.csv"
+   ],
+   "instruments": {
+    "CARMENES": 77
+   },
+   "npoints": 77,
+   "rjd": [
+    57397.650425361935,
+    58212.41046881955
+   ],
+   "indicators": [
+    "cai",
+    "cai_8498",
+    "cai_8542",
+    "cai_8698",
+    "ccf_bis",
+    "ccf_contrast",
+    "ccf_fwhm",
+    "dlw",
+    "halpha",
+    "nad1",
+    "nad2"
+   ],
+   "karmn": "J10122-037"
+  },
+  "tess": {
+   "status": "ok",
+   "tic": 77612635,
+   "sectors": [
+    {
+     "sector": 8,
+     "pipeline": "SPOC",
+     "exposure": 120.0,
+     "npoints": 13010,
+     "file": "phot/tess/s0008_SPOC.csv"
+    },
+    {
+     "sector": 35,
+     "pipeline": "SPOC",
+     "exposure": 120.0,
+     "npoints": 13688,
+     "file": "phot/tess/s0035_SPOC.csv"
+    },
+    {
+     "sector": 62,
+     "pipeline": "SPOC",
+     "exposure": 120.0,
+     "npoints": 16182,
+     "file": "phot/tess/s0062_SPOC.csv"
+    },
+    {
+     "sector": 89,
+     "pipeline": "SPOC",
+     "exposure": 120.0,
+     "npoints": 19216,
+     "file": "phot/tess/s0089_SPOC.csv"
+    }
+   ],
+   "files": [
+    "phot/tess.csv"
+   ]
+  }
+ },
+ "rv": {
+  "file": "rv/all_rv.csv",
+  "npoints": 234,
+  "instruments": [
+   "HARPS03",
+   "CARMENES",
+   "HARPS15"
+  ]
+ }
+}

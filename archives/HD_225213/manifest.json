@@ -1,0 +1,98 @@
+{
+ "target": "HD 225213",
+ "simbad": "HD 225213",
+ "folder": "/Users/eartigau/GitHubProjects/pca2d_preclean/archives/HD_225213",
+ "created": "2026-10-03 23:07:56",
+ "archives": {
+  "dace": {
+   "status": "ok",
+   "files": [
+    "rv/dace/ESPRESSO18.csv",
+    "rv/dace/ESPRESSO19.csv",
+    "rv/dace/HARPS03.csv",
+    "rv/dace/HARPS15.csv",
+    "rv/dace/NIRPS.csv",
+    "rv/dace/raw_HD225213.csv"
+   ],
+   "instruments": {
+    "HARPS03": 48,
+    "ESPRESSO18": 5,
+    "ESPRESSO19": 14,
+    "HARPS15": 284,
+    "NIRPS": 235
+   },
+   "npoints": 586,
+   "rjd": [
+    52985.596529719885,
+    60947.68372552004
+   ],
+   "indicators": [
+    "bis",
+    "contrast",
+    "fwhm",
+    "halpha",
+    "rhk",
+    "smw"
+   ],
+   "key": "the key of DACE_API_KEY: may hold data that are not public"
+  },
+  "carmenes": {
+   "status": "none",
+   "message": "not in CARMENES DR1, or no velocity corrected for the nightly zero points"
+  },
+  "published": {
+   "status": "ok",
+   "npoints": 175,
+   "instruments": {
+    "HIRES (Teklu+ 2025)": 81,
+    "HIRES (CLS)": 6,
+    "HARPS03 (RVBank)": 48,
+    "UVES (Butler+ 2019)": 40
+   },
+   "sources": [
+    {
+     "reference": "Teklu et al. 2025",
+     "catalogue": "J/A+A/702/A68",
+     "n": 81,
+     "kind": "survey"
+    },
+    {
+     "reference": "Rosenthal et al. 2021 (California Legacy Survey)",
+     "catalogue": "J/ApJS/255/8",
+     "n": 6,
+     "kind": "survey"
+    },
+    {
+     "reference": "Trifonov et al. 2020 (HARPS-RVBank)",
+     "catalogue": "J/A+A/636/A74",
+     "n": 48,
+     "kind": "survey"
+    },
+    {
+     "reference": "Butler+ 2019",
+     "catalogue": "J/AJ/158/251",
+     "n": 40,
+     "kind": "paper"
+    }
+   ],
+   "files": [
+    "rv/published/teklu25.csv",
+    "rv/published/cls21.csv",
+    "rv/published/rvbank20.csv",
+    "rv/published/J_AJ_158_251.csv"
+   ],
+   "message": ""
+  }
+ },
+ "rv": {
+  "file": "rv/all_rv.csv",
+  "npoints": 586,
+  "instruments": [
+   "HARPS03",
+   "ESPRESSO18",
+   "ESPRESSO19",
+   "HARPS15",
+   "NIRPS"
+  ]
+ }
+}

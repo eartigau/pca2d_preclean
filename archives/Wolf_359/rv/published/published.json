@@ -1,0 +1,83 @@
+[
+ {
+  "kind": "survey",
+  "key": "teklu25",
+  "reference": "Teklu et al. 2025",
+  "catalogue": "J/A+A/702/A68",
+  "n": 54,
+  "instruments": {
+   "HIRES (Teklu+ 2025)": 54
+  },
+  "file": "teklu25.csv",
+  "note": "GL406: HIRES (Teklu+ 2025) 54"
+ },
+ {
+  "kind": "survey",
+  "key": "cls21",
+  "reference": "Rosenthal et al. 2021 (California Legacy Survey)",
+  "catalogue": "J/ApJS/255/8",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "gl406: no velocity"
+ },
+ {
+  "kind": "survey",
+  "key": "talor19",
+  "reference": "Tal-Or et al. 2019",
+  "catalogue": "J/MNRAS/484/L8",
+  "n": 1,
+  "instruments": {
+   "HIRES (Tal-Or+ 2019)": 1
+  },
+  "file": "talor19.csv",
+  "note": "GL406: HIRES (Tal-Or+ 2019) 42"
+ },
+ {
+  "kind": "survey",
+  "key": "fischer14",
+  "reference": "Fischer et al. 2014 (Lick)",
+  "catalogue": "J/ApJS/210/5",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "not in the survey (its list of stars)"
+ },
+ {
+  "kind": "survey",
+  "key": "rvbank20",
+  "reference": "Trifonov et al. 2020 (HARPS-RVBank)",
+  "catalogue": "J/A+A/636/A74",
+  "n": 72,
+  "instruments": {
+   "HARPS03 (RVBank)": 29,
+   "HARPS15 (RVBank)": 43
+  },
+  "file": "rvbank20.csv",
+  "note": "GJ406: HARPS03 (RVBank) 29, HARPS15 (RVBank) 43"
+ },
+ {
+  "kind": "paper",
+  "key": "J_A_A_689_A32",
+  "reference": "Mignon+ 2024",
+  "bibcode": "2024A&A...689A..32M",
+  "catalogue": "J/A+A/689/A32",
+  "n": 5,
+  "instruments": {
+   "HARPS (Mignon+ 2024)": 5
+  },
+  "file": "J_A_A_689_A32.csv",
+  "note": "J/A+A/689/A32: rv (37)"
+ },
+ {
+  "kind": "paper",
+  "key": "J_AJ_166_16",
+  "reference": "Pass+ 2023",
+  "bibcode": "2023AJ....166...16P",
+  "catalogue": "J/AJ/166/16",
+  "n": 0,
+  "instruments": {},
+  "file": null,
+  "note": "J/AJ/166/16: table2 (6); no instrument below 20 m/s"
+ }
+]

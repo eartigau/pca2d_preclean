@@ -1,0 +1,90 @@
+{
+ "target": "GJ 328",
+ "simbad": "BD+02 2098",
+ "folder": "/Users/eartigau/GitHubProjects/pca2d_preclean/archives/GJ_328",
+ "created": "2026-10-03 08:53:06",
+ "archives": {
+  "dace": {
+   "status": "ok",
+   "files": [
+    "rv/dace/HARPS15.csv",
+    "rv/dace/NIRPS.csv",
+    "rv/dace/raw_GJ328.csv"
+   ],
+   "instruments": {
+    "NIRPS": 64,
+    "HARPS15": 31
+   },
+   "npoints": 95,
+   "rjd": [
+    60321.696735709906,
+    60820.474061749876
+   ],
+   "indicators": [
+    "bis",
+    "contrast",
+    "fwhm",
+    "halpha",
+    "rhk",
+    "smw"
+   ],
+   "key": "the key of DACE_API_KEY: may hold data that are not public"
+  },
+  "carmenes": {
+   "status": "none",
+   "message": "not in CARMENES DR1, or no velocity corrected for the nightly zero points"
+  },
+  "tess": {
+   "status": "ok",
+   "tic": 265373654,
+   "sectors": [
+    {
+     "sector": 8,
+     "pipeline": "SPOC",
+     "exposure": 120.0,
+     "npoints": 12961,
+     "file": "phot/tess/s0008_SPOC.csv"
+    },
+    {
+     "sector": 34,
+     "pipeline": "SPOC",
+     "exposure": 120.0,
+     "npoints": 16874,
+     "file": "phot/tess/s0034_SPOC.csv"
+    },
+    {
+     "sector": 61,
+     "pipeline": "SPOC",
+     "exposure": 120.0,
+     "npoints": 15427,
+     "file": "phot/tess/s0061_SPOC.csv"
+    },
+    {
+     "sector": 88,
+     "pipeline": "QLP",
+     "exposure": 200.0,
+     "npoints": 9777,
+     "file": "phot/tess/s0088_QLP.csv"
+    },
+    {
+     "sector": 99,
+     "pipeline": "QLP",
+     "exposure": 600.0,
+     "npoints": 5788,
+     "file": "phot/tess/s0099_QLP.csv"
+    }
+   ],
+   "files": [
+    "phot/tess.csv"
+   ]
+  }
+ },
+ "rv": {
+  "file": "rv/all_rv.csv",
+  "npoints": 95,
+  "instruments": [
+   "NIRPS",
+   "HARPS15"
+  ]
+ }
+}

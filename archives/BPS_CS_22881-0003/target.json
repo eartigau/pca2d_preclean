@@ -1,0 +1,56 @@
+{
+ "name": "BPS CS 22881-0003",
+ "main": "BPS CS 22881-0003",
+ "aliases": [
+  "2MASS J22021626-4210329",
+  "ASAS J220215-4210.6",
+  "BPS CS 22881-0003",
+  "RAVE J220216.3-421033",
+  "1RXS J220215.9-421040",
+  "TIC 71274771",
+  "Gaia DR2 6571446820698811904",
+  "Gaia DR3 6571446820698811904"
+ ],
+ "gaia_dr3": "Gaia DR3 6571446820698811904",
+ "tic": "TIC 71274771",
+ "hip": null,
+ "hd": null,
+ "gj": null,
+ "ra": 330.56773481,
+ "dec": -42.17591516,
+ "sptype": "M1",
+ "plx": 22.4939,
+ "star": {
+  "sptype": "M1",
+  "mass": 0.5,
+  "mass_err": 0.05,
+  "source": "its spectral type (Pecaut & Mamajek 2013)"
+ },
+ "variability": [
+  {
+   "type": "ROT",
+   "period": 4.514,
+   "bibcode": "2012AcA....62...67K"
+  },
+  {
+   "type": "ROT",
+   "period": 4.514,
+   "bibcode": "2012AcA....62...67K"
+  },
+  {
+   "type": "ROT",
+   "period": 4.4,
+   "bibcode": "2021A&A...645A..30Z"
+  },
+  {
+   "type": "ROT",
+   "period": 4.5,
+   "bibcode": "2024AJ....167..210V"
+  },
+  {
+   "type": "ROT",
+   "period": 4.480929,
+   "bibcode": "2023ApJ...945..114P"
+  }
+ ]
+}
