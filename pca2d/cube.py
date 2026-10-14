@@ -24,6 +24,7 @@ from . import grids
 from . import io as spio
 from . import nights as spnights
 from . import preprocess as prep
+from . import readers as _readers
 from . import tfits as sptf
 from .config import cache_key, spectra_dir
 from .logger import log
@@ -427,7 +428,7 @@ def _build_tfits(config: dict, files: list[str], grid: np.ndarray,
     for i, (path, label) in enumerate(_bar(zip(files, labels), total=len(files),
                                           desc="reading spectra", unit="file")):
         try:
-            payload = sptf.read_tfits(path)
+            payload = _readers.read_any(path, config)
         except Exception as exc:                        # noqa: BLE001
             log("skipping %s (%s)" % (os.path.basename(path), exc), "warn")
             continue

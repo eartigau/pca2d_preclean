@@ -55,6 +55,7 @@ from scipy.interpolate import CubicSpline
 
 from .grids import pixel_shift
 from .logger import log
+from . import readers as _readers
 from . import tfits as sptf
 from . import twoframe as _bcd
 from .progress import bar as _bar
@@ -343,7 +344,7 @@ def reconstruct(model, row, halfwidth=8, path=None):
     meaningful value in a high-passed spectrum, "continuum", and handing back a
     flat continuum where the model has nothing to say would be a lie.
     """
-    payload = sptf.read_tfits(path)
+    payload = _readers.read_any(path, config)
     wave = payload["wave"]
     n_orders, n_pixels = wave.shape
     grid = model["grid"]
@@ -986,7 +987,7 @@ def refit_row(model, path, config, shifter, base_row, weight="flux",
     BERV, or None if the file cannot be resampled onto the grid.
     """
     grid = model["grid"]
-    payload = sptf.read_tfits(path)
+    payload = _readers.read_any(path, config)
     values, sigma, trans, good, n_written = sptf.resample_exposure(
         payload, grid, config)
     if not n_written or not good.any():

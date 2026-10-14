@@ -329,6 +329,24 @@ def _order_sigma(flux, recon, good, snr_order):
     return shape
 
 
+def _overlap_blaze(w_shift, blaze_order, ok, grid, start, stop):
+    """Le blaze median de cet ordre sur la zone [start, stop] de la grille.
+
+    Sert a arbitrer un recouvrement entre deux ordres de meme parite: celui
+    dont le blaze est le plus haut y porte le plus de signal, l'autre y est sur
+    son bord et son flux y est bruite.
+    """
+    if stop < start:
+        return None
+    lo, hi = grid[start], grid[min(stop, grid.size - 1)]
+    inside = ok & (w_shift >= lo) & (w_shift <= hi)
+    if not inside.any():
+        return None
+    values = np.asarray(blaze_order, dtype=float)[inside]
+    values = values[np.isfinite(values)]
+    return float(np.median(values)) if values.size else None
+
+
 def resample_exposure(payload: dict, grid: np.ndarray, config: dict):
     """Collapse one exposure's orders onto two rows of the destination grid.
 
@@ -364,6 +382,9 @@ def resample_exposure(payload: dict, grid: np.ndarray, config: dict):
 
     shift = float(doppler(berv) / doppler(target))
     last_stop = {0: -1, 1: -1}
+    #: le blaze median de chaque parite sur sa derniere zone posee, pour
+    #: arbitrer un recouvrement en faveur du meilleur signal
+    last_blaze = {0: None, 1: None}
     n_written = 0
 
     edge = int(reg.get("edge_pixels", 1))
@@ -383,15 +404,39 @@ def resample_exposure(payload: dict, grid: np.ndarray, config: dict):
         if stop <= start:
             continue
         if start <= last_stop[parity]:
-            # never seen in NIRPS data, but if the wavelength solution ever put
-            # two same-parity orders on top of each other we would silently
-            # overwrite one with the other
-            log("orders of the same parity overlap near %.2f nm; truncating"
-                % grid[start], "warn")
-            start = last_stop[parity] + 1
-            if stop <= start:
-                continue
+            # DEUX ORDRES DE MEME PARITE SE RECOUVRENT. On garde CELUI DONT
+            # LE BLAZE EST LE PLUS HAUT, l'autre etant mis a NaN (poids nul):
+            # dans la zone commune l'un finit sur son bord, la ou le blaze
+            # s'effondre et le flux est bruite, et l'autre y debute.
+            #
+            # Mesure le 2026-10-14 sur SPIRou: les longueurs d'onde BRUTES de
+            # 14 paires se recouvrent jusqu'a 5.4 nm (ordres 0 a 13), mais une
+            # fois les bords eroces et les pixels de mauvaise qualite ecartes
+            # (order_quality, erode_edges) il reste 7 nm d'ECART entre l'ordre
+            # 0 (964.6-982.2 nm valides) et l'ordre 2 (989.3-1007.7): le
+            # recouvrement brut tombe entierement dans ce qui est deja rejete.
+            # Cette branche ne se declenche donc pas sur SPIRou ni sur HARPS
+            # (recouvrement nul); elle est la pour les geometries a venir.
+            overlap_hi = min(stop - 1, last_stop[parity])
+            here = _overlap_blaze(w_shift, blaze[order], ok, grid,
+                                  start, overlap_hi)
+            before = last_blaze.get(parity)
+            if before is not None and here is not None and here < before:
+                # l'ordre deja pose est le meilleur: celui-ci cede la zone
+                start = last_stop[parity] + 1
+                if stop <= start:
+                    continue
+            elif before is not None and here is not None:
+                # celui-ci est le meilleur: on efface ce que l'autre a laisse
+                lo = max(0, start)
+                good[parity][lo:overlap_hi + 1] = False
+                sigma[parity][lo:overlap_hi + 1] = np.nan
+            log("les ordres de meme parite se recouvrent vers %.2f nm sur %d"
+                " echantillons: on garde le blaze le plus haut"
+                % (grid[start], overlap_hi - start + 1), "warn")
         last_stop[parity] = stop - 1
+        last_blaze[parity] = _overlap_blaze(w_shift, blaze[order], ok, grid,
+                                            start, stop - 1)
         segment = grid[start:stop]
 
         # blaze out before splining: the raw extracted flux swings by a factor

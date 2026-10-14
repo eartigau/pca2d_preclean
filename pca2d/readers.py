@@ -216,3 +216,45 @@ def read(path, instrument_name, data_source, config_file=None,
              if model_dir else None)
     return dict(flux=flux, wave=wave, blaze=blaze, recon=recon, sky=None,
                 snr=order_snr(flux), meta=meta)
+
+
+#: les instruments que pca2d lit avec son propre lecteur, parce que les t.fits
+#: d'APERO portent des choses que LBL ne rend pas (le ciel dans OHLine, la
+#: transmission dans Recon, le SNR par ordre dans l'en-tete) et que ce lecteur
+#: les exploite. Tout le reste passe par LBL.
+NATIVE = ("SPIROU", "NIRPS", "NIRPS_HA", "NIRPS_HE")
+
+
+def reads_natively(config):
+    """Faut-il lire ces spectres avec tfits, ou passer par LBL ?
+
+    APERO est lu nativement (le t.fits porte le ciel et la transmission);
+    HARPS, SOPHIE, ESPRESSO et les autres passent par LBL. `input.reader`
+    tranche quand on veut forcer l'un ou l'autre.
+    """
+    asked = str((config.get("input") or {}).get("reader") or "auto").lower()
+    if asked in ("tfits", "native"):
+        return True
+    if asked in ("lbl", "bridge"):
+        return False
+    instrument = str((config.get("input") or {}).get("instrument") or "").upper()
+    source = str((config.get("lbl") or {}).get("data_source") or "").upper()
+    # un t.fits d'APERO: notre lecteur en tire plus que LBL n'en donne
+    return instrument in NATIVE and source in ("", "APERO", "CADC")
+
+
+def read_any(path, config, inst=None):
+    """Un spectre, par le lecteur que la configuration designe.
+
+    C'est le seul point ou pca2d decide comment lire: cube, reconstruct et
+    plotting passent par ici, donc ajouter un instrument ne touche qu'a
+    `reads_natively`.
+    """
+    if reads_natively(config):
+        from . import tfits as sptf
+        return sptf.read_tfits(path)
+    block = config.get("lbl") or {}
+    name = block.get("instrument") or (config.get("input") or {}).get("instrument")
+    source = block.get("data_source") or "ESO"
+    models = (config.get("output") or {}).get("model_directory")
+    return read(path, name, source, model_dir=models, inst=inst)
