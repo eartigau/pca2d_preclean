@@ -57,6 +57,17 @@ general:
                             # null keeps everything local. If the disk is not
                             # mounted the run STOPS, rather than quietly fill
                             # the internal disk again.
+    model_directory: outputs/lbl/models
+                            # ou LBL garde ses modeles, dont tapas_lbl.fits.
+                            # Sert aux instruments qui n'ont PAS de
+                            # transmission tellurique dans leurs fichiers:
+                            # HARPS, HARPS-N, ESPRESSO, SOPHIE. pca2d y evalue
+                            # le modele TAPAS de LBL a la masse d'air de la
+                            # pose, ce qui lui rend l'equivalent du Recon d'un
+                            # t.fits d'APERO. Vide, la transmission vaut 1
+                            # partout et les coupures qui en dependent ne
+                            # retirent rien, ce que le rapport d'une campagne
+                            # dit explicitement.
     cache_directory: cache  # rebuildable intermediates, and deliberately not
                             # under the output root: a cube costs twenty
                             # minutes and does not depend on where a run's
@@ -585,6 +596,131 @@ instruments:
                             # the campaign cubes were built this way; kept
                             # explicit so those cache keys still pin.
 
+  # -------------------------------------------------------------------------
+  # LES SPECTROGRAPHES DU VISIBLE. Ajoutes le 2026-10-14: « tout ce qui passe
+  # dans le LBL peut etre envoye au PCA2D ». Ils n'ont pas de t.fits d'APERO,
+  # donc pca2d les lit par le pont de readers.py, qui appelle la classe de
+  # lecture de LBL elle-meme. Ce qu'un t.fits porte et qu'eux n'ont pas:
+  #
+  #   Recon  la transmission tellurique. Modelisee par TAPAS (readers.
+  #          tapas_transmission) quand output.model_directory la pointe,
+  #          absente sinon, et les coupures qui en dependent sont alors
+  #          inactives plutot que fausses.
+  #   OHLine l'emission du ciel par pose. Aucun de ces instruments ne la livre:
+  #          quality.max_sky_ratio est sans objet ici.
+  #   SNR    mesure sur le flux, ordre par ordre (readers.order_snr).
+  #
+  # Le blaze vaut UN partout sur ces instruments, et ce n'est pas une panne:
+  # la classe HARPS de LBL ne deblaze pas, le S2D est deja plat. Donc
+  # input.blaze_min_frac ne coupe rien ici, et c'est voulu.
+  # -------------------------------------------------------------------------
+
+  HARPS:
+    lbl:
+      instrument: HARPS
+      data_source: ESO      # le S2D de l'archive ESO, celui que DACE livre.
+                            # ORIG serait l'e2ds du DRS d'origine, ESSP le
+                            # format du consortium: trois lectures differentes
+                            # du meme spectrographe, et LBL veut savoir laquelle
+    input:
+      format: s2d        # le nom du cube en cache dit par quel
+                            # lecteur il a ete fait, pas seulement son
+                            # empreinte: cube_s2d_<hash>
+      pattern: "*_S2D_A.fits"   # la fibre A, la science. La fibre B est le
+                                # ciel ou la lampe de calibration et n'a rien
+                                # a faire dans un cube de spectres d'etoile
+      blaze_min_frac: 0.0       # le blaze vaut 1 partout (voir ci-dessus):
+                                # une coupure relative a son maximum ne
+                                # couperait pas un pixel, autant le dire
+    domain:
+      wave_min: 380.0           # mesure sur un S2D de HD10700 le 2026-10-14:
+      wave_max: 692.0           # 71 ordres, 380.5 a 691.5 nm
+      wave0: 380.0
+      bands:
+        B: [380.0, 500.0]
+        V: [500.0, 600.0]
+        R: [600.0, 692.0]
+    twoframe:
+      resolution: 115000        # APPROX_RESOLUTION de la classe HARPS de LBL
+    output:
+      windows:                  # centre:largeur en nm. Celles de `general`
+        - "589.3:1.5"           # sont infrarouges (SPIRou) et tombent toutes
+        - "656.3:1.5"           # hors de la grille d'un spectrographe du
+        - "517.5:2"             # visible. Choisies ici pour ce qu'on veut
+        - "686.5:3"             # voir:
+        - "627.5:3"             #   589.3 doublet D du sodium
+        - "430.5:2"             #   656.3 H alpha
+                                #   517.5 triplet b du magnesium
+                                #   686.5 bande B de l'oxygene (transmission
+                                #         nulle: c'est la que le residu
+                                #         tellurique se voit)
+                                #   627.5 bande gamma de l'oxygene
+                                #   430.5 bande G du CH, dans le bleu
+
+  HARPN:
+    lbl:
+      instrument: HARPSN        # LBL l'epelle sans le tiret; INSTRUME dans les
+      data_source: ESO          # fichiers est HARPN, d'ou les deux graphies
+    input:
+      format: s2d        # le nom du cube en cache dit par quel
+                            # lecteur il a ete fait, pas seulement son
+                            # empreinte: cube_s2d_<hash>
+      pattern: "*_S2D_A.fits"
+      blaze_min_frac: 0.0
+    domain:
+      wave_min: 383.0
+      wave_max: 693.0
+      wave0: 383.0
+      bands:
+        B: [383.0, 500.0]
+        V: [500.0, 600.0]
+        R: [600.0, 693.0]
+    twoframe:
+      resolution: 115000
+
+  ESPRESSO:
+    lbl:
+      instrument: ESPRESSO
+      data_source: None         # la table instrument/source de LBL n'en a
+                                # qu'une pour ESPRESSO, et elle s'appelle None
+    input:
+      format: s2d        # le nom du cube en cache dit par quel
+                            # lecteur il a ete fait, pas seulement son
+                            # empreinte: cube_s2d_<hash>
+      pattern: "*_S2D_A.fits"
+      blaze_min_frac: 0.0
+    domain:
+      wave_min: 378.0
+      wave_max: 789.0
+      wave0: 378.0
+      bands:
+        B: [378.0, 500.0]
+        V: [500.0, 600.0]
+        R: [600.0, 789.0]
+    twoframe:
+      resolution: 140000
+
+  SOPHIE:
+    lbl:
+      instrument: SOPHIE
+      data_source: None
+    input:
+      format: e2ds        # le nom du cube en cache dit par quel
+                            # lecteur il a ete fait, pas seulement son
+                            # empreinte: cube_e2ds_<hash>
+      pattern: "*e2ds_A.fits"
+      blaze_min_frac: 0.0
+    domain:
+      wave_min: 387.0
+      wave_max: 695.0
+      wave0: 387.0
+      bands:
+        B: [387.0, 500.0]
+        V: [500.0, 600.0]
+        R: [600.0, 695.0]
+    twoframe:
+      resolution: 75000
+
 # ---------------------------------------------------------------------------
 # Anything one target needs and the others do not. Keys here are OBJECT names
 # and match --object. Everything is optional; most targets need nothing.
@@ -645,6 +781,29 @@ objects:
   # Barnard's star, whose two campaigns cannot share a folder: a run is one
   # instrument, and one LBL object name per data set. Both pipelines write
   # OBJECT = Gl699, which is what the files are matched on.
+  HD10700_HARPS:
+    input:
+      # tau Ceti sur HARPS, la campagne qui sert de demonstration au pont
+      # multi-instrument (2026-10-14). Le dossier dit le spectrographe, les
+      # en-tetes disent l'etoile, et ils ne la disent pas tous pareil: les
+      # poses de 2003 portent OBJECT = HD10700, celles de 2004 tau-Cet. Cinq
+      # ans d'archive, deux formulaires d'observation, deux graphies, et 36
+      # poses sur 60 ecartees en silence tant qu'une seule etait nommee.
+      object_header: [HD10700, tau-Cet]
+    lbl:
+      teff: 5310            # NASA Exoplanet Archive, table pscomppars,
+                            # interrogee le 2026-10-14. Une naine G8V, bien
+                            # plus chaude que les M du reste de ce fichier:
+                            # LBL choisit son masque de raies la-dessus.
+    target:
+      planets: [20.0, 49.41, 636.13]
+                            # tau Cet g, h et f (NASA Exoplanet Archive, table
+                            # ps, 2026-10-14). Marquees sur les periodogrammes,
+                            # jamais mesurees ici: 50 poses sur cinq ans n'en
+                            # retrouvent aucune, et c'est le point de les
+                            # inscrire, pour qu'une composante qui suivrait
+                            # l'une d'elles se voie.
+
   SMETHELLS_20:
     input:
       # the folder is APERO's own DRSOBJN; the headers say OBJECT = TIC464410508,

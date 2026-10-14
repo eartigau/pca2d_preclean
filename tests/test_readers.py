@@ -11,6 +11,16 @@ import pytest
 from pca2d import readers
 
 
+def tmp_fits(hdus):
+    """Un fichier FITS jetable, dans le dossier temporaire de pytest."""
+    import tempfile
+    from astropy.io import fits
+
+    path = tempfile.mktemp(suffix=".fits")
+    fits.HDUList(hdus).writeto(path, overwrite=True)
+    return path
+
+
 def test_les_instruments_de_lbl_sont_ceux_que_pca2d_annonce():
     """La table KNOWN doit rester celle de LBL, sinon elle ment."""
     select = pytest.importorskip("lbl.instruments.select",
@@ -67,3 +77,83 @@ def test_le_contrat_de_lecture_est_celui_des_t_fits():
     # recon et sky peuvent manquer: aucun spectrographe visible ne les livre,
     # et l'appelant doit l'accepter plutôt que de planter
     assert "sky=None" in source
+
+
+def test_le_temps_et_la_pose_ne_viennent_pas_de_la_table_de_lbl():
+    """Mesuré le 2026-10-14 sur un S2D HARPS: la classe HARPS de LBL fait
+    pointer KW_MJDATE *et* KW_EXPTIME sur le même mot-clé, HIERARCH ESO QC BJD,
+    parce que LBL n'a besoin que d'un axe temporel. pca2d s'en sert autrement:
+    une pose de 60 s lue comme 2452859.8 fausserait toute pondération, et un
+    BJD pris pour un MJD décalerait la campagne de 2.4 millions de jours."""
+    import inspect
+    source = inspect.getsource(readers.read)
+    assert 'plain("MJD-OBS")' in source
+    assert 'plain("EXPTIME")' in source
+    # un BJD qui aurait échappé au mot-clé standard est ramené en MJD
+    assert "2400000.5" in source
+
+
+def test_la_transmission_n_est_jamais_none():
+    """order_quality et _order_sigma indexent recon comme un tableau: un None
+    les ferait planter. Sans modèle, la réponse honnête est une transmission
+    de 1 (« aucune absorption connue ici »), et meta dit laquelle des deux."""
+    import inspect
+    source = inspect.getsource(readers.read)
+    assert "np.ones_like(flux)" in source
+    assert "telluric_model" in source
+
+
+def test_le_dossier_de_donnees_du_depot_ne_doit_pas_masquer_lbl():
+    """Ce dépôt contient un dossier `lbl/` de DONNÉES (calib, masks, models,
+    science...). Dès que sa racine est sur sys.path, `import lbl` en fait un
+    paquet-espace-de-noms: lbl.science est masqué alors que lbl.instruments ne
+    l'est pas, donc l'instrument se charge et la transmission non, sans que
+    rien ne le dise. Mesuré le 2026-10-14."""
+    pytest.importorskip("lbl.instruments.select",
+                        reason="LBL est dans environment.yml")
+    assert readers._lbl_root() is not None, "le vrai paquet LBL reste introuvable"
+    module = readers._lbl_science("tellu_clean")
+    assert module is not None, "lbl.science reste masqué par le dossier de données"
+    assert "lbl/science/tellu_clean.py" in str(getattr(module, "__file__", ""))
+
+
+def test_l_extension_du_flux_est_retrouvee_et_non_devinee():
+    """Le fichier corrigé est une copie de l'original dont on remplace le flux,
+    donc il faut savoir laquelle des extensions le porte. Le nom change d'un
+    instrument à l'autre (FluxAB sur SPIRou, SCIDATA sur un S2D de l'ESO) et
+    LBL ne le nomme pas: sa classe par défaut prend la première extension qui
+    porte des données. On la retrouve donc par la forme, comme astropy l'a
+    choisie, et None quand rien ne correspond: l'appelant refuse alors
+    d'écrire plutôt que d'écrire au mauvais endroit."""
+    from astropy.io import fits
+
+    flux = np.arange(12, dtype=float).reshape(3, 4)
+    path = tmp_fits([fits.PrimaryHDU(),
+                     fits.ImageHDU(flux, name="SCIDATA"),
+                     fits.ImageHDU(np.zeros((3, 4)), name="ERRDATA")])
+    assert readers.flux_extension(path, flux) == "SCIDATA"
+    # une forme qu'aucune extension ne porte: rien, et surtout pas un nom
+    assert readers.flux_extension(path, np.zeros((7, 7))) is None
+
+
+def test_les_sentinelles_deviennent_des_nan():
+    """Un en-tête qui n'a pas mesuré quelque chose l'écrit par une valeur
+    convenue: -1 pour un seeing que l'ESO n'a pas (vu le 2026-10-14 sur un S2D
+    HARPS), -9999.9 pour un mât météo en panne. La prendre pour un nombre
+    mettrait un seeing négatif dans un diagnostic."""
+    assert -1.0 in readers.SENTINELS
+    for value in (-9999.0, -9999.9, -999.0):
+        assert value in readers.SENTINELS
+
+
+def test_le_contrat_de_meta_est_celui_de_read_tfits():
+    """cube.py lit meta["bjd"], meta["berv"], meta["object"]... sans savoir
+    d'où vient le spectre. Une clé manquante n'est pas une lecture dégradée,
+    c'est un KeyError au milieu d'une campagne: mesuré le 2026-10-14, le pont
+    s'est arrêté sur meta["bjd"] après avoir lu 50 fichiers."""
+    import inspect
+    from pca2d import tfits
+
+    source = inspect.getsource(readers.read)
+    for name in list(tfits.META_KEYS) + ["object", "drsobjn", "airmass"]:
+        assert '"%s"' % name in source, name

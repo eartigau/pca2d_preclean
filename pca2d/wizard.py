@@ -61,20 +61,42 @@ def probe_files(config, max_open=1):
     if not paths:
         return None
     out = {"n_files": len(paths), "first": paths[0], "directory": directory}
+    from . import readers as _readers
+    # UN T.FITS N'EST PAS LE SEUL SPECTRE VALIDE. Les instruments du visible
+    # passent par le pont de LBL et n'ont ni WaveA ni WaveAB: leur solution
+    # peut etre une table d'un autre nom. Demander la grille au lecteur que la
+    # configuration designe verifie donc la meme chose pour tous, et bien
+    # davantage qu'un nom d'extension: que le fichier s'ouvre, que la classe
+    # de LBL le reconnaisse et qu'il en sorte des longueurs d'onde
+    # (2026-10-14).
+    out["bridged"] = not _readers.reads_natively(config)
     try:
         with robust_open(paths[0]) as hdulist:
             out["extensions"] = [h.name for h in hdulist]
-            names = set(out["extensions"])
             out["object"] = hdulist[0].header.get("OBJECT")
-            if "WaveA" in names or "WaveAB" in names:
-                from .tfits import extensions_for
+    except Exception as exc:                                  # noqa: BLE001
+        out["error"] = "%s: %s" % (type(exc).__name__, exc)
+        return out
+    try:
+        if out["bridged"]:
+            wave = np.asarray(_readers.read_any(paths[0], config)["wave"],
+                              dtype=float)
+        else:
+            names = set(out["extensions"])
+            if not ({"WaveA", "WaveAB"} & names):
+                out["no_wave"] = True
+                return out
+            from .tfits import extensions_for
+            _, e_wave, _, _ = extensions_for(hdulist)
+            with robust_open(paths[0]) as hdulist:
                 _, e_wave, _, _ = extensions_for(hdulist)
                 wave = np.asarray(hdulist[e_wave].data, dtype=float)
-                finite = wave[np.isfinite(wave) & (wave > 0)]
-                if finite.size:
-                    out["wave_min"] = float(finite.min())
-                    out["wave_max"] = float(finite.max())
-                out["n_orders"] = wave.shape[0]
+        wave = np.atleast_2d(wave)
+        finite = wave[np.isfinite(wave) & (wave > 0)]
+        if finite.size:
+            out["wave_min"] = float(finite.min())
+            out["wave_max"] = float(finite.max())
+        out["n_orders"] = wave.shape[0]
     except Exception as exc:                                  # noqa: BLE001
         out["error"] = "%s: %s" % (type(exc).__name__, exc)
     return out
@@ -99,7 +121,7 @@ def validate(config, probe=True):
     info = probe_files(config) if (probe and paths) else None
     if info and info.get("error"):
         bad("input.pattern", "the first match does not open: %s" % info["error"])
-    elif info and not ({"WaveA", "WaveAB"} & set(info.get("extensions", []))):
+    elif info and info.get("no_wave"):
         bad("input.pattern", "%s has no WaveA extension; is it really a t.fits?"
             % os.path.basename(info["first"]))
 

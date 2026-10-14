@@ -44,9 +44,18 @@ def same_object(meta: dict, wanted) -> bool:
     Compared as object_key, never as typed. OBJECT is what somebody typed into
     an observing form: 'Proxima' on the files APERO calls PROXIMA, which an
     exact comparison with the folder's name skipped one by one.
+
+    PLUSIEURS NOMS SONT ACCEPTES. `wanted` peut etre une liste, parce qu'une
+    archive ne couvre pas cinq ans sans changer de graphie: les poses HARPS de
+    tau Ceti sont OBJECT = HD10700 en 2003 et tau-Cet en 2004, et aucune
+    normalisation ne rapproche un nom de catalogue d'un nom de Bayer. Les
+    donner tous les deux est la seule reponse honnete; la deviner en serait
+    une mauvaise, parce qu'elle melangerait un jour deux etoiles.
     """
-    key = object_key(wanted)
-    return any(object_key(meta.get(name)) == key
+    keys = {object_key(w) for w in
+            (wanted if isinstance(wanted, (list, tuple, set)) else [wanted])
+            if w}
+    return any(object_key(meta.get(name)) in keys
                for name in ("object", "drsobjn") if meta.get(name))
 
 C_KMS = 299792.458
@@ -330,6 +339,16 @@ def _merge_meta(rows):
     return merged
 
 
+#: les formats ou chaque ORDRE est une ligne, que _build_tfits sait lire: un
+#: t.fits d'APERO, un S2D de l'archive ESO (HARPS, HARPS-N, ESPRESSO), un e2ds
+#: du DRS d'origine (HARPS, SOPHIE). Ce qu'ils ont en commun n'est pas le nom
+#: mais la forme, et c'est la forme qui decide du constructeur.
+ORDER_FORMATS = frozenset({"tfits", "s2d", "e2ds"})
+
+#: les formats deja recolles sur une grille unique, que _build_s1d sait lire
+FLAT_FORMATS = frozenset({"s1d"})
+
+
 # --------------------------------------------------------------------------
 # main entry point
 # --------------------------------------------------------------------------
@@ -356,14 +375,21 @@ def build_cube(config: dict):
     log("found %d files in %s" % (len(files), source), "value")
 
     grid, _ = destination_grid(config, files)
-    fmt = inp.get("format", "tfits")
+    # CE QUE `format` DECIDE: un spectre par ORDRE ou un spectre deja recolle.
+    # Les noms sont ceux des fichiers (t.fits d'APERO, S2D d'ESO, e2ds du DRS
+    # de HARPS et de SOPHIE), mais la seule chose qui change ici est la
+    # dimension: _build_tfits parcourt les ordres, _build_s1d une grille
+    # unique. Le nom sert aussi a etiqueter le cube en cache, pour qu'un
+    # listing du dossier dise de quel instrument il vient (2026-10-14).
+    fmt = str(inp.get("format", "tfits"))
     snippets = {}
-    if fmt == "tfits":
+    if fmt in ORDER_FORMATS:
         result = _build_tfits(config, files, grid, snippets)
-    elif fmt == "s1d":
+    elif fmt in FLAT_FORMATS:
         result = _build_s1d(config, files, grid)
     else:
-        raise ValueError("unknown input.format: %r (expected 'tfits' or 's1d')" % fmt)
+        raise ValueError("unknown input.format: %r (expected one of %s)"
+                         % (fmt, ", ".join(sorted(ORDER_FORMATS | FLAT_FORMATS))))
 
     grid, data, sigma, trans, meta = result
     # written whenever the cache is on, rebuild or not: what a rebuild rebuilds

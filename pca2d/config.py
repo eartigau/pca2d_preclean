@@ -548,7 +548,8 @@ def _deep_update(base: dict, new: dict) -> dict:
 SMART_DV_FRACTION = 0.7
 
 
-def measure_pixel_dv(directory: str, pattern: str = "*t.fits") -> float:
+def measure_pixel_dv(directory: str, pattern: str = "*t.fits",
+                     config: dict | None = None) -> float:
     """The smallest step between adjacent pixels, in km/s, from the first file.
 
     Read from the wavelength EXTENSION, order by order, and never from header
@@ -567,15 +568,26 @@ def measure_pixel_dv(directory: str, pattern: str = "*t.fits") -> float:
     from .io import robust_open
     from .grids import velocity
     from .tfits import extensions_for
+    from . import readers as _readers
 
     paths = sorted(glob.glob(os.path.join(directory, pattern)))
     if not paths:
         raise SystemExit("no file matching %s in %s" % (pattern, directory))
+    # Un instrument lu par le pont de LBL n'a pas d'extension WaveAB a ouvrir:
+    # sa solution peut etre une table, un polynome d'en-tete ou un autre
+    # format par instrument, et c'est justement ce que la classe de lecture de
+    # LBL sait faire. On lui demande donc la grille plutot que de deviner un
+    # nom d'extension qui n'existe pas (2026-10-14).
+    bridged = config is not None and not _readers.reads_natively(config)
     for path in paths[:20]:
         try:
-            with robust_open(path) as hdulist:
-                _, e_wave, _, _ = extensions_for(hdulist)
-                wave = np.asarray(hdulist[e_wave].data, dtype=np.float64)
+            if bridged:
+                wave = np.asarray(_readers.read_any(path, config)["wave"],
+                                  dtype=np.float64)
+            else:
+                with robust_open(path) as hdulist:
+                    _, e_wave, _, _ = extensions_for(hdulist)
+                    wave = np.asarray(hdulist[e_wave].data, dtype=np.float64)
         except Exception:                                     # noqa: BLE001
             continue
         wave = np.atleast_2d(wave)
@@ -646,7 +658,7 @@ def resolve_smart_dv(cfg: dict) -> dict:
             " comes from the file and brings its own step", "warn")
         return cfg
     step = measure_pixel_dv(spectra_dir(cfg),
-                            cfg["input"].get("pattern", "*t.fits"))
+                            cfg["input"].get("pattern", "*t.fits"), cfg)
     dv = smart_dv_from_step(step, value)
     fraction = SMART_DV_FRACTION if value is True else float(value)
     was = cfg["domain"].get("dv")
@@ -829,6 +841,15 @@ def detect_instrument(directory: str, pattern: str = "*t.fits") -> str:
     from .io import robust_open
 
     paths = sorted(glob.glob(os.path.join(directory, pattern)))
+    if not paths:
+        # L'OEUF ET LA POULE. Le motif des fichiers est une propriete de
+        # l'instrument (*t.fits sur APERO, *_S2D_A.fits sur HARPS, *e2ds_A.fits
+        # sur SOPHIE), mais l'instrument se lit DANS un fichier, qu'il faut
+        # donc trouver avant de le connaitre. A ce stade le motif est encore
+        # celui de `general`, donc il ne vaut rien pour un instrument qui n'est
+        # pas celui par defaut. INSTRUME, lui, est dans tout fichier FITS: on
+        # elargit a eux tous plutot que de refuser (2026-10-14).
+        paths = sorted(glob.glob(os.path.join(directory, "*.fits")))
     if not paths:
         raise SystemExit("no file matching %s in %s" % (pattern, directory))
     for path in paths[:20]:

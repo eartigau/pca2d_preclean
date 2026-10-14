@@ -685,7 +685,7 @@ def weighted_on_pixels(alive, wave, grid):
 def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
                  halfwidth=8, overwrite=False, max_sky=None, alive=None,
                  clipped=None, clip_nsig=None, refit=False, weight="flux",
-                 clip_columns=None):
+                 clip_columns=None, config=None):
     """Write a t.fits with the model divided out. Returns the new path.
 
     The model lives in `ln f - savgol(ln f)`, so removing it from the flux is a
@@ -709,11 +709,31 @@ def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
 
     with sptf.robust_open(path) as hdulist:
         out = fits.HDUList([h.copy() for h in hdulist])
-    # the same instrument table the reader uses; a SPIRou file must have its
-    # AB extensions corrected, not the single-fibre A that also exists there
-    e_flux, e_wave, _, _ = sptf.extensions_for(out)
-    flux = np.asarray(out[e_flux].data, dtype=np.float64)
-    wave = np.asarray(out[e_wave].data, dtype=np.float64)
+    # LE FICHIER CORRIGE EST DU MEME FORMAT QUE L'ORIGINAL. C'est une copie
+    # dont on remplace le flux, et rien d'autre: un t.fits reste un t.fits,
+    # un S2D de l'ESO reste un S2D, lisible par ce qui lisait le premier.
+    # Reste a savoir OU est le flux, et le nom change d'un instrument a
+    # l'autre: FluxAB sur SPIRou, SCIDATA sur HARPS. La table d'extensions ne
+    # connait qu'APERO, donc pour les instruments lus par le pont c'est le
+    # pont qui repond, et la grille vient de la classe de LBL plutot que
+    # d'une extension dont le nom n'existe pas ici (2026-10-14).
+    bridged = config is not None and not _readers.reads_natively(config)
+    if bridged:
+        payload = _readers.read_any(path, config)
+        e_flux = payload["meta"].get("flux_extension")
+        if e_flux is None:
+            raise SystemExit(
+                "%s: impossible de retrouver l'extension du flux, donc rien"
+                " n'est ecrit plutot que d'ecrire au mauvais endroit"
+                % os.path.basename(path))
+        flux = np.asarray(out[e_flux].data, dtype=np.float64)
+        wave = np.atleast_2d(np.asarray(payload["wave"], dtype=np.float64))
+    else:
+        # the same instrument table the reader uses; a SPIRou file must have
+        # its AB extensions corrected, not the single-fibre A that also exists
+        e_flux, e_wave, _, _ = sptf.extensions_for(out)
+        flux = np.asarray(out[e_flux].data, dtype=np.float64)
+        wave = np.asarray(out[e_wave].data, dtype=np.float64)
     n_orders = flux.shape[0]
     touched = 0
     blanked = 0
@@ -745,7 +765,9 @@ def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
     # model never saw and could not correct. NaN, not zero: a zero is a
     # measurement of no flux and would be believed.
     masked = 0
-    if max_sky:
+    if max_sky and not bridged:
+        # aucun spectrographe du visible ne livre l'emission du ciel par pose:
+        # il n'y a pas d'extension a lire, et max_sky est sans objet
         e_sky = sptf.sky_extension_for(out)
         if e_sky:
             sky = np.asarray(out[e_sky].data, dtype=np.float64)
@@ -820,6 +842,14 @@ def correct_file(model, row, path, outdir, n_star=None, n_earth=None,
     stem = os.path.basename(path)
     stem = stem[:-len("t.fits")] if stem.endswith("t.fits") else stem.rsplit(".", 1)[0]
     new = os.path.join(outdir, "%st_%d-%d.fits" % (stem, k, j))
+    if bridged:
+        # LBL retrouve ses petits par le nom du fichier: sa classe HARPS_ESO
+        # cherche des *_S2D_A.fits, et un fichier appele ..._S2D_At_0-7.fits
+        # ne serait plus lu par personne. On garde donc le suffixe que
+        # l'instrument attend et on met la signature avant lui.
+        base, _, tail = stem.rpartition("_")
+        if base and tail:
+            new = os.path.join(outdir, "%s_%d-%d_%s.fits" % (base, k, j, tail))
     os.makedirs(outdir, exist_ok=True)
     if os.path.exists(new) and not overwrite:
         raise SystemExit("%s exists; pass --overwrite" % new)
@@ -1389,7 +1419,7 @@ def correct_many(model, args):
             args.kernel_halfwidth, args.overwrite, max_sky=args.max_sky_ratio,
             alive=alive, clipped=clipped, clip_nsig=getattr(args, "nsig_cut", None),
             refit=bool(args.refit), weight=getattr(args, "weight", "flux"),
-            clip_columns=column_cards)
+            clip_columns=column_cards, config=config)
         written += 1
         # onto the bar, not onto its own line: three hundred of these scroll
         # the narration off the screen and say nothing a total cannot

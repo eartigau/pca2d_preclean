@@ -88,6 +88,96 @@ def instrument(name, data_source, config_file=None):
     return select.load_instrument(args, plogger=None)
 
 
+def _lbl_root():
+    """Le dossier du paquet LBL REELLEMENT installe, ou None.
+
+    Trois chemins, du plus franc au plus obstine, parce que le dossier de
+    donnees `lbl/` du depot peut masquer les deux premiers:
+
+      1. l'import ordinaire, quand rien ne le masque;
+      2. les entrees de sys.path qui portent un vrai lbl/__init__.py;
+      3. la distribution installee, par importlib.metadata. C'est le seul qui
+         survit a une installation EDITABLE (pip install -e), ou le paquet
+         n'est sur aucune entree de sys.path mais atteint par un chercheur
+         pose par un .pth: un paquet-espace-de-noms gagne contre ce
+         chercheur, et seul le dossier declare par la distribution dit ou le
+         code se trouve vraiment.
+    """
+    import importlib.metadata as metadata
+    import importlib.util
+    import sys
+
+    spec = importlib.util.find_spec("lbl")
+    if spec is not None and spec.origin:
+        return os.path.dirname(spec.origin)
+    for entry in sys.path:
+        candidate = os.path.join(entry, "lbl", "__init__.py")
+        if os.path.exists(candidate):
+            return os.path.dirname(candidate)
+    try:
+        dist = metadata.distribution("lbl")
+    except Exception:                                          # noqa: BLE001
+        return None
+    for item in dist.files or []:
+        if item.parts[:2] == ("lbl", "__init__.py"):
+            return os.path.dirname(str(dist.locate_file(item)))
+    # une installation editable: le chercheur pose par le .pth sait ou est le
+    # code, et il le dit dans sa table MAPPING
+    for item in dist.files or []:
+        text = str(item)
+        if "__editable___" in text and text.endswith("_finder.py"):
+            try:
+                path = str(dist.locate_file(item))
+                source = open(path, encoding="utf-8").read()
+            except Exception:                                  # noqa: BLE001
+                continue
+            import re
+            found = re.search(r"['\"]lbl['\"]\s*:\s*['\"]([^'\"]+)['\"]", source)
+            if found and os.path.isdir(found.group(1)):
+                return found.group(1)
+    return None
+
+
+def _lbl_science(name):
+    """Un module de lbl.science, meme quand le dossier de donnees le masque.
+
+    LE PIEGE, mesure le 2026-10-14: ce depot contient un dossier `lbl/` qui est
+    une arborescence de DONNEES de LBL (calib, masks, models, science...). Des
+    que la racine du depot est sur sys.path, `import lbl` trouve ce dossier
+    avant le paquet installe et en fait un paquet-espace-de-noms: lbl.__file__
+    vaut None et `from lbl.science import tellu_clean` echoue avec « unknown
+    location ». Et c'est pire qu'un echec franc, parce que lbl.instruments,
+    lui, n'est PAS masque (le dossier de donnees n'a pas ce sous-dossier):
+    l'instrument se charge, la transmission non, et rien ne le dit.
+
+    Charger le seul module voulu par son chemin ne suffit pas: il importe ses
+    voisins par `from lbl.science import general`, qui retombe sur le dossier
+    masque. On REPARE donc le paquet, en ajoutant le vrai dossier au __path__
+    de lbl et de lbl.science, apres quoi l'import ordinaire trouve tout.
+    """
+    import importlib
+    import sys
+
+    full = "lbl.science.%s" % name
+    if full in sys.modules:
+        return sys.modules[full]
+    try:
+        root = _lbl_root()
+        if root is not None:
+            package = importlib.import_module("lbl")
+            paths = list(getattr(package, "__path__", []))
+            if root not in paths:
+                package.__path__ = [root] + paths
+                # lbl.science a pu etre resolu avant la reparation: il porte
+                # alors le chemin du dossier de donnees et doit etre oublie
+                for key in [k for k in sys.modules
+                            if k == "lbl.science" or k.startswith("lbl.science.")]:
+                    del sys.modules[key]
+        return importlib.import_module(full)
+    except Exception:                                          # noqa: BLE001
+        return None
+
+
 def tapas_transmission(inst, wave, model_dir, airmass=1.0):
     """La transmission tellurique sur `wave`, du modèle TAPAS de LBL.
 
@@ -99,10 +189,20 @@ def tapas_transmission(inst, wave, model_dir, airmass=1.0):
     Rend None quand le modèle n'est pas là, ce que l'appelant doit accepter:
     sans transmission, les coupures qui en dépendent sont simplement inactives.
     """
-    try:
-        from lbl.science import tellu_clean
-    except Exception:                                          # noqa: BLE001
+    tellu_clean = _lbl_science("tellu_clean")
+    if tellu_clean is None:
         return None
+    # LBL recopie le fichier TAPAS dans <DATA_DIR>/other/ avant de le lire, et
+    # DATA_DIR est vide sur une classe instanciee hors d'une campagne: sans
+    # lui, get_tapas_lbl s'arrete sur un realpath(None). Le dossier des
+    # modeles est, par construction, <DATA_DIR>/models, donc son parent est la
+    # reponse. On ne l'ecrase jamais quand une campagne l'a deja pose.
+    try:
+        if not inst.params.get("DATA_DIR"):
+            inst.params.set("DATA_DIR",
+                            os.path.dirname(os.path.abspath(model_dir)))
+    except Exception:                                          # noqa: BLE001
+        pass
     try:
         splines = tellu_clean.get_tapas_spl(inst, model_dir)
     except Exception:                                          # noqa: BLE001
@@ -170,6 +270,38 @@ def parity_is_safe(wave, tolerance=0.0):
     return worst <= float(tolerance), worst
 
 
+def flux_extension(path, flux):
+    """Le nom (ou le numero) de l'extension d'ou vient ce flux.
+
+    RENDRE LE SPECTRE CORRIGE DANS LE FORMAT D'ORIGINE. Le fichier corrige est
+    une copie de l'original dont on remplace le flux; encore faut-il savoir
+    quelle extension remplacer, et elle n'a pas le meme nom partout: FluxAB
+    sur un t.fits de SPIRou, SCIDATA sur un S2D de l'ESO. LBL ne la nomme pas:
+    sa classe par defaut appelle fits.getdata(fichier) sans extension, ce qui
+    rend la PREMIERE qui porte des donnees.
+
+    On ne devine donc pas ce nom, on le RETROUVE: l'extension dont les donnees
+    ont la forme du flux lu, la premiere en partant du debut, exactement comme
+    astropy a choisi. Rend un nom quand il y en a un, sinon un numero, et None
+    si rien ne correspond, auquel cas l'appelant refuse d'ecrire plutot que
+    d'ecrire au mauvais endroit.
+    """
+    from astropy.io import fits
+
+    shape = np.shape(flux)
+    try:
+        with fits.open(path, memmap=True) as hdulist:
+            for index, hdu in enumerate(hdulist):
+                data = getattr(hdu, "data", None)
+                if data is None:
+                    continue
+                if np.atleast_2d(data).shape == shape:
+                    return hdu.name or index
+    except Exception:                                          # noqa: BLE001
+        return None
+    return None
+
+
 def read(path, instrument_name, data_source, config_file=None,
          model_dir=None, inst=None):
     """Un spectre, dans la forme que pca2d attend, quel que soit l'instrument.
@@ -182,6 +314,7 @@ def read(path, instrument_name, data_source, config_file=None,
     inst = inst or instrument(instrument_name, data_source, config_file)
     flux, header = inst.load_science_file(path)
     flux = np.atleast_2d(np.asarray(flux, dtype=float))
+    science_ext = flux_extension(path, flux)
     wave = np.atleast_2d(np.asarray(
         inst.get_wave_solution(path, flux, header), dtype=float))
     try:
@@ -200,22 +333,103 @@ def read(path, instrument_name, data_source, config_file=None,
         except Exception:                                       # noqa: BLE001
             return default
 
+    def plain(name, default=None):
+        """Un mot-clé par son nom FITS, sans passer par la table de LBL."""
+        try:
+            return header[name]
+        except Exception:                                       # noqa: BLE001
+            return default
+
+    def number(*candidates):
+        """Le premier des candidats qui est un nombre fini et non sentinelle.
+
+        Un instrument qui n'a pas mesure quelque chose l'ecrit souvent par une
+        valeur convenue plutot que par un vide: -1 pour un seeing que l'ESO
+        n'a pas, -9999.9 pour un mat meteo en panne. La traiter comme un
+        nombre reviendrait a mettre un seeing negatif dans un diagnostic, donc
+        elle devient NaN, exactement comme dans tfits.read_tfits.
+        """
+        for value in candidates:
+            try:
+                out = float(value)
+            except (TypeError, ValueError):
+                continue
+            if not np.isfinite(out):
+                continue
+            if any(abs(out - s) < 1e-6 for s in SENTINELS):
+                continue
+            return out
+        return np.nan
+
     airmass = key("KW_AIRMASS", 1.0)
+    # LE TEMPS ET LA POSE NE VIENNENT PAS DE LA TABLE DE LBL. Mesuré le
+    # 2026-10-14 sur un S2D HARPS: la classe HARPS fait pointer KW_MJDATE ET
+    # KW_EXPTIME sur le même mot-clé, HIERARCH ESO QC BJD, parce que LBL n'a
+    # besoin que d'un axe temporel et se moque de la durée de pose. pca2d s'en
+    # sert autrement: mjdate est une date MODIFIÉE et exptime pondère. Les
+    # vrais mots-clés sont là (MJD-OBS = 52859.31, EXPTIME = 60.0 s), donc on
+    # les lit d'abord et la table de LBL ne sert plus que de dernier recours.
+    mjd = number(plain("MJD-OBS"), key("KW_MJDATE"))
+    # un en-tête qui ne donne qu'un BJD: on le ramène en MJD plutôt que de
+    # laisser 2.45 millions de jours passer pour une date modifiée
+    if np.isfinite(mjd) and mjd > 2.4e6:
+        mjd -= 2400000.5
+    # LE MEME CONTRAT QUE read_tfits, cle pour cle. cube.py lit meta["bjd"],
+    # meta["berv"], meta["object"]... sans savoir d'ou vient le spectre: un
+    # dict incomplet ne provoque pas une lecture degradee mais un KeyError au
+    # milieu d'une campagne. Ce que l'en-tete ne porte pas vaut NaN, qui est
+    # la reponse honnete, et jamais une valeur inventee.
+    bjd = number(key("KW_BJD"), plain("HIERARCH ESO QC BJD"),
+                 plain("HIERARCH ESO DRS BJD"))
+    if np.isfinite(bjd) and bjd < 1.0e6:
+        # un en-tete qui ne donne qu'un MJD: le BJD est a 2400000.5 pres, et
+        # l'ecart barycentrique (au plus 8 minutes) n'a pas de sens ici
+        bjd += 2400000.5
+    air_start = number(plain("HIERARCH ESO TEL AIRM START"), airmass)
+    air_end = number(plain("HIERARCH ESO TEL AIRM END"), airmass)
     meta = {
         "filename": os.path.basename(path),
-        "berv": float(key("KW_BERV", np.nan) or np.nan),
-        "mjdate": float(key("KW_MJDATE", np.nan) or np.nan),
-        "exptime": float(key("KW_EXPTIME", np.nan) or np.nan),
+        "bjd": float(bjd),
+        "mjdmid": float(mjd),
+        "mjdate": float(mjd),
+        "berv": float(number(key("KW_BERV"))),
+        "bervmax": float(number(plain("HIERARCH ESO QC BERVMAX"))),
+        "exptime": float(number(plain("EXPTIME"), key("KW_EXPTIME"))),
+        "airmass_start": float(air_start),
+        "airmass_end": float(air_end),
         "airmass": float(airmass if airmass is not None else np.nan),
+        "seeing": float(number(plain("HIERARCH ESO TEL AMBI FWHM START"))),
+        "humidity": float(number(plain("HIERARCH ESO TEL AMBI RHUM"))),
+        "sun_elevation": float("nan"),
+        "drs_mode": str(plain("HIERARCH ESO INS MODE", "") or "").strip(),
+        "dprtype": str(key("KW_DPRTYPE", "") or "").strip(),
         "object": str(key("KW_OBJNAME", "") or "").strip(),
         "instrument": str(instrument_name),
         "data_source": str(data_source),
     }
     meta["drsobjn"] = meta["object"]
+    # LA TRANSMISSION N'EST JAMAIS None. order_quality et _order_sigma
+    # l'indexent comme un tableau: un None les ferait planter, et la rendre
+    # optionnelle partout en aval reviendrait a semer des `if` pour une
+    # situation qui a une reponse honnete. Sans modele, on declare une
+    # transmission de 1, c'est-a-dire « aucune absorption connue ici »: les
+    # coupures qui en dependent ne retirent alors rien, au lieu de retirer
+    # n'importe quoi. Le rapport d'une campagne dit laquelle des deux.
     recon = (tapas_transmission(inst, wave, model_dir, meta["airmass"])
              if model_dir else None)
+    meta["telluric_model"] = "tapas" if recon is not None else "none"
+    if recon is None:
+        recon = np.ones_like(flux)
+    meta["flux_extension"] = science_ext
     return dict(flux=flux, wave=wave, blaze=blaze, recon=recon, sky=None,
                 snr=order_snr(flux), meta=meta)
+
+
+#: ce qu'un en-tete ecrit quand la mesure n'a pas eu lieu, et qui doit devenir
+#: NaN plutot que passer pour un nombre. Les trois premieres sont celles de
+#: tfits.read_tfits (le mat meteo du CFHT); -1 est celle de l'ESO pour un
+#: seeing absent, vue le 2026-10-14 sur un S2D HARPS.
+SENTINELS = (-9999.0, -9999.9, -999.0, -1.0)
 
 
 #: les instruments que pca2d lit avec son propre lecteur, parce que les t.fits
