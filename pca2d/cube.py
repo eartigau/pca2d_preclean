@@ -38,6 +38,31 @@ def object_key(name) -> str:
     return re.sub(r"[^0-9A-Z]", "", str(name or "").upper())
 
 
+def one_object(meta: dict, inp: dict) -> dict:
+    """UNE CAMPAGNE EST UN OBJET, DONC UNE VITESSE.
+
+    `meta["object"]` sort de l'en-tete, et un observateur ecrit ce qu'il veut:
+    les cent poses HARPS de HD 10700 portent HD10700, tau-Cet ou HR509 selon
+    l'annee, pour la MEME etoile. Tout ce qui groupe par objet les prenait
+    alors pour trois cibles, et chacune recevait sa propre vitesse systemique,
+    son propre masque commun et son propre seuil de SNR.
+
+    Mesure le 2026-10-15 sur la raie stellaire a 685.7 nm, decalage median par
+    graphie: HD10700 -0.93 km/s, tau-Cet -16.55, HR509 -89.04. La raie
+    sautait d'un bloc d'observations a l'autre dans le river plot, sans aucun
+    rapport avec le BERV (pente -0.17, correlation -0.09), uniquement parce
+    que le nom change.
+
+    Le nom de la campagne est celui que l'utilisateur a demande, pas celui que
+    l'en-tete porte: c'est lui qui decide ce qui est une cible.
+    """
+    wanted = inp.get("object")
+    if wanted:
+        meta = dict(meta)
+        meta["object"] = str(wanted)
+    return meta
+
+
 def same_object(meta: dict, wanted) -> bool:
     """Whether a file's OBJECT, or APERO's DRSOBJN, names the object asked for.
 
@@ -476,6 +501,7 @@ def _build_tfits(config: dict, files: list[str], grid: np.ndarray,
                 % (meta["filename"], meta["object"], meta.get("drsobjn"),
                    inp.get("object_header") or inp["object"]), "warn")
             continue
+        meta = one_object(meta, inp)
         meta["snr_band"] = sptf.band_snr(payload, dom["wave_min"], dom["wave_max"])
         usable = np.isfinite(payload["flux"]) & (payload["flux"] > 0)
         meta["median_flux"] = (float(np.median(payload["flux"][usable]))
@@ -596,6 +622,7 @@ def _build_s1d(config: dict, files: list[str], grid: np.ndarray):
                 % (meta["filename"], meta["object"], meta.get("drsobjn"),
                    inp.get("object_header") or inp["object"]), "warn")
             continue
+        meta = one_object(meta, inp)
         reason = _quality_reason(meta, wave, config["quality"])
         if reason is not None:
             log("rejecting %s: %s" % (meta["filename"], reason), "warn")
