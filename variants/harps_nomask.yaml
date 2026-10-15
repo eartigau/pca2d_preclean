@@ -1,0 +1,16 @@
+# harps_nomask: LE MASQUE PLUTOT QUE LA CORRECTION. Sur HARPS la grille est
+# deja barycentrique (LBL get_berv rend zero, verifie le 2026-10-14: la pente
+# de vrad contre le BERV vaut +0.00002 km/s par km/s sur 52 km/s d'etendue),
+# donc le BERV vu par pca2d est nul pour toutes les poses et le repere de
+# l'etoile EST celui de l'observateur. Dans ce cas limite, la correction
+# nominale a fait passer le rms de LBL de 11.2 a 52.9 m/s, et la mesure dit
+# pourquoi: elle met a NaN 35% des pixels de raie profonde contre 4% du
+# continu, c'est-a-dire exactement les pixels qui portent la vitesse.
+#
+# Cette variante ne change QUE le masque: rien n'est mis a NaN, le flux livre
+# reste la ou l'ajustement n'avait pas de poids. Si le rms revient vers 11
+# m/s, le coupable est le masque; s'il reste a 50, c'est la division.
+note: "HD10700 HARPS, 2026-10-14: la meme correction, sans blanchir un pixel"
+reuse_fit: nominal
+correct:
+  mask: none

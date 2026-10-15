@@ -157,3 +157,98 @@ def test_le_contrat_de_meta_est_celui_de_read_tfits():
     source = inspect.getsource(readers.read)
     for name in list(tfits.META_KEYS) + ["object", "drsobjn", "airmass"]:
         assert '"%s"' % name in source, name
+
+
+def test_le_berv_vient_de_lbl_et_non_de_l_en_tete():
+    """La question n'est pas « quel était le mouvement barycentrique », que
+    l'en-tête donne toujours, mais « reste-t-il à l'appliquer ». Un t.fits de
+    SPIRou est dans le repère de l'observateur; un S2D de l'ESO porte
+    WAVEDATA_VAC_BARY, DÉJÀ corrigée. LBL a tranché classe par classe, donc on
+    lui pose la question.
+
+    Mesuré le 2026-10-14 sur tau Ceti: en prenant le BERV de l'en-tête, les
+    poses au BERV le plus négatif sortaient à 1.3 et 4 km/s du groupe et le
+    rms de LBL était de 1311 m/s."""
+    select = pytest.importorskip("lbl.instruments.select",
+                                 reason="LBL est dans environment.yml")
+    del select
+
+    class Zero:
+        """Une classe qui dit « déjà corrigé », comme HARPS_ESO."""
+        def get_berv(self, header):
+            return 0.0
+
+    class FromHeader:
+        """Une classe qui lit l'en-tête, comme SPIROU_CADC. LBL rend des m/s."""
+        def get_berv(self, header):
+            return 23742.8
+
+    assert readers.berv_of(Zero(), {}, 23.7428) == 0.0
+    assert readers.berv_of(FromHeader(), {}, None) == pytest.approx(23.7428)
+
+    class Broken:
+        def get_berv(self, header):
+            raise RuntimeError("pas implémenté")
+
+    # une classe qui ne répond pas laisse l'en-tête parler, et NaN sinon
+    assert readers.berv_of(Broken(), {}, 12.5) == pytest.approx(12.5)
+    assert np.isnan(readers.berv_of(Broken(), {}, None))
+
+
+def test_defaire_la_correction_barycentrique_est_relativiste_et_reversible():
+    """`input.to_observer` rend le spectre au repère de l'observateur, pour
+    que l'ajustement à deux repères retrouve le contraste dont il vit. Sur
+    HARPS, qui livre une grille déjà barycentrique, le BERV vu par pca2d
+    valait zéro pour toutes les poses et la correction faisait passer le rms
+    de LBL de 11.2 à 51.6 m/s; avec cette option, 14.2 m/s (2026-10-14).
+
+    Le Doppler est relativiste: le premier ordre se tromperait de 1.5 m/s à
+    30 km/s, ce qui compte ici."""
+    c = 299792.458
+    for v in (23.7428, -27.5, 0.0):
+        beta = v / c
+        assert readers._doppler(v) == pytest.approx(
+            np.sqrt((1 + beta) / (1 - beta)), rel=1e-12)
+    # et le premier ordre N'EST PAS la réponse
+    assert readers._doppler(30.0) != pytest.approx(1 + 30.0 / c, rel=1e-12)
+
+    import inspect
+    source = inspect.getsource(readers.read)
+    # la grille est divisée par le Doppler: barycentrique -> observateur
+    assert "wave / _doppler(header_berv)" in source
+    # et le BERV rendu redevient celui qu'il reste à appliquer
+    assert "berv = float(header_berv)" in source
+
+
+def test_defaire_la_correction_barycentrique_est_relativiste():
+    """`input.to_observer` rend le spectre au repère de l'observateur, pour
+    que l'ajustement à deux repères retrouve le contraste dont il vit. Sur
+    HARPS, qui livre une grille déjà barycentrique, le BERV vu par pca2d
+    valait zéro pour toutes les poses et la correction faisait passer le rms
+    de LBL de 11.2 à 51.6 m/s; avec cette option, 14.2 (2026-10-14).
+
+    Le Doppler est celui de grids, relativiste: le premier ordre se
+    tromperait de 1.5 m/s à 30 km/s, ce qui compte ici."""
+    from pca2d.grids import doppler
+
+    for v in (23.7428, -27.5, 0.0):
+        assert readers._doppler(v) == pytest.approx(float(doppler(v)), rel=1e-12)
+    # et le premier ordre N'EST PAS la réponse
+    assert readers._doppler(30.0) != pytest.approx(1 + 30.0 / 299792.458, rel=1e-12)
+
+    import inspect
+    source = inspect.getsource(readers.read)
+    # la grille est divisée par le Doppler: barycentrique -> observateur
+    assert "wave / _doppler(header_berv)" in source
+    # et le BERV rendu redevient celui qu'il reste à appliquer
+    assert "berv = float(header_berv)" in source
+
+
+def test_to_observer_refuse_d_inventer_un_berv():
+    """Défaire une correction barycentrique sans savoir de combien serait pire
+    que de ne rien faire: le spectre sortirait décalé d'une valeur inconnue.
+    On s'arrête plutôt que de deviner."""
+    import inspect
+    source = inspect.getsource(readers.read)
+    assert "input.to_observer demande de defaire" in source
+    assert "raise ValueError" in source

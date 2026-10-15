@@ -626,6 +626,51 @@ instruments:
       format: s2d        # le nom du cube en cache dit par quel
                             # lecteur il a ete fait, pas seulement son
                             # empreinte: cube_s2d_<hash>
+      to_observer: true   # DEFAIRE LA CORRECTION BARYCENTRIQUE. Le S2D de
+                            # l'ESO porte WAVEDATA_VAC_BARY, une grille deja
+                            # ramenee au barycentre: la classe HARPS de LBL
+                            # le sait et son get_berv rend zero (verifie le
+                            # 2026-10-14: la pente de vrad contre le BERV vaut
+                            # +0.00002 km/s par km/s sur 52 km/s d'etendue).
+                            #
+                            # Mais l'ajustement a deux reperes VIT de l'ecart
+                            # entre eux: une composante de l'observateur est
+                            # fixe en longueur d'onde pendant que l'etoile se
+                            # deplace. Avec un BERV nul partout, les deux
+                            # reperes n'en font qu'un, rien ne retient le bloc
+                            # observateur de suivre le bruit (chi2 reduit de
+                            # l'ajustement: 0.594, soit mieux que le bruit ne
+                            # l'autorise) et la correction a fait passer le
+                            # rms de LBL de 11.2 a 51.6 m/s.
+                            #
+                            # On remet donc le spectre dans le repere de
+                            # l'observateur, en divisant la grille par le
+                            # Doppler relativiste du BERV d'en-tete, et le
+                            # BERV redevient celui qui est a appliquer. Les
+                            # fichiers CORRIGES gardent la grille d'origine:
+                            # seule la lecture change de repere.
+                            #
+                            # Mesure le 2026-10-14 sur tau Ceti, rms de LBL:
+                            # 11.2 m/s tels que livres, 51.6 sans cette
+                            # option, 14.2 avec. Elle rend donc l'essentiel
+                            # de ce que l'absence de contraste faisait
+                            # perdre, et c'est le meilleur reglage connu.
+                            #
+                            # CE QU'ELLE COUTE: chaque pose couvre alors un
+                            # intervalle decale du sien, et `correct.mask:
+                            # common` ne garde que l'intersection de toutes,
+                            # soit 39.7% des echantillons contre 61.5%, d'ou
+                            # 44.9% de pixels a NaN. `mask: exposure` rendrait
+                            # 63.3% vivants mais donne 693.8 m/s, parce que
+                            # chaque pose garderait un AUTRE jeu de raies.
+                            # L'intersection est le prix d'un jeu coherent.
+                            #
+                            # CE QUI RESTE FAUX, et qui n'est pas propre a
+                            # HARPS: l'ajustement mange le bruit (chi2 reduit
+                            # 0.51, bruit du spectre corrige a 0.87 de
+                            # l'original), donc les barres d'erreur de LBL
+                            # apres correction sont sept fois trop petites.
+                            # Voir docs/multi_instrument.md.
       pattern: "*_S2D_A.fits"   # la fibre A, la science. La fibre B est le
                                 # ciel ou la lampe de calibration et n'a rien
                                 # a faire dans un cube de spectres d'etoile

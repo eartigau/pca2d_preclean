@@ -1,0 +1,15 @@
+# harps_obs_expo: LE REPERE DE L'OBSERVATEUR, AVEC UN MASQUE PAR POSE.
+#
+# Avec input.to_observer, chaque pose couvre un intervalle de longueurs d'onde
+# DECALE du sien propre: 52 km/s separent les extremes. `mask: common` ne
+# garde qu'un echantillon que TOUTES les poses ont pondere, donc l'intersection
+# de 85 intervalles decales. Mesure le 2026-10-14: la fraction vivante tombe a
+# 39.7% contre 61.5% sur le cube barycentrique, d'ou 44.9% de pixels a NaN et
+# des barres d'erreur de 1.6 m/s qui ne veulent plus rien dire.
+#
+# `mask: exposure` rend 63.3% vivants dans les DEUX reperes, parce qu'il ne
+# demande rien aux autres poses. Il coutait 1.8 m/s sur TOI-4552 (chaque epoque
+# porte un autre jeu de raies); ici `common` coute bien davantage.
+note: "HD10700 HARPS, 2026-10-14: repere observateur et masque par pose"
+correct:
+  mask: exposure

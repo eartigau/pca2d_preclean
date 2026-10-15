@@ -270,6 +270,49 @@ def parity_is_safe(wave, tolerance=0.0):
     return worst <= float(tolerance), worst
 
 
+def _doppler(velocity_kms):
+    """Le rapport de longueurs d'onde pour une vitesse, RELATIVISTE.
+
+    Un seul Doppler dans le depot, celui de grids: sqrt((1 + v/c) / (1 - v/c)),
+    v > 0 si la source s'eloigne. Le premier ordre, 1 + v/c, se trompe de
+    (v/c)^2 / 2, soit 1.5 m/s a 30 km/s de BERV, ce qui compte ici.
+    """
+    from .grids import doppler
+
+    return float(doppler(float(velocity_kms)))
+
+
+def berv_of(inst, header, from_header=None):
+    """Le BERV a appliquer a ce spectre, en km/s, tel que LBL le decide.
+
+    PAS CELUI DE L'EN-TETE. La question n'est pas « quel etait le mouvement
+    barycentrique », que l'en-tete donne toujours, mais « reste-t-il a
+    l'appliquer », qui depend du format. Un t.fits de SPIRou est dans le
+    repere de l'observateur et il faut l'appliquer; un S2D de l'ESO porte
+    WAVEDATA_VAC_BARY, une grille DEJA corrigee, et l'appliquer une seconde
+    fois decale le spectre de tout le BERV.
+
+    LBL a deja tranche, classe par classe: son get_berv lit l'en-tete pour
+    SPIRou et rend zero pour HARPS, HARPS-N, ESPRESSO et SOPHIE. On lui pose
+    donc la question plutot que d'y repondre, et le jour ou un format change
+    de convention c'est LBL qui le saura.
+
+    Mesure le 2026-10-14 sur tau Ceti: en prenant le BERV de l'en-tete, les
+    poses au BERV le plus negatif sortaient a 1.3 et 4 km/s du groupe, et le
+    rms des vitesses de LBL etait de 1311 m/s.
+    """
+    try:
+        value = inst.get_berv(header)          # LBL rend des m/s
+    except Exception:                                          # noqa: BLE001
+        value = None
+    if value is None:
+        try:
+            return float(from_header)
+        except (TypeError, ValueError):
+            return float("nan")
+    return float(value) / 1000.0
+
+
 def flux_extension(path, flux):
     """Le nom (ou le numero) de l'extension d'ou vient ce flux.
 
@@ -303,7 +346,7 @@ def flux_extension(path, flux):
 
 
 def read(path, instrument_name, data_source, config_file=None,
-         model_dir=None, inst=None):
+         model_dir=None, inst=None, to_observer=False):
     """Un spectre, dans la forme que pca2d attend, quel que soit l'instrument.
 
     Même dict que tfits.read_tfits: flux, wave, blaze, recon, sky, snr, meta.
@@ -315,6 +358,7 @@ def read(path, instrument_name, data_source, config_file=None,
     flux, header = inst.load_science_file(path)
     flux = np.atleast_2d(np.asarray(flux, dtype=float))
     science_ext = flux_extension(path, flux)
+    to_observer = bool(to_observer)
     wave = np.atleast_2d(np.asarray(
         inst.get_wave_solution(path, flux, header), dtype=float))
     try:
@@ -385,6 +429,28 @@ def read(path, instrument_name, data_source, config_file=None,
         # un en-tete qui ne donne qu'un MJD: le BJD est a 2400000.5 pres, et
         # l'ecart barycentrique (au plus 8 minutes) n'a pas de sens ici
         bjd += 2400000.5
+    # LE REPERE DANS LEQUEL ON REND LE SPECTRE. Voir `to_observer` plus bas:
+    # soit celui du fichier, et alors le BERV est celui que LBL applique
+    # (zero sur un S2D deja barycentrique), soit celui de l'observateur, et
+    # alors on DEFAIT la correction barycentrique de la grille et on rend le
+    # BERV de l'en-tete, qui redevient a appliquer.
+    header_berv = number(key("KW_BERV"),
+                         plain("HIERARCH ESO QC BERV"), plain("BERV"))
+    berv = berv_of(inst, header, header_berv)
+    if to_observer:
+        if not np.isfinite(header_berv):
+            raise ValueError(
+                "%s: input.to_observer demande de defaire la correction"
+                " barycentrique, mais l'en-tete ne porte pas de BERV"
+                % os.path.basename(path))
+        if berv not in (0.0,):
+            # le fichier est deja dans le repere de l'observateur: il n'y a
+            # rien a defaire, et le refaire decalerait tout
+            pass
+        else:
+            # lambda_observateur = lambda_bary / doppler(BERV), relativiste
+            wave = wave / _doppler(header_berv)
+            berv = float(header_berv)
     air_start = number(plain("HIERARCH ESO TEL AIRM START"), airmass)
     air_end = number(plain("HIERARCH ESO TEL AIRM END"), airmass)
     meta = {
@@ -392,7 +458,7 @@ def read(path, instrument_name, data_source, config_file=None,
         "bjd": float(bjd),
         "mjdmid": float(mjd),
         "mjdate": float(mjd),
-        "berv": float(number(key("KW_BERV"))),
+        "berv": berv,
         "bervmax": float(number(plain("HIERARCH ESO QC BERVMAX"))),
         "exptime": float(number(plain("EXPTIME"), key("KW_EXPTIME"))),
         "airmass_start": float(air_start),
@@ -471,4 +537,6 @@ def read_any(path, config, inst=None):
     name = block.get("instrument") or (config.get("input") or {}).get("instrument")
     source = block.get("data_source") or "ESO"
     models = (config.get("output") or {}).get("model_directory")
-    return read(path, name, source, model_dir=models, inst=inst)
+    observer = bool((config.get("input") or {}).get("to_observer"))
+    return read(path, name, source, model_dir=models, inst=inst,
+                to_observer=observer)
