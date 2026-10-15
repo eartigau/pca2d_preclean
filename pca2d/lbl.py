@@ -715,9 +715,18 @@ def check_profile(instrument: str, data_source: str, config_file: str,
     except Exception as exc:                                  # noqa: BLE001
         return True, "LBL is not importable here (%s), so nothing was checked" % exc
     try:
+        # L'INSTRUMENT ET LA SOURCE PASSENT EN CLAIR, PAS PAR LE YAML. Le
+        # lecteur de YAML de LBL saute les valeurs 'None' (select.py: « skip
+        # Nones »), et c'est precisement le nom de la source d'ESPRESSO, de
+        # SOPHIE, de CARMENES et de CORALIE dans sa propre table. Lue par le
+        # fichier, elle disparaissait, et la verification echouait sur « Data
+        # source must be defined » pour les instruments qui marchent le mieux.
+        # Vu le 2026-10-14 sur ESPRESSO.
         args = select.parse_args(
             ["INSTRUMENT", "DATA_DIR", "DATA_SOURCE", "DATA_TYPE", "INPUT_FILE"],
-            dict(config_file=os.path.abspath(config_file)), __name__, parse=False)
+            dict(config_file=os.path.abspath(config_file),
+                 instrument=str(instrument), data_source=str(data_source)),
+            __name__, parse=False)
         inst = select.load_instrument(args, plogger=None)
         image, header = inst.load_science_file(sample)
         inst.get_wave_solution(sample, image, header)

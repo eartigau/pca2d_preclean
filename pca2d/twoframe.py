@@ -1720,7 +1720,17 @@ def load_cube(path, ln_clip_low=-0.5, ramp_zero=0.5, min_snr_frac=0.5,
                (lambda arr: np.array(arr[:, sl], dtype=dtype))
         d_blk = take(data)
         s_blk = take(sigma)
-        with np.errstate(invalid="ignore", divide="ignore"):
+        # over="ignore": le carre d'une sigma proche du maximum du type
+        # deborde et rend un poids nul, ce qui est la bonne reponse (un
+        # echantillon dont l'incertitude sature le type ne pese rien) mais
+        # numpy le signalait 45 fois par campagne. L'ARITHMETIQUE EST LAISSEE
+        # TELLE QUELLE: ecrire (1/s)^2 au lieu de 1/s^2 eviterait le
+        # debordement mais changerait le dernier bit de tous les autres
+        # poids, et tests/test_blocked_load.py compare les deux chemins de
+        # chargement bit pour bit, a juste titre. Vu le 2026-10-14 sur
+        # ESPRESSO, dont les recouvrements d'ordres laissent des echantillons
+        # au bord mourant d'un ordre.
+        with np.errstate(invalid="ignore", divide="ignore", over="ignore"):
             wb = np.where(np.isfinite(s_blk) & (s_blk > 0), 1.0 / s_blk ** 2, 0.0)
         wb[~np.isfinite(d_blk)] = 0.0
         wb[d_blk < ln_clip_low] = 0.0

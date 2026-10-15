@@ -282,7 +282,17 @@ class _Coadder:
         merged["n_exposures"] = len(self._meta)
         for parity in range(self.n_parity):
             slot = self.n_groups * self.n_parity + parity
-            live = self._sw[parity] > 0
+            # UN POIDS NON NUL N'EST PAS UN POIDS UTILISABLE. sigma vaut
+            # 1/sqrt(somme des poids), et le cube est en float32: sous un
+            # poids de 1e-77 la sigma depasse 3.4e38 et devient inf a la
+            # conversion. Un inf n'est pas faux (il pese zero) mais il
+            # contamine toute somme qui le rencontre, et numpy criait 45 fois
+            # par campagne. Vu le 2026-10-14 sur ESPRESSO, dont les ordres se
+            # recouvrent assez pour qu'un echantillon ne recoive que le bord
+            # mourant d'un ordre. On declare donc mort ce qui ne tient pas
+            # dans le type du cube, ce qui est la meme chose dite franchement.
+            biggest = float(np.finfo(self.sigma.dtype).max)
+            live = self._sw[parity] > 1.0 / (biggest * biggest)
             with np.errstate(invalid="ignore", divide="ignore"):
                 self.data[slot] = np.where(live, self._swy[parity] / self._sw[parity], 0.0)
                 self.sigma[slot] = np.where(live, 1.0 / np.sqrt(self._sw[parity]), np.nan)
@@ -472,7 +482,10 @@ def _build_tfits(config: dict, files: list[str], grid: np.ndarray,
                                if usable.any() else np.nan)
         meta["nan_fraction"] = float(1.0 - usable.mean())
 
-        reason = _quality_reason(meta, grid, config["quality"])
+        # LES LONGUEURS D'ONDE DE LA POSE, et non la grille: c'est la seule
+        # branche qui en dispose, et le critere qui rejette une solution qui
+        # recule a besoin de les voir ordre par ordre.
+        reason = _quality_reason(meta, payload["wave"], config["quality"])
         if reason is not None:
             log("rejecting %s: %s" % (meta["filename"], reason), "warn")
             n_rejected += 1
@@ -684,6 +697,22 @@ def _quality_reason(meta, wave, quality):
     """
     if np.size(wave) < 10:
         return "no coverage in the requested band"
+    # UNE SOLUTION EN LONGUEUR D'ONDE QUI RECULE REND LA POSE INUTILISABLE, et
+    # pas seulement pour pca2d. Mesure le 2026-10-14: 5 des 60 poses ESPRESSO
+    # de tau Ceti ont, au bord bleu de leur ordre le plus bleu, 177 pixels
+    # dont la longueur d'onde decroit avant de repartir. pca2d sait les
+    # ecarter du masque et trier ses abscisses, mais LBL lit les MEMES
+    # fichiers et s'arrete dessus dans lbl_template, donc une pose corrigee
+    # par pca2d et refusee par LBL n'avance a rien. On rejette la pose ici,
+    # une fois, et les deux cotes la voient partir pour la meme raison.
+    if np.ndim(wave) == 2 and wave.shape[1] > 1:
+        steps = np.diff(wave, axis=1)
+        backward = np.isfinite(steps) & (steps <= 0)
+        if backward.any():
+            orders = int(backward.any(axis=1).sum())
+            return ("the wavelength solution runs backwards at %d samples in"
+                    " %d order(s), which no spline can resample"
+                    % (int(backward.sum()), orders))
     if not np.isfinite(meta["berv"]):
         return "no valid BERV"
     if not np.isfinite(meta["bjd"]):
