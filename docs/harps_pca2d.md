@@ -252,6 +252,63 @@ modèle PHOENIX, voir `tools/mask_from_model.py`). C'est la première chose à
 faire avant de rejuger une correction par ses vitesses, et cela vaut pour tous
 les instruments, pas seulement HARPS.
 
+## POURQUOI LE BLOC OBSERVATEUR NE MORD PAS : il ne pèse presque rien
+
+« Après avoir enlevé le bloc stellaire, il reste une composante observateur
+évidente » (2026-10-15, sur 686-690 nm). Vérifié, et l'observation est juste.
+
+**Ce n'est pas un problème de décalage.** La structure résiduelle est bien
+fixe dans le repère du cube : en corrélant chaque pose avec le profil médian
+et en cherchant le décalage qui maximise l'accord, la pente contre le BERV
+vaut **+0,0097 km/s par km/s** et le décalage médian est **nul**. Le cube est
+dans le bon repère.
+
+**C'est un problème d'ajustement.** Sur 686-690 nm, parité 0 (la seule qui
+couvre cette bande), 94 lignes et 3087 colonnes :
+
+| | |
+|---|---|
+| variance des données | 0,01231 |
+| variance après le modèle pca2d | **0,01664** (+35 %) |
+| corrélation données / modèle | **+0,367** |
+| facteur d'échelle optimal du modèle | 0,762 |
+| ce qu'une SVD locale à 2 composantes retirerait | **58 %** |
+
+Le modèle **augmente** la variance au lieu de la réduire, et même ramené à son
+échelle optimale il n'en retirerait que 13 %. Il a la bonne amplitude mais il
+est mal placé : la structure résiduelle corrèle à 0,826 d'une pose à l'autre,
+donc elle est bien là, et deux composantes correctement ajustées la
+captureraient.
+
+**La cause est dans les poids.** La bande ne pèse presque rien dans
+l'ajustement global :
+
+| région | poids médian | part du poids total |
+|---|---|---|
+| O2 bande B (686-690) | 1290 | **0,93 %** |
+| O2 gamma (626-630) | 12900 | 1,84 % |
+| vert (480-530), sans tellurique | 4160 | 8,81 % |
+
+`weights.telluric_mode: recon` abaisse le poids là où la transmission est
+basse, c'est-à-dire **exactement là où il faut corriger**. L'ajustement global
+optimise donc le vert et ignore la bande tellurique, et les composantes qu'il
+en tire n'y décrivent rien de bon.
+
+**Une remarque au passage sur le rang.** Deux composantes n'expliquent que
+58 % de la variance dans la bande B, mais aussi 50 % dans la gamma et **49 %
+dans le vert sans tellurique**. Le rang est donc le même partout : ce qui
+dépasse les deux premières composantes est du bruit réparti uniformément, et
+non de la structure tellurique complexe. Cela confirme que deux composantes
+sont le bon nombre, et que le problème est ailleurs.
+
+**Ce qu'il faut essayer**, dans cet ordre :
+
+1. **Ne pas écraser le poids des bandes telluriques** (`telluric_ramp_zero`
+   plus bas, ou `telluric_mode` autre que `recon`) : tant que la bande pèse
+   1 %, l'ajustement ne la verra pas.
+2. **Ajuster par région** plutôt qu'une base unique sur 380-692 nm, pour que
+   les composantes de la bande ne soient pas imposées par le vert.
+
 ## Où cela laisse pca2d sur HARPS
 
 **1,80 m/s corrigé contre 1,56 m/s livré**, soit 15 % de plus. Il n'y a donc
