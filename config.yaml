@@ -626,7 +626,7 @@ instruments:
       format: s2d        # le nom du cube en cache dit par quel
                             # lecteur il a ete fait, pas seulement son
                             # empreinte: cube_s2d_<hash>
-      to_observer: true   # DEFAIRE LA CORRECTION BARYCENTRIQUE. Le S2D de
+      to_observer: false  # DEFAIRE LA CORRECTION BARYCENTRIQUE. Le S2D de
                             # l'ESO porte WAVEDATA_VAC_BARY, une grille deja
                             # ramenee au barycentre: la classe HARPS de LBL
                             # le sait et son get_berv rend zero (verifie le
@@ -665,7 +665,26 @@ instruments:
                             # chaque pose garderait un AUTRE jeu de raies.
                             # L'intersection est le prix d'un jeu coherent.
                             #
-                            # CE QUI RESTE FAUX: LBL rend des incertitudes
+                            # MESURE LE 2026-10-15, avec un LBL dont le
+                            # masque est repare (correctifs 645f550 et
+                            # 0f1c82d: les mesures d'avant se jouaient dans
+                            # du bruit de masque, la serie livree sortant a
+                            # 11.33 m/s au lieu de 1.57). Sur 64 poses
+                            # communes de tau Ceti:
+                            #
+                            #   livres                    1.56 m/s
+                            #   0-7 nominal (BERV nul)    1.89  (+21%)
+                            #   0-7 to_observer          15.00  (+859%)
+                            #   0-7 to_observer sans shrink 14.12
+                            #
+                            # to_observer est donc FRANCHEMENT MAUVAIS, alors
+                            # qu'il paraissait le meilleur sur la base
+                            # bruitee. Defaire la correction barycentrique
+                            # abime les spectres (chi2 reduit de LBL: 122) et
+                            # ce que l'ajustement y gagne en levier ne
+                            # compense pas. Laisse a false.
+                            #
+                            # ANCIENNE NOTE, fausse, gardee pour memoire:
                             # par raie 2.8 fois trop petites sur les spectres
                             # corriges (1249 contre 3517 m/s), alors que les
                             # fichiers sont coherents (ERRDATA inchangee,
@@ -716,16 +735,15 @@ instruments:
                             # empreinte: cube_s2d_<hash>
       pattern: "*_S2D_A.fits"
       blaze_min_frac: 0.0
-      to_observer: true     # comme HARPS et ESPRESSO: le get_berv de la
-                            # classe HARPSN/ESO de LBL rend ZERO, donc la
-                            # grille livree est deja barycentrique et
-                            # l'ajustement a deux reperes n'aurait aucun
-                            # levier sans cette option. Mis par coherence
-                            # avec la mesure faite sur HARPS, et NON par
-                            # analogie: la regle est « to_observer la ou
-                            # get_berv rend zero », et SOPHIE, qui lit son
-                            # en-tete, le laisse a false. Reste a verifier
-                            # sur de vraies donnees HARPS-N.
+      to_observer: false    # LA REGLE QUE J'AVAIS POSEE EST FAUSSE. Elle
+                            # disait: vrai partout ou le get_berv de LBL rend
+                            # zero. Mesure le 2026-10-15 sur tau Ceti avec un
+                            # LBL dont le masque est repare, sur 64 poses
+                            # communes: livres 1.56 m/s, 0-7 nominal 1.89,
+                            # 0-7 avec to_observer 15.00. Defaire la
+                            # correction barycentrique abime les spectres
+                            # (chi2 reduit de LBL: 122) et le levier gagne ne
+                            # compense pas. Voir le bloc HARPS.
     domain:
       wave_min: 383.0
       wave_max: 693.0
@@ -748,9 +766,11 @@ instruments:
                             # empreinte: cube_s2d_<hash>
       pattern: "*_S2D_A.fits"
       blaze_min_frac: 0.0
-      to_observer: true     # comme HARPS: le S2D de l'ESO est deja
-                            # barycentrique et le get_berv d'ESPRESSO rend
-                            # zero. Voir le bloc HARPS pour le detail.
+      to_observer: false    # comme HARPS: la grille est deja barycentrique
+                            # et le get_berv d'ESPRESSO rend zero, mais
+                            # defaire cette correction fait PERDRE (15.00 m/s
+                            # contre 1.89 sur tau Ceti le 2026-10-15). Voir le
+                            # bloc HARPS pour la mesure.
       #
       # LES 170 ORDRES SONT 85 ORDRES PHYSIQUES EN DEUX TRANCHES. Mesure le
       # 2026-10-14 sur un S2D de tau Ceti: les ordres 0 et 1 couvrent tous

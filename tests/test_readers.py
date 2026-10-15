@@ -254,38 +254,34 @@ def test_to_observer_refuse_d_inventer_un_berv():
     assert "raise ValueError" in source
 
 
-def test_to_observer_suit_le_get_berv_de_lbl():
-    """LA REGLE: `input.to_observer` est vrai exactement là où le get_berv de
-    LBL rend zéro, c'est-à-dire là où la grille livrée est déjà barycentrique
-    et où l'ajustement à deux repères n'aurait aucun levier.
+def test_to_observer_reste_une_option_et_non_une_regle():
+    """`input.to_observer` défait la correction barycentrique de la grille,
+    pour rendre à l'ajustement à deux repères le contraste dont il vit.
 
-    Elle n'est pas affaire d'analogie entre instruments: HARPS, HARPS-N et
-    ESPRESSO lus par l'ESO rendent zéro, SOPHIE lit son en-tête et doit donc
-    rester dans son fichier. Vérifié sur la configuration elle-même, pour
-    qu'un instrument ajouté sans y penser le fasse échouer."""
+    J'AVAIS POSÉ UNE RÈGLE, ET LA MESURE L'A DÉMENTIE. La règle disait: vrai
+    partout où le `get_berv` de LBL rend zéro, donc où la grille livrée est
+    déjà barycentrique. Mesuré le 2026-10-15 sur tau Ceti, avec un LBL dont le
+    masque est réparé (sans quoi tout se jouait dans du bruit, la série livrée
+    sortant à 11,33 m/s au lieu de 1,57), sur 64 poses communes:
+
+        livrés                        1,56 m/s
+        0-7 nominal, BERV nul         1,89   (+21%)
+        0-7 to_observer              15,00   (+859%)
+        0-7 to_observer sans shrink  14,12
+
+    Défaire la correction barycentrique abîme les spectres (chi2 réduit de LBL
+    de 122) et le levier gagné ne compense pas. L'option reste donc là, parce
+    qu'elle peut servir sur un instrument dont la grille est barycentrique ET
+    dont les spectres supportent le décalage, mais ce n'est pas une règle et
+    aucune configuration ne l'active.
+    """
     import yaml
 
-    pytest.importorskip("lbl.instruments.select",
-                        reason="LBL est dans environment.yml")
     with open("config.yaml", encoding="utf-8") as stream:
         table = (yaml.safe_load(stream).get("instruments") or {})
-    checked = 0
     for name, block in table.items():
-        lbl = block.get("lbl") or {}
-        if not lbl.get("instrument"):
-            continue
-        # les t.fits d'APERO passent par le lecteur natif: to_observer ne les
-        # concerne pas, et leur get_berv depend du DATA_TYPE
-        if str(lbl["instrument"]).upper() in readers.NATIVE:
-            continue
-        inst = readers.instrument(lbl["instrument"], lbl.get("data_source"))
-        try:
-            already = inst.get_berv({}) == 0
-        except Exception:                                      # noqa: BLE001
-            already = False
-        asked = bool((block.get("input") or {}).get("to_observer"))
-        assert already == asked, (
-            "%s: get_berv rend %s mais to_observer vaut %s"
-            % (name, "zero" if already else "l'en-tete", asked))
-        checked += 1
-    assert checked >= 3, "la regle doit etre verifiee sur plusieurs instruments"
+        asked = (block.get("input") or {}).get("to_observer")
+        assert not asked, (
+            "%s active to_observer, que la mesure du 2026-10-15 donne perdant"
+            " (15,00 m/s contre 1,89 sans): le documenter avant de le remettre"
+            % name)
