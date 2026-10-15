@@ -178,6 +178,23 @@ davantage sur ESPRESSO. Ce que la mesure dit de l'origine :
 - le gabarit n'est pas en cause : 96,7 % de points finis, raies à 0,8 du
   continu, 195 fois son propre rms.
 
+Une hypothèse de l'utilisateur, testée et écartée : **le gabarit serait bâti
+sur trop peu de poses, ou sur une couverture de BERV trop faible pour que les
+telluriques s'y moyennent.** Elle était fondée, parce que `lbl_template.py`
+range justement les poses en bacs de BERV pour cela (« we distribute the files
+in bins of equal size ordered by berv ») et que le `get_berv` de la classe
+HARPS rend zéro, si bien que la table `SCI_TABLE` du gabarit affiche une
+étendue de BERV de **0,00 km/s**. Mais la mesure dit que les telluriques se
+diluent quand même : dans la bande B de l'oxygène, le gabarit n'en garde que
+**0,21** de la profondeur qu'elles ont dans une pose, et il est bâti sur
+**100 poses**. Le gabarit n'est donc pas le coupable.
+
+(Le BERV nul de `SCI_TABLE` n'est pas une anomalie : il dit « rien ne reste à
+appliquer », et la grille livrée est bien barycentrique. Vérifié par LBL
+lui-même, qui est l'autorité ici : la pente de ses vitesses contre le BERV
+d'en-tête vaut +0,00002 km/s par km/s sur 52 km/s d'étendue, donc l'étoile est
+bel et bien au repos dans cette grille.)
+
 **Donc le facteur 7,7 reste inexpliqué, et il est en amont de pca2d :** il est
 déjà là sur les spectres livrés, que pca2d n'a pas touchés. Tant qu'il n'est
 pas compris, les tableaux ci-dessous comparent des corrections entre elles sur
