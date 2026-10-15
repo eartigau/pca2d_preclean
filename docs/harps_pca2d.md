@@ -357,7 +357,59 @@ Ce correctif vaut bien au-delà de pca2d : il concerne toute mesure LBL sur un
 instrument du visible où la composante sèche domine. À vérifier sur SPIRou et
 NIRPS, où le même défaut d'extrapolation existe.
 
-## LE TABLEAU FINAL, les quatre branches
+## LE TABLEAU FINAL, avec une correction tellurique qui marche
+
+Refait le 2026-10-15 après le correctif du repère de TAPAS
+(`docs/tapas_frame.md`), qui est la première correction tellurique de cette
+série à faire réellement son travail.
+
+| série | poses | rms | erreur | chi2 réduit |
+|---|---|---|---|---|
+| **S2D bruts, sans correction tellurique** | 67 | **1,56** | 0,39 | 27,2 |
+| nettoyés, TAPAS au bon endroit | 67 | 1,58 | 0,40 | 28,2 |
+| nettoyés + pca2d 0-2 | 68 | 1,95 | 1,02 | 7,6 |
+
+Sur les 65 poses communes : **+1,2 %** pour le nettoyage seul, **+24,6 %**
+avec pca2d.
+
+### Ce que le nettoyage fait aux spectres, et ce qu'il ne fait pas aux vitesses
+
+Le correctif marche, et la mesure sur les spectres est sans ambiguïté :
+
+| région | profondeur avant | après |
+|---|---|---|
+| O2 bande B | 0,182 | **0,064** (−65 %) |
+| O2 gamma | 0,150 | 0,143 (−5 %) |
+| eau 594 | 0,084 | 0,084 (0 %) |
+| Mg b, témoin | 0,445 | 0,445 (0 %) |
+
+Au fond de la bande B la transmission résiduelle passe de **1,3 % à 71 %**, et
+le flux médian du fond de bande revient à 0,969 du continu contre 0,671 avec
+l'ancien code. Le témoin sans tellurique ne bouge pas d'un millième.
+
+**Et les vitesses ne bougent pas non plus : 1,56 → 1,58 m/s.**
+
+### Et pca2d n'a plus rien à retirer
+
+C'est la conséquence logique, et elle se mesure. Ce que pca2d corrige, après
+un vrai nettoyage tellurique :
+
+| région | rms de la correction |
+|---|---|
+| O2 bande B | **0,00076** |
+| O2 gamma | 0,00249 |
+| Mg b, témoin sans tellurique | 0,00051 |
+
+Dans la bande B, pca2d ne retire plus que 1,5 fois ce qu'il retire sur le
+témoin, contre un facteur 88 avant le correctif. **Le résidu tellurique qu'il
+exploitait n'existe plus**, et la première composante du bloc observateur ne
+porte plus que 16,1 % de la variance pondérée, contre 29,7 % sur les bruts.
+
+Ce qui reste de l'écart de 24,6 % est le coût du masque, décrit plus haut :
+pca2d réduit la dispersion du gabarit, ce qui abaisse le seuil de
+`find_mask_lines` et remplit le masque de raies de bruit.
+
+## LE TABLEAU PRECEDENT, avant le correctif tellurique
 
 64 poses communes, avec le masque de LBL réparé et le nettoyage tellurique
 qui nettoie enfin (`TELLUCLEAN_FORCE_AIRMASS: true`).
