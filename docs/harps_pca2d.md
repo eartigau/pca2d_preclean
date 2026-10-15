@@ -1,4 +1,4 @@
-# pca2d sur HARPS : ce que la correction fait, et ce qu'elle coûte
+ # pca2d sur HARPS : ce que la correction fait, et ce qu'elle coûte
 
 HD 10700 (HD 10700), 100 poses récupérées de DACE, 380-692 nm, 71 ordres,
 7,3 ans, 71 nuits, SNR médian 88 par pose (247 à l'ordre 50). Mesuré le
@@ -100,6 +100,55 @@ Les fenêtres du rapport visent d'ailleurs ces régions : choisies le 2026-10-15
 en évaluant le modèle TAPAS sur une pose et en classant les tranches de 2 nm
 par transmission au 2e centile, et non d'après des noms de bandes.
 
+## LE RIVER PLOT DIT QUE LA CORRECTION NE MARCHE PAS, ET IL A RAISON
+
+Observation de l'utilisateur le 2026-10-15, en regardant les river plots : les
+raies stellaires sont bien alignées et le panneau « minus the star block » les
+enlève correctement, mais « la soustraction minus the observer block ne marche
+pas », et il reste beaucoup de tellurique alors qu'on devrait être après la
+correction tellurique de LBL.
+
+**Les deux remarques sont justes, et la mesure va plus loin que l'oeil.**
+
+D'abord, il n'y a eu AUCUNE correction tellurique de LBL : tous les runs ont
+tourné avec `RUN_LBL_TELLUCLEAN=False`. Les telluriques sont donc intégralement
+dans les spectres. Et pca2d ne les divise pas non plus : `weights.telluric_mode:
+recon` ne fait que **pondérer**, il abaisse le poids là où la transmission est
+basse.
+
+Ensuite, sur la bande B de l'oxygène (686-691 nm), 25 poses appariées, en
+écart-type de `ln(flux / continu)` colonne par colonne :
+
+| | |
+|---|---|
+| profondeur tellurique moyenne | 0,469 |
+| **variation d'une pose à l'autre, AVANT** | **0,0208** |
+| **variation d'une pose à l'autre, APRÈS** | **0,0955** |
+| correction appliquée | 0,0800 |
+
+**La correction multiplie par 4,6 la variation tellurique au lieu de la
+réduire.** Elle vaut 1,8 fois la variation qu'il fallait retirer : elle n'est
+pas trop faible, elle est trop forte et mal placée.
+
+Ce qui a été écarté en chemin, et qu'il faut noter pour ne pas y revenir :
+
+- **le repère** : le cube est bien dans celui de l'observateur (85 BERV
+  distincts de −27 à +25 km/s) et la tellurique y est fixe, corrélation 0,991
+  entre chaque pose et le profil médian de la bande ;
+- **la forme des composantes** : elles décrivent bien la bande (rms 0,0126
+  dans la bande B contre 0,00025 sur le témoin Mg b, un facteur 50) ;
+- **le rétrécissement** : il annule pourtant les composantes sur 63 à 72 % des
+  colonnes, avec un facteur moyen de 0,17 à 0,24, mais le couper ne change
+  rien aux fichiers écrits (0,08025 contre 0,08011) ;
+- **la moyenne par parité** : elle est déjà soustraite des données du cube, et
+  l'inclure ou non donne le même chiffre.
+
+Un indice reste inexpliqué et mérite d'être creusé en premier : **plus il y a
+de composantes, moins il se retire de variance tellurique pondérée** (6,6 % à
+une composante, 4,4 % à deux, 3,4 % à trois, 2,9 % à sept). Un ajustement par
+moindres carrés ne peut pas faire cela, donc quelque chose entre la solution et
+son application ne tient pas.
+
 ## Où cela laisse pca2d sur HARPS
 
 **1,80 m/s corrigé contre 1,56 m/s livré**, soit 15 % de plus. Il n'y a donc
@@ -121,18 +170,6 @@ Deux remarques pour la suite :
 ## Les figures
 
 `outputs/_harps_obs_n2/HD10700_HARPS/0-2/HD10700_HARPS_0-2_67b975.pdf`,
-**27 pages**, dont **18 de river plots** : trois panneaux par fenêtre, pour les
-six fenêtres telluriques du tableau ci-dessus (685-690 nm pour la bande B de
-l'oxygène, 626-630 pour la gamma, 592-596 et 646-652 pour l'eau, plus Na D et
-Mg b).
-
-La figure `oh_residual` manque, et c'est normal : elle lit l'extension
-`OHLine`, que seul SPIRou écrit.
-
-**Les river plots avaient disparu du premier rapport**, et c'était ma faute :
-`--mask-share`, ajouté à `reconstruct.py`, n'existait pas dans
-`figures/sequence.py`, qui s'arrêtait donc sur « unrecognized arguments ». Le
-rapport se construisait quand même, avec une page « What did not build » que
-j'avais lue de travers en l'attribuant à `oh_residual`. `sequence.py` connaît
-maintenant le seuil et applique la même règle de majorité, pour que les
-panneaux cachent exactement ce que les fichiers corrigés cachent.
+13 pages. Les six fenêtres sont celles du tableau ci-dessus. La figure
+`oh_residual` manque, et c'est normal : elle lit l'extension `OHLine`, que seul
+SPIRou écrit.

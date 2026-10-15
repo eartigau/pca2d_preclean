@@ -1,0 +1,23 @@
+# harps_n2_noshrink: SANS LE RETRECISSEMENT, dans le repere de l'observateur.
+#
+# Observation de l'utilisateur sur le river plot, le 2026-10-15: « la
+# soustraction minus the observer block ne marche pas » et « clairement il en
+# reste plein » de tellurique. La mesure lui donne raison: dans la bande B de
+# l'oxygene, le modele ne retire que 4.4% de la variance ponderee, et 16.9%
+# dans la bande gamma.
+#
+# LA CAUSE: le shrink met les composantes a ZERO sur 63 a 72% des colonnes et
+# leur facteur moyen vaut 0.17 a 0.24. La correction n'applique donc qu'un
+# cinquieme de ce que l'ajustement a trouve. Signe revelateur: plus il y a de
+# composantes, MOINS il se retire de tellurique (6.6% a une composante, 2.9% a
+# sept), ce qu'un moindre carre ne peut pas faire, mais qu'un seuil de
+# significativite applique composante par composante explique tres bien.
+#
+# Le shrink protege des corrections non significatives, ce qui a du sens quand
+# le residu est faible. Dans une bande ou la transmission tombe a zero, il
+# supprime justement la correction la ou elle est le plus necessaire.
+note: "HD 10700 HARPS, 2026-10-15: 2 composantes, repere observateur, SANS shrink"
+correct:
+  mask: common
+  mask_share: 0.50
+  shrink: false
