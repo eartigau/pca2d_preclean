@@ -201,6 +201,7 @@ réellement ancrée dans le repère du sol.
 | 0-7, BERV nul | 46 | 51,58 | 14,99 | 43,2 |
 | **0-7, repère observateur** | 67 | **14,24** | 1,59 | 102,9 |
 | 0-7, repère observateur, `mask: exposure` | 67 | 693,84 | 15,88 | 2259 |
+| **0-7, repère observateur, sans shrink ni refit** | 67 | **12,84** | 1,50 | 88,2 |
 
 Sur les poses communes : 11,54 → 13,73 m/s, contre 52,93 sans cette option.
 **Le gros de la dégradation est donc bien venu de l'absence de contraste entre
@@ -231,27 +232,42 @@ différents, exactement ce que [`corrected-files-equal-panel-3`] décrit et que
 le nominal évite depuis le 2026-09-12. L'intersection est donc le prix à payer
 pour un jeu de raies cohérent, pas un défaut à corriger.
 
-### Pourquoi les barres d'erreur s'effondrent : l'ajustement mange le bruit
+### Les barres d'erreur de 1,6 m/s : ce que ce n'est PAS
 
-L'erreur de 1,6 m/s est déjà dans la sortie brute de LBL, donc ce n'est pas un
-artefact de compilation. La mesure directe sur les spectres dit pourquoi :
-**la correction réduit le bruit pixel à pixel sans toucher au niveau du flux.**
+Il faut raconter cette piste en entier, parce que la première réponse était
+fausse et que la mesure qui l'a corrigée est simple.
 
-| série | bruit corrigé / bruit original (médiane sur 40 ordres) |
-|---|---|
-| 0-7, BERV nul | 0,851 |
-| 0-7, repère observateur | 0,872 |
+Le bruit pixel à pixel du spectre corrigé vaut 0,85 de l'original, ce qui
+semblait dire que l'ajustement absorbait la réalisation de bruit de chaque
+pose. **C'est un artefact de comparaison.** La correction met 22 à 45 % des
+pixels à NaN, et ce ne sont pas des pixels au hasard : ce sont les plus
+bruyants. Mesurer le bruit avant sur tous les pixels et après sur les
+survivants compare deux populations différentes.
 
-Un rapport de 1 serait attendu d'une correction qui ne retire qu'une structure
-réelle. À 0,85, les sept composantes de l'observateur absorbent 13 à 15 % de la
-réalisation de bruit de chaque pose, et la division **lisse le spectre**. LBL
-voit alors des raies plus propres qu'elles ne le sont et rend des erreurs sept
-fois trop petites, pendant que la dispersion réelle, elle, ne descend pas.
+**Sur les mêmes pixels**, le rapport vaut :
 
-C'est la même chose que dit le chi2 réduit de l'ajustement, **0,594 à BERV nul
-et 0,511 dans le repère de l'observateur** : un modèle qui explique les données
-mieux que le modèle de bruit ne l'autorise. Deux mesures indépendantes du même
-surajustement.
+| série | pixels différents | **mêmes pixels** |
+|---|---|---|
+| 0-7, BERV nul | 0,851 | **0,999** |
+| 0-7, repère observateur, sans shrink | 0,830 | 0,937 |
+
+À 0,999, la correction ne lisse rien du tout. Le comptage des degrés de
+liberté le disait d'ailleurs : sept composantes et une moyenne sur 85 lignes
+par parité ne peuvent retirer que 5 % du bruit (sqrt(1 − 8/85) = 0,952), et
+il aurait fallu 20 à 26 paramètres par colonne pour expliquer 0,85.
+
+Ce qui reste vrai et inexpliqué : **LBL rend des incertitudes par raie 2,8 fois
+plus petites** sur les spectres corrigés dans le repère de l'observateur (1249
+contre 3517 m/s de médiane), alors qu'il y utilise *moins* de raies (8095
+contre 11169). Les fichiers sont pourtant cohérents : `ERRDATA` est inchangée
+et le rapport entre le bruit mesuré et l'erreur annoncée vaut 1,40 avant comme
+après. La différence naît donc **dans LBL**, vraisemblablement dans le gabarit,
+que chaque série reconstruit pour elle-même et qui est plus creux ici (72 % de
+points finis contre 96,7 % pour la série livrée). C'est la piste à suivre, et
+elle n'est pas dans pca2d.
+
+Ni le rétrécissement ni le réajustement par pose n'y sont pour quelque chose :
+les couper donne 12,84 m/s au lieu de 14,24, et laisse l'erreur à 1,50.
 
 ## Ce qu'il faut en retenir pour la suite
 
@@ -261,16 +277,12 @@ l'état.** HARPS, HARPS-N, ESPRESSO et SOPHIE sont tous dans ce cas (leur
 
 Trois pistes, dans l'ordre où il faut les prendre :
 
-1. **Empêcher l'ajustement de manger le bruit**, qui est le vrai obstacle et
-   qui n'est pas propre à HARPS : un chi2 réduit de 0,5 et un bruit divisé par
-   0,85 disent la même chose des deux côtés. Un garde-fou sur le chi2, ou une
-   pénalisation, manque. Tant qu'il manque, les barres d'erreur de LBL après
-   correction ne sont pas interprétables, ici comme ailleurs.
-2. **Garder `to_observer` avec `mask: common`**, qui est la bonne combinaison
-   des deux (14,2 m/s contre 51,6 sans, et 693,8 avec `mask: exposure`), en
-   acceptant les 44,9 % de NaN, ou en réduisant l'intersection autrement : par
-   exemple en n'exigeant l'accord que d'une fraction des poses plutôt que de
-   toutes.
+1. **Comprendre les incertitudes par raie de LBL** sur un spectre à 28 % de
+   NaN : c'est le seul point qui reste faux, et il est du côté de LBL, pas de
+   pca2d. Le gabarit est le premier endroit à regarder.
+2. **Réduire l'intersection du masque commun** sans passer à `mask: exposure`,
+   qui est pire : n'exiger l'accord que d'une fraction des poses plutôt que de
+   toutes rendrait une bonne part des 44,9 % de NaN.
 3. **Ne garder que les composantes qui corrèlent avec une grandeur physique**
    (masse d'air, humidité, colonne d'eau), ce qui est déjà à moitié fait par
    `correlations.csv`.

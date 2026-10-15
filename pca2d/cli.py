@@ -1112,7 +1112,15 @@ def run_correct(plan):
             and "--refit" not in mode:
         # measuring the amplitudes in another metric means measuring them again,
         # whatever the cube's rows are
-        mode = list(mode) + ["--refit", "--config", plan["written_config"]]
+        mode = list(mode) + ["--refit"]
+    if "--config" not in mode:
+        # LA CONFIGURATION PART TOUJOURS, PAS SEULEMENT POUR REAJUSTER. Elle
+        # dit par quel lecteur les spectres ont ete lus, donc quelle extension
+        # porte le flux a remplacer: sans elle, un instrument qui passe par le
+        # pont de LBL retombe sur la table d'APERO et la correction s'arrete
+        # sur « unsupported INSTRUME 'HARPS' ». Vu le 2026-10-14 avec
+        # correct.weight: flux, le seul chemin qui ne reajuste pas.
+        mode = list(mode) + ["--config", plan["written_config"]]
     if "--refit" in mode:
         log("the fit's rows are nights: every exposure of every fitted night is"
             " corrected with its own coefficients, solved for that file against"

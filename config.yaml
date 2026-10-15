@@ -665,12 +665,16 @@ instruments:
                             # chaque pose garderait un AUTRE jeu de raies.
                             # L'intersection est le prix d'un jeu coherent.
                             #
-                            # CE QUI RESTE FAUX, et qui n'est pas propre a
-                            # HARPS: l'ajustement mange le bruit (chi2 reduit
-                            # 0.51, bruit du spectre corrige a 0.87 de
-                            # l'original), donc les barres d'erreur de LBL
-                            # apres correction sont sept fois trop petites.
-                            # Voir docs/multi_instrument.md.
+                            # CE QUI RESTE FAUX: LBL rend des incertitudes
+                            # par raie 2.8 fois trop petites sur les spectres
+                            # corriges (1249 contre 3517 m/s), alors que les
+                            # fichiers sont coherents (ERRDATA inchangee,
+                            # bruit mesure / erreur annoncee 1.40 avant comme
+                            # apres) et que la correction ne lisse rien (sur
+                            # LES MEMES pixels, bruit corrige / original =
+                            # 0.999). La difference nait dans LBL, sans doute
+                            # dans le gabarit, plus creux ici. Voir
+                            # docs/multi_instrument.md.
       pattern: "*_S2D_A.fits"   # la fibre A, la science. La fibre B est le
                                 # ciel ou la lampe de calibration et n'a rien
                                 # a faire dans un cube de spectres d'etoile

@@ -1157,6 +1157,15 @@ def correct_many(model, args):
         pairs = [(args.file, None)]
     covered = []
     shifter = config = None
+    # LA CONFIGURATION SERT AUSSI A ECRIRE, PAS SEULEMENT A REAJUSTER. Elle dit
+    # par quel lecteur le spectre a ete lu, donc quelle extension porte le flux
+    # a remplacer et dans quel repere sont ses longueurs d'onde. Elle n'etait
+    # chargee que sous --refit, si bien qu'une correction sans reajustement
+    # (correct.weight: flux) retombait sur la table d'extensions d'APERO et
+    # s'arretait sur « unsupported INSTRUME 'HARPS' » (2026-10-14).
+    if args.config:
+        from .config import load_config
+        config = load_config(args.config)
     if getattr(args, "weight", "flux") == "velocity":
         # measuring b in another metric means measuring it again
         args.refit = True
@@ -1165,8 +1174,6 @@ def correct_many(model, args):
             raise SystemExit("--refit needs --config, the YAML the cube was"
                              " built from: the exposure has to be resampled and"
                              " high-passed exactly as the fit saw it")
-        from .config import load_config
-        config = load_config(args.config)
         m = model["grid"].size
         top = int(np.ceil(np.abs(np.asarray(model["coeffs"]["berv"],
                                             dtype=float)).max()

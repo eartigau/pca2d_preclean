@@ -1,0 +1,15 @@
+# harps_noshrink: SANS RETRECISSEMENT NI REAJUSTEMENT PAR POSE.
+#
+# Le comptage des degres de liberte predit qu'un bloc de 7 composantes sur 170
+# lignes ne peut manger que 2% du bruit (sqrt(1 - 7/170) = 0.979) et donner un
+# chi2 de 0.96. La mesure sur tau Ceti donne 0.85 et 0.51: il y a donc BIEN
+# PLUS de parametres libres que les sept composantes.
+#
+# Les deux suspects sont `shrink`, un facteur par colonne, et surtout
+# `weight: velocity`, qui REAJUSTE les amplitudes pour chaque fichier
+# ("85 refitted individually"): chaque pose recoit alors ses propres sept
+# coefficients, ajustes sur elle-meme. Cette variante les coupe tous les deux.
+note: "HD10700 HARPS, 2026-10-14: sans shrink ni refit par pose"
+correct:
+  shrink: false
+  weight: flux
