@@ -254,34 +254,43 @@ def test_to_observer_refuse_d_inventer_un_berv():
     assert "raise ValueError" in source
 
 
-def test_to_observer_reste_une_option_et_non_une_regle():
-    """`input.to_observer` défait la correction barycentrique de la grille,
-    pour rendre à l'ajustement à deux repères le contraste dont il vit.
+def test_to_observer_et_le_masque_a_la_majorite_vont_ensemble():
+    """`input.to_observer` ramène la lecture au repère du sol, pour que
+    l'ajustement travaille dans les deux repères comme sur SPIRou et NIRPS;
+    seule la grille de départ diffère, et c'est pour cela qu'on la ramène à
+    leur convention.
 
-    J'AVAIS POSÉ UNE RÈGLE, ET LA MESURE L'A DÉMENTIE. La règle disait: vrai
-    partout où le `get_berv` de LBL rend zéro, donc où la grille livrée est
-    déjà barycentrique. Mesuré le 2026-10-15 sur tau Ceti, avec un LBL dont le
-    masque est réparé (sans quoi tout se jouait dans du bruit, la série livrée
-    sortant à 11,33 m/s au lieu de 1,57), sur 64 poses communes:
+    IL A UN COÛT, ET CE COÛT A UN REMÈDE. Dans le repère du sol chaque pose
+    couvre un intervalle décalé de son BERV, et `correct.mask: common` exige
+    l'accord de TOUTES: l'intersection de 85 intervalles décalés ne garde que
+    39,7 % des échantillons contre 61,5 % sur la grille livrée. Mesuré le
+    2026-10-15 sur tau Ceti, 64 poses communes:
 
-        livrés                        1,56 m/s
-        0-7 nominal, BERV nul         1,89   (+21%)
-        0-7 to_observer              15,00   (+859%)
-        0-7 to_observer sans shrink  14,12
+        livrés                              1,56 m/s
+        0-7 BERV nul                        1,89
+        0-7 to_observer, unanimité          5,19   (43,0 % de NaN)
+        0-7 to_observer, 75 % des poses     2,44   (17,0 % de NaN)
+        0-7 to_observer, 50 % des poses     2,76   (14,2 % de NaN)
 
-    Défaire la correction barycentrique abîme les spectres (chi2 réduit de LBL
-    de 122) et le levier gagné ne compense pas. L'option reste donc là, parce
-    qu'elle peut servir sur un instrument dont la grille est barycentrique ET
-    dont les spectres supportent le décalage, mais ce n'est pas une règle et
-    aucune configuration ne l'active.
+    Donc: un instrument qui active `to_observer` doit abaisser `mask_share`,
+    sans quoi l'intersection mange ce que le levier rapporte.
     """
     import yaml
 
     with open("config.yaml", encoding="utf-8") as stream:
-        table = (yaml.safe_load(stream).get("instruments") or {})
+        loaded = yaml.safe_load(stream)
+    table = loaded.get("instruments") or {}
+    nominal = ((loaded.get("general") or {}).get("correct") or {})
     for name, block in table.items():
-        asked = (block.get("input") or {}).get("to_observer")
-        assert not asked, (
-            "%s active to_observer, que la mesure du 2026-10-15 donne perdant"
-            " (15,00 m/s contre 1,89 sans): le documenter avant de le remettre"
-            % name)
+        if not (block.get("input") or {}).get("to_observer"):
+            continue
+        share = ((block.get("correct") or {}).get("mask_share")
+                 if block.get("correct") else None)
+        if share is None:
+            share = nominal.get("mask_share", 1.0)
+        mode = ((block.get("correct") or {}).get("mask")
+                if block.get("correct") else None) or nominal.get("mask")
+        assert mode != "common" or float(share) < 1.0, (
+            "%s active to_observer avec un masque commun a l'unanimite:"
+            " l'intersection de poses decalees coute plus que le levier ne"
+            " rapporte (5,19 m/s contre 2,44 a 75%%)" % name)

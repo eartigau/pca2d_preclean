@@ -210,6 +210,12 @@ def parse_args(argv=None):
                         " exposure's fit gave no weight (exposure), the ones any"
                         " exposure's did (common, so every epoch carries the same"
                         " set of lines), or none, keeping the delivered flux there")
+    p.add_argument("--mask-share", type=float, default=1.0,
+                   help="with --mask common, the fraction of exposures that"
+                        " must have weighted a sample for it to be kept. 1.0,"
+                        " the default, is the strict intersection; below it the"
+                        " line set is still ONE for the whole campaign, decided"
+                        " by a majority rather than unanimously")
     p.add_argument("--overwrite", action="store_true")
     p.add_argument("--cube", default=None,
                    help="the cube the fit was made from. With it, every sample"
@@ -621,7 +627,7 @@ def clipped_weights_mask(cube, fit_path, floor=0.5):
     return out
 
 
-def fit_weights_mask(cube, mode="exposure"):
+def fit_weights_mask(cube, mode="exposure", share=1.0):
     """The grid samples the fit weighted, per exposure: file name -> (2, grid).
 
     With mode "common" every exposure gets the same mask, the samples EVERY
@@ -659,10 +665,32 @@ def fit_weights_mask(cube, mode="exposure"):
                    else np.zeros(w.shape[0], dtype=int))
         for i, name in enumerate(names):
             names_of.setdefault(str(objects[i]), set()).add(name)
+        # `share` EST LA FRACTION DE POSES QU'IL FAUT POUR GARDER UN
+        # ECHANTILLON, et 1.0 est l'intersection stricte, celle d'avant.
+        #
+        # Pourquoi en faire un reglage: l'intersection exige l'accord de
+        # TOUTES les poses, ce qui est peu couteux quand elles couvrent le
+        # meme intervalle, et tres couteux quand elles ne le couvrent pas.
+        # Mesure le 2026-10-15 sur tau Ceti: 21.7% de pixels a NaN avec la
+        # grille livree, 43.0% avec input.to_observer, ou chaque pose est
+        # decalee de son propre BERV et ou l'intersection de 85 intervalles
+        # decales est bien plus petite que chacun d'eux.
+        #
+        # Baisser le seuil ne rend pas un masque par pose (mask: exposure,
+        # essaye: 693 m/s, parce que chaque pose garde alors un AUTRE jeu de
+        # raies): le jeu reste UNIQUE pour la campagne, il est seulement
+        # decide a la majorite plutot qu'a l'unanimite.
+        fraction = float(share)
         for group in names_of.values():
-            shared = np.ones((2, w.shape[1]), dtype=bool)
-            for name in group:
-                shared &= out[name]
+            if fraction >= 1.0:
+                shared = np.ones((2, w.shape[1]), dtype=bool)
+                for name in group:
+                    shared &= out[name]
+            else:
+                votes = np.zeros((2, w.shape[1]), dtype=np.int32)
+                for name in group:
+                    votes += out[name]
+                shared = votes >= max(1, int(np.ceil(fraction * len(group))))
             for name in group:
                 out[name] = shared.copy()
     return out
@@ -1195,12 +1223,18 @@ def correct_many(model, args):
             " flux rather than being blanked, so nothing is lost and nothing"
             " there is corrected either", "warn")
     elif getattr(args, "cube", None):
+        share = float(getattr(args, "mask_share", 1.0) or 1.0)
+        if mask_mode == "common" and share < 1.0:
+            what = ("every sample fewer than %.0f%% of the exposures weighted,"
+                    " one line set for them all" % (100 * share))
+        elif mask_mode == "common":
+            what = "every sample no exposure weighted, one line set for them all"
+        else:
+            what = "every sample the fit gave no weight, as panel 3 hides it"
         log("  reading the fit's weights from %s: %s will be NaN"
-            % (args.cube,
-               "every sample no exposure weighted, one line set for them all"
-               if mask_mode == "common" else
-               "every sample the fit gave no weight, as panel 3 hides it"))
-        alive_by_file = fit_weights_mask(args.cube, mask_mode)
+            % (args.cube, what))
+        alive_by_file = fit_weights_mask(args.cube, mask_mode,
+                                         getattr(args, "mask_share", 1.0) or 1.0)
     else:
         log("  no --cube: samples the fit gave no weight to keep their flux,"
             " which panel 3 of the sequence figure does not show", "warn")

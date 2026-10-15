@@ -1,0 +1,19 @@
+# harps_obs_n2: DEUX COMPOSANTES DANS LE REPERE DE L'OBSERVATEUR.
+#
+# L'intuition de l'utilisateur, le 2026-10-15: « dans l'optique, on devrait
+# avoir moins de composantes dans le referentiel observateur ». Elle tient
+# physiquement: ce que le bloc observateur a a decrire dans le visible est
+# bien plus simple que dans l'infrarouge. Entre 380 et 700 nm il n'y a que
+# les bandes de l'oxygene (A, B, gamma) et quelques bandes d'eau, toutes
+# etroites et toutes gouvernees par la masse d'air et la colonne d'eau, soit
+# deux parametres. Dans le H et le K de SPIRou, le methane et l'eau couvrent
+# des ordres entiers avec des profils qui varient autrement.
+#
+# Sept composantes pour decrire deux degres de liberte, c'est cinq de trop
+# qui n'ont plus qu'a suivre le bruit.
+# Le nombre de composantes se passe en ligne de commande (--n-earth 2), pas
+# ici: une variante ne porte que des SECTIONS de la configuration.
+note: "HD10700 HARPS, 2026-10-15: repere observateur, masque a 50%, pour --n-earth 2"
+correct:
+  mask: common
+  mask_share: 0.50

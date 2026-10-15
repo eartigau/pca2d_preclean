@@ -1,0 +1,21 @@
+# harps_obs_share: LE REPERE DE L'OBSERVATEUR, AVEC UN MASQUE A LA MAJORITE.
+#
+# La logique de pca2d veut que l'ajustement travaille dans le repere de
+# l'observateur et celui de l'etoile, comme sur SPIRou et NIRPS; sur HARPS
+# seule la grille de depart differe, et input.to_observer la ramene a leur
+# convention. Ce qui coutait, mesure le 2026-10-15, n'etait pas ce changement
+# de repere mais `mask: common`: il exige l'accord de TOUTES les poses, or
+# dans le repere du sol chacune couvre un intervalle decale de son BERV, et
+# l'intersection de 85 intervalles decales ne garde que 39.7% des
+# echantillons contre 61.5% sur la grille livree. D'ou 43% de pixels a NaN et
+# un rms de 5.19 m/s contre 1.89.
+#
+# mask_share: 0.25 demande qu'une raie soit ponderee par trois quarts des
+# poses, et non par toutes. Sur ce cube: 63.9% de vivants au lieu de 39.7%,
+# soit le niveau d'un masque par pose (63.3%) mais avec un jeu de raies qui
+# reste UNIQUE pour la campagne. mask: exposure, lui, donne a chaque pose son
+# propre jeu et vaut 693 m/s.
+note: "HD10700 HARPS, 2026-10-15: repere observateur, masque a 025% des poses"
+correct:
+  mask: common
+  mask_share: 0.25

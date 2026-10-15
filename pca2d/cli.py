@@ -1252,13 +1252,21 @@ def shrink_args(cfg):
     corr = cfg.get("correct") or {}
     out = []
     mask = str(corr.get("mask") or "exposure")
+    share = corr.get("mask_share")
     if mask != "exposure":
         out += ["--mask", mask]
-        log("corrected files blank %s"
-            % ("every sample any exposure left unweighted, so each of them"
-               " carries the same set of lines" if mask == "common"
-               else "nothing: an unweighted sample keeps its delivered flux"),
-            "info")
+        if mask == "common" and share is not None and float(share) < 1.0:
+            out += ["--mask-share", str(float(share))]
+            log("corrected files blank every sample fewer than %.0f%% of the"
+                " exposures weighted, so all of them carry the same set of"
+                " lines, decided by a majority rather than unanimously"
+                % (100 * float(share)), "info")
+        else:
+            log("corrected files blank %s"
+                % ("every sample any exposure left unweighted, so each of them"
+                   " carries the same set of lines" if mask == "common"
+                   else "nothing: an unweighted sample keeps its delivered flux"),
+                "info")
     if corr.get("shrink"):
         out.append("--shrink")
         if corr.get("shrink_smooth"):

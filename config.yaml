@@ -513,6 +513,25 @@ general:
                             # set for the whole campaign, for 3.6 points more of
                             # each TOI-4552 exposure and 6.7 on Proxima.
                             # `none` keeps the delivered flux there instead.
+    mask_share: 1.0         # avec `mask: common`, la FRACTION DE POSES qui
+                            # doit avoir pondere un echantillon pour qu'il
+                            # soit garde. 1.0 est l'intersection stricte,
+                            # celle d'avant le 2026-10-15, et reste le
+                            # nominal: le jeu de raies est UNIQUE pour la
+                            # campagne dans les deux cas, il est seulement
+                            # decide a la majorite plutot qu'a l'unanimite.
+                            #
+                            # A QUOI CA SERT. L'unanimite coute peu quand
+                            # toutes les poses couvrent le meme intervalle, et
+                            # cher quand elles ne le couvrent pas. Mesure sur
+                            # tau Ceti: 21.7% de pixels a NaN avec la grille
+                            # livree, 43.0% avec input.to_observer, ou chaque
+                            # pose est decalee de son propre BERV.
+                            #
+                            # Ne pas confondre avec `mask: exposure`, qui
+                            # donne a chaque pose SON jeu de raies et qui est
+                            # bien pire (693 m/s sur tau Ceti): ici le jeu
+                            # reste commun.
     shrink_smooth: false    # with shrink: average z^2 over one resolution
                             # element first, so a line is judged over its width
     smooth_components: []   # observer components (1-based) to smooth by LBL's
@@ -626,7 +645,7 @@ instruments:
       format: s2d        # le nom du cube en cache dit par quel
                             # lecteur il a ete fait, pas seulement son
                             # empreinte: cube_s2d_<hash>
-      to_observer: false  # DEFAIRE LA CORRECTION BARYCENTRIQUE. Le S2D de
+      to_observer: true   # DEFAIRE LA CORRECTION BARYCENTRIQUE. Le S2D de
                             # l'ESO porte WAVEDATA_VAC_BARY, une grille deja
                             # ramenee au barycentre: la classe HARPS de LBL
                             # le sait et son get_berv rend zero (verifie le
@@ -727,20 +746,64 @@ instruments:
         R: [600.0, 692.0]
     twoframe:
       resolution: 115000        # APPROX_RESOLUTION de la classe HARPS de LBL
+      n_earth: 2            # DEUX COMPOSANTES DANS L'OPTIQUE, et non sept.
+                            # L'intuition de l'utilisateur le 2026-10-15, que
+                            # la mesure confirme avec un creux net. Ce que le
+                            # bloc observateur a a decrire dans le visible est
+                            # simple: entre 380 et 700 nm il n'y a que les
+                            # bandes de l'oxygene et quelques bandes d'eau,
+                            # gouvernees par la masse d'air et la colonne
+                            # d'eau, soit deux parametres. Dans le H et le K
+                            # de SPIRou, le methane et l'eau couvrent des
+                            # ordres entiers avec des profils qui varient
+                            # autrement, d'ou les sept.
+                            #
+                            # tau Ceti, 64 poses communes, repere observateur
+                            # et masque a 50%, rms de LBL:
+                            #
+                            #   une composante     1.91 m/s  chi2 6.9
+                            #   DEUX composantes   1.80      chi2 5.4
+                            #   sept composantes   2.42      chi2 9.9
+                            #
+                            # La premiere porte deja 29.1% de la variance, la
+                            # deuxieme 4.3%, les cinq suivantes moins de 2%
+                            # chacune: elles n'ont plus qu'a suivre le bruit.
+    correct:
+      mask_share: 0.50      # VA AVEC input.to_observer, et ne s'en separe
+                            # pas. Dans le repere du sol chaque pose couvre
+                            # un intervalle decale de son BERV, et un masque
+                            # commun a l'unanimite n'en garde que
+                            # l'intersection. Mesure le 2026-10-15 sur tau
+                            # Ceti, 64 poses communes, rms de LBL:
+                            #
+                            #   livres                        1.56 m/s
+                            #   0-7 BERV nul                  1.89
+                            #   0-7 obs., unanimite           5.19  (43.0% NaN)
+                            #   0-7 obs., 75% des poses       2.44  (17.0% NaN)
+                            #   0-7 obs., 50% des poses       2.76  (14.2% NaN)
     output:
-      windows:                  # centre:largeur en nm. Celles de `general`
-        - "589.3:1.5"           # sont infrarouges (SPIRou) et tombent toutes
-        - "656.3:1.5"           # hors de la grille d'un spectrographe du
-        - "517.5:2"             # visible. Choisies ici pour ce qu'on veut
-        - "686.5:3"             # voir:
-        - "627.5:3"             #   589.3 doublet D du sodium
-        - "430.5:2"             #   656.3 H alpha
-                                #   517.5 triplet b du magnesium
-                                #   686.5 bande B de l'oxygene (transmission
-                                #         nulle: c'est la que le residu
-                                #         tellurique se voit)
-                                #   627.5 bande gamma de l'oxygene
-                                #   430.5 bande G du CH, dans le bleu
+      windows:                  # centre:largeur en nm. LES FENETRES SERVENT A
+                                # MONTRER CE QUE LA CORRECTION FAIT, donc elles
+                                # visent la ou il y a quelque chose a corriger:
+                                # les regions les plus telluriques du domaine.
+                                # Choisies sur mesure le 2026-10-15, en
+                                # evaluant le modele TAPAS sur une pose de tau
+                                # Ceti et en classant les tranches de 2 nm par
+                                # transmission au 2e centile.
+        - "688.0:5"             #   688.0  bande B de O2, transmission 0.000:
+                                #          le cas extreme, 60% des pixels sous
+                                #          0.98 sur 5 nm
+        - "628.0:4"             #   628.0  bande gamma de O2, 0.725, et 100%
+                                #          des pixels absorbes
+        - "594.0:3"             #   594.0  eau, 0.772, 100% absorbe
+        - "649.0:5"             #   649.0  eau, 0.793, 100% absorbe
+        - "589.3:1.5"           #   589.3  doublet D du sodium: une raie
+                                #          STELLAIRE forte dans une region
+                                #          tellurique, pour montrer que la
+                                #          correction ne la touche pas
+        - "517.5:2"             #   517.5  triplet b du magnesium, temoin:
+                                #          presque pas de tellurique, la
+                                #          correction ne doit rien y faire
 
   HARPN:
     lbl:
@@ -813,14 +876,22 @@ instruments:
     twoframe:
       resolution: 140000
     output:
-      windows:                  # comme HARPS, mais ESPRESSO va plus loin dans
-        - "589.3:1.5"           # le rouge: on ajoute la bande A de l'oxygene
-        - "656.3:1.5"
-        - "517.5:2"
-        - "686.5:3"
-        - "627.5:3"
-        - "760.5:3"             #   760.5 bande A de l'oxygene, la plus
-                                #         profonde du visible
+      windows:                  # LES FENETRES MONTRENT CE QUE LA CORRECTION
+                                # FAIT, donc elles visent les regions les plus
+                                # telluriques. Mesure le 2026-10-15 sur une
+                                # pose de tau Ceti, modele TAPAS, transmission
+                                # au 2e centile par tranches de 2 nm.
+        - "762.0:8"             #   762.0 bande A de O2, transmission 0.000 sur
+                                #         HUIT nm: la plus profonde du visible,
+                                #         et ESPRESSO est le seul des quatre a
+                                #         l'atteindre
+        - "688.0:5"             #   688.0 bande B de O2, 0.000 aussi
+        - "719.0:4"             #   719.0 eau, 0.064
+        - "628.0:4"             #   628.0 bande gamma de O2, 0.725
+        - "589.3:1.5"           #   589.3 doublet D du sodium: une raie
+                                #         STELLAIRE forte en zone tellurique
+        - "517.5:2"             #   517.5 triplet b du magnesium, temoin sans
+                                #         tellurique
 
   SOPHIE:
     lbl:
