@@ -86,7 +86,7 @@ pour un mât météo en panne) deviennent NaN comme dans `read_tfits`.
 **La transmission.** `order_quality` et `_order_sigma` indexent `recon` comme
 un tableau : un `None` les ferait planter. Sans modèle, la transmission vaut 1
 partout, c'est-à-dire « aucune absorption connue ici », et `meta` dit laquelle
-des deux. Avec TAPAS, sur un S2D de tau Ceti à la masse d'air 1,135 :
+des deux. Avec TAPAS, sur un S2D de HD 10700 à la masse d'air 1,135 :
 
 | bande | transmission minimale | médiane |
 |---|---|---|
@@ -111,8 +111,8 @@ où il est.
 dans un fichier, qu'il faut donc trouver avant de le connaître. `INSTRUME` est
 dans tout FITS : on élargit à `*.fits` plutôt que de refuser.
 
-**Deux noms pour une étoile.** `OBJECT = HD10700` en 2003, `tau-Cet` en 2004,
-`HR509` en 2005 (SIMBAD les résout tous les trois vers tau Ceti). Cinq ans
+**Deux noms pour une étoile.** `OBJECT = HD10700` en 2003, `HD 10700` en 2004,
+`HR509` en 2005 (SIMBAD les résout tous les trois vers HD 10700). Cinq ans
 d'archive, trois formulaires d'observation, et 36 poses sur 60 écartées en
 silence tant qu'un seul nom était déclaré. `input.object_header` accepte
 maintenant une liste.
@@ -151,7 +151,7 @@ d'étendue, avec 11,17 m/s de résidu. La grille est bien déjà barycentrique.
 ## LA RÉSERVE QUI DOMINE TOUT : nos vitesses sont bien plus bruitées que le DRS
 
 À mettre avant toute lecture des tableaux ci-dessous. Sur **les mêmes 72 poses**
-de tau Ceti, comparé aux vitesses nominales que DACE publie :
+de HD 10700, comparé aux vitesses nominales que DACE publie :
 
 | série | rms | erreur médiane |
 |---|---|---|
@@ -236,7 +236,7 @@ facteur est déjà là sur les spectres livrés.
 
 ## Ce que LBL mesure, avant et après
 
-tau Ceti (HD 10700), 100 poses récupérées de DACE, 380-692 nm, 71 ordres,
+HD 10700 (HD 10700), 100 poses récupérées de DACE, 380-692 nm, 71 ordres,
 7,3 ans, 71 nuits, SNR médian 88, pose médiane 30 s. Rms robuste, poses à plus
 de 5 sigmas écartées de chaque série.
 

@@ -2,7 +2,7 @@
 
 Le rééchantillonnage est un spline, qui exige des abscisses croissantes. La
 plupart des fichiers les ont; pas tous. Mesuré le 2026-10-14: 5 des 60 poses
-ESPRESSO de tau Ceti ont, au bord bleu de leur ordre le plus bleu, 177 pixels
+ESPRESSO de HD 10700 ont, au bord bleu de leur ordre le plus bleu, 177 pixels
 dont la longueur d'onde DÉCROÎT avant de repartir (recul de 0,00026 nm contre
 un pas médian de 0,00062, donc un bout de solution qui ne tient pas, pas une
 oscillation numérique). scipy s'arrêtait sur « x must be increasing » et la

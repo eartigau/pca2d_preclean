@@ -524,13 +524,13 @@ general:
                             # A QUOI CA SERT. L'unanimite coute peu quand
                             # toutes les poses couvrent le meme intervalle, et
                             # cher quand elles ne le couvrent pas. Mesure sur
-                            # tau Ceti: 21.7% de pixels a NaN avec la grille
+                            # HD 10700: 21.7% de pixels a NaN avec la grille
                             # livree, 43.0% avec input.to_observer, ou chaque
                             # pose est decalee de son propre BERV.
                             #
                             # Ne pas confondre avec `mask: exposure`, qui
                             # donne a chaque pose SON jeu de raies et qui est
-                            # bien pire (693 m/s sur tau Ceti): ici le jeu
+                            # bien pire (693 m/s sur HD 10700): ici le jeu
                             # reste commun.
     shrink_smooth: false    # with shrink: average z^2 over one resolution
                             # element first, so a line is judged over its width
@@ -669,7 +669,7 @@ instruments:
                             # fichiers CORRIGES gardent la grille d'origine:
                             # seule la lecture change de repere.
                             #
-                            # Mesure le 2026-10-14 sur tau Ceti, rms de LBL:
+                            # Mesure le 2026-10-14 sur HD 10700, rms de LBL:
                             # 11.2 m/s tels que livres, 51.6 sans cette
                             # option, 14.2 avec. Elle rend donc l'essentiel
                             # de ce que l'absence de contraste faisait
@@ -689,7 +689,7 @@ instruments:
                             # 0f1c82d: les mesures d'avant se jouaient dans
                             # du bruit de masque, la serie livree sortant a
                             # 11.33 m/s au lieu de 1.57). Sur 64 poses
-                            # communes de tau Ceti:
+                            # communes de HD 10700:
                             #
                             #   livres                    1.56 m/s
                             #   0-7 nominal (BERV nul)    1.89  (+21%)
@@ -758,7 +758,7 @@ instruments:
                             # ordres entiers avec des profils qui varient
                             # autrement, d'ou les sept.
                             #
-                            # tau Ceti, 64 poses communes, repere observateur
+                            # HD 10700, 64 poses communes, repere observateur
                             # et masque a 50%, rms de LBL:
                             #
                             #   une composante     1.91 m/s  chi2 6.9
@@ -817,7 +817,7 @@ instruments:
       blaze_min_frac: 0.0
       to_observer: false    # LA REGLE QUE J'AVAIS POSEE EST FAUSSE. Elle
                             # disait: vrai partout ou le get_berv de LBL rend
-                            # zero. Mesure le 2026-10-15 sur tau Ceti avec un
+                            # zero. Mesure le 2026-10-15 sur HD 10700 avec un
                             # LBL dont le masque est repare, sur 64 poses
                             # communes: livres 1.56 m/s, 0-7 nominal 1.89,
                             # 0-7 avec to_observer 15.00. Defaire la
@@ -849,11 +849,11 @@ instruments:
       to_observer: false    # comme HARPS: la grille est deja barycentrique
                             # et le get_berv d'ESPRESSO rend zero, mais
                             # defaire cette correction fait PERDRE (15.00 m/s
-                            # contre 1.89 sur tau Ceti le 2026-10-15). Voir le
+                            # contre 1.89 sur HD 10700 le 2026-10-15). Voir le
                             # bloc HARPS pour la mesure.
       #
       # LES 170 ORDRES SONT 85 ORDRES PHYSIQUES EN DEUX TRANCHES. Mesure le
-      # 2026-10-14 sur un S2D de tau Ceti: les ordres 0 et 1 couvrent tous
+      # 2026-10-14 sur un S2D de HD 10700: les ordres 0 et 1 couvrent tous
       # deux 377.2-383.1 nm, a 0.001 nm pres, parce que ESPRESSO coupe
       # chaque ordre en deux tranches de la fente. La parite de pca2d separe
       # donc les deux TRANCHES, et non deux ordres voisins.
@@ -866,7 +866,7 @@ instruments:
       # partout, c'est le flux median qui departage (16036 contre 11749 sur
       # la zone commune aux ordres 0 et 2).
     domain:
-      wave_min: 377.0           # mesure sur un S2D de tau Ceti le 2026-10-14:
+      wave_min: 377.0           # mesure sur un S2D de HD 10700 le 2026-10-14:
       wave_max: 791.0           # 170 ordres, 377.2 a 790.9 nm
       wave0: 377.0
       bands:
@@ -879,7 +879,7 @@ instruments:
       windows:                  # LES FENETRES MONTRENT CE QUE LA CORRECTION
                                 # FAIT, donc elles visent les regions les plus
                                 # telluriques. Mesure le 2026-10-15 sur une
-                                # pose de tau Ceti, modele TAPAS, transmission
+                                # pose de HD 10700, modele TAPAS, transmission
                                 # au 2e centile par tranches de 2 nm.
         - "762.0:8"             #   762.0 bande A de O2, transmission 0.000 sur
                                 #         HUIT nm: la plus profonde du visible,
@@ -976,10 +976,10 @@ objects:
   # OBJECT = Gl699, which is what the files are matched on.
   HD10700_HARPS:
     input:
-      # tau Ceti sur HARPS, la campagne qui sert de demonstration au pont
+      # HD 10700 sur HARPS, la campagne qui sert de demonstration au pont
       # multi-instrument (2026-10-14). Le dossier dit le spectrographe, les
       # en-tetes disent l'etoile, et ils ne la disent pas tous pareil: les
-      # poses de 2003 portent OBJECT = HD10700, celles de 2004 tau-Cet. Cinq
+      # poses de 2003 portent OBJECT = HD10700, celles de 2004 HD 10700. Cinq
       # ans d'archive, deux formulaires d'observation, deux graphies, et 36
       # poses sur 60 ecartees en silence tant qu'une seule etait nommee.
       object_header: [HD10700, tau-Cet]
@@ -990,7 +990,7 @@ objects:
                             # LBL choisit son masque de raies la-dessus.
     target:
       planets: [20.0, 49.41, 636.13]
-                            # tau Cet g, h et f (NASA Exoplanet Archive, table
+                            # HD 10700 g, h et f (NASA Exoplanet Archive, table
                             # ps, 2026-10-14). Marquees sur les periodogrammes,
                             # jamais mesurees ici: 50 poses sur cinq ans n'en
                             # retrouvent aucune, et c'est le point de les
@@ -1001,9 +1001,9 @@ objects:
     input:
       # la MEME etoile que HD10700_HARPS, sur un autre spectrographe: c'est
       # ce qui fait de cette campagne le test du pont multi-instrument, et
-      # non d'un instrument de plus. L'en-tete dit « tau Cet » ici (HIERARCH
-      # ESO OBS TARG NAME), « HD10700 » ou « tau-Cet » ou « HR509 » sur HARPS.
-      object_header: [tau Cet, HD10700, tau-Cet, HR509]
+      # non d'un instrument de plus. L'en-tete dit « HD 10700 » ici (HIERARCH
+      # ESO OBS TARG NAME), « HD10700 » ou « HD 10700 » ou « HR509 » sur HARPS.
+      object_header: [HD 10700, HD10700, HD 10700, HR509]
     lbl:
       teff: 5310
     target:

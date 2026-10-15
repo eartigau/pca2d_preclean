@@ -1,6 +1,6 @@
 # pca2d sur HARPS : ce que la correction fait, et ce qu'elle coûte
 
-tau Ceti (HD 10700), 100 poses récupérées de DACE, 380-692 nm, 71 ordres,
+HD 10700 (HD 10700), 100 poses récupérées de DACE, 380-692 nm, 71 ordres,
 7,3 ans, 71 nuits, SNR médian 88 par pose (247 à l'ordre 50). Mesuré le
 2026-10-15.
 
@@ -113,7 +113,7 @@ Deux remarques pour la suite :
    propres barres d'erreur ne l'autorisent, les corrigées beaucoup moins. Une
    partie des 1,56 m/s de la référence n'est donc pas du bruit photonique, et
    l'écart réel entre les deux est plus petit qu'il n'y paraît.
-2. **tau Ceti n'est pas le bon banc d'essai pour une correction tellurique.**
+2. **HD 10700 n'est pas le bon banc d'essai pour une correction tellurique.**
    C'est une naine G8V extrêmement calme observée à haute altitude, dont la
    série est déjà à 1,3 m/s. Ce que pca2d vise, ce sont les cibles où le résidu
    tellurique domine, et c'est sur une M faible qu'il faut le mesurer.
@@ -121,6 +121,18 @@ Deux remarques pour la suite :
 ## Les figures
 
 `outputs/_harps_obs_n2/HD10700_HARPS/0-2/HD10700_HARPS_0-2_67b975.pdf`,
-13 pages. Les six fenêtres sont celles du tableau ci-dessus. La figure
-`oh_residual` manque, et c'est normal : elle lit l'extension `OHLine`, que seul
-SPIRou écrit.
+**27 pages**, dont **18 de river plots** : trois panneaux par fenêtre, pour les
+six fenêtres telluriques du tableau ci-dessus (685-690 nm pour la bande B de
+l'oxygène, 626-630 pour la gamma, 592-596 et 646-652 pour l'eau, plus Na D et
+Mg b).
+
+La figure `oh_residual` manque, et c'est normal : elle lit l'extension
+`OHLine`, que seul SPIRou écrit.
+
+**Les river plots avaient disparu du premier rapport**, et c'était ma faute :
+`--mask-share`, ajouté à `reconstruct.py`, n'existait pas dans
+`figures/sequence.py`, qui s'arrêtait donc sur « unrecognized arguments ». Le
+rapport se construisait quand même, avec une page « What did not build » que
+j'avais lue de travers en l'attribuant à `oh_residual`. `sequence.py` connaît
+maintenant le seuil et applique la même règle de majorité, pour que les
+panneaux cachent exactement ce que les fichiers corrigés cachent.

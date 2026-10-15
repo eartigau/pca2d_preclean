@@ -68,7 +68,7 @@ def build(out_path, teff_file, wave_min=398.0, wave_max=702.0, dv=0.5,
     model = np.interp(grid, wave, flux)
 
     # NORMALISER PAR LE CONTINU, parce que le gabarit de LBL est un spectre
-    # normalise (son flux median vaut 1.005 sur tau Ceti) et que find_mask_lines
+    # normalise (son flux median vaut 1.005 sur HD 10700) et que find_mask_lines
     # divise par la colonne rms pour obtenir un line_snr. Le continu est pris
     # comme l'enveloppe superieure, au 95e centile sur 500 km/s.
     window = int(500.0 / dv) | 1

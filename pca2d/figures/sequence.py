@@ -87,6 +87,11 @@ def parse_args(argv=None):
                    choices=("exposure", "common", "none"),
                    help="which samples the corrected files blank, so the panels"
                         " hide the same ones (reconstruct --mask)")
+    p.add_argument("--mask-share", type=float, default=1.0,
+                   help="with --mask common, the fraction of exposures that"
+                        " must have weighted a sample for it to be kept"
+                        " (reconstruct --mask-share), so the panels hide"
+                        " exactly what the corrected files hide")
     return p.parse_args(argv)
 
 
@@ -218,9 +223,20 @@ def window_arrays(cube, fit, means, group, grid, dv, delta, centre, width,
         # NOT `g`, which is this function's grid: named that, the loop replaced
         # the grid with a group number and every window came back "too few
         # columns" (2026-09-13, an hour after the fix above)
+        # `share` EST LA FRACTION DE POSES qui doit avoir pondere un
+        # echantillon, comme dans reconstruct.fit_weights_mask: 1.0 est
+        # l'intersection stricte, et en dessous le jeu de raies reste UNIQUE
+        # mais decide a la majorite. Les panneaux doivent cacher exactement ce
+        # que les fichiers corriges cachent, sinon ils montrent autre chose.
+        share = float(correct.get("mask_share") or 1.0)
         for label in np.unique(group):
             rows_here = group == label
-            shared[rows_here] = live[rows_here].all(axis=0).astype(w0.dtype)
+            if share >= 1.0:
+                keep = live[rows_here].all(axis=0)
+            else:
+                votes = live[rows_here].sum(axis=0)
+                keep = votes >= max(1, int(np.ceil(share * int(rows_here.sum()))))
+            shared[rows_here] = keep.astype(w0.dtype)
         alive &= live_mask(shifter.rows(shared, -delta))
     for name, build, _ in steps:
         z = shifter.rows(build(), -delta)
@@ -232,7 +248,8 @@ def window_arrays(cube, fit, means, group, grid, dv, delta, centre, width,
 
 
 def load_context(cube, fit_path, source_dir=None, shrink=False, shrink_smooth=False,
-                 smooth_components=None, resolution=None, mask=None):
+                 smooth_components=None, resolution=None, mask=None,
+                 mask_share=1.0):
     """What every page shares: the fit, its means, the rows and their BERV, and
     how the correct stage divides the observer block out (panels 3 and 6):
     the same options reconstruct takes, the weights scaled by the fit's median
@@ -249,7 +266,8 @@ def load_context(cube, fit_path, source_dir=None, shrink=False, shrink_smooth=Fa
                    "smooth_which": which,
                    "fwhm": fwhm_samples(resolution, dv) if resolution else None,
                    "chi2_scale": float(np.median(chi2[good])) if good.any() else 1.0,
-                   "mask": str(mask or "exposure")}
+                   "mask": str(mask or "exposure"),
+                   "mask_share": float(mask_share or 1.0)}
     grid = cube_grid(cube)
     # the rows and their metadata; one column is the cheapest way to get them
     # NO cut here: the fit's own row list decides what is drawn. Re-deriving the
@@ -474,7 +492,7 @@ def main(argv=None):
     args = parse_args(argv)
     ctx = load_context(args.cube, args.fit, args.source_dir, args.shrink,
                        args.shrink_smooth, args.smooth_components, args.resolution,
-                       args.mask)
+                       args.mask, args.mask_share)
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     pages = pages_for(ctx.get("objects"))
     with PdfPages(args.out) as pdf:

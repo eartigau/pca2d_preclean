@@ -166,7 +166,7 @@ def test_le_berv_vient_de_lbl_et_non_de_l_en_tete():
     WAVEDATA_VAC_BARY, DÉJÀ corrigée. LBL a tranché classe par classe, donc on
     lui pose la question.
 
-    Mesuré le 2026-10-14 sur tau Ceti: en prenant le BERV de l'en-tête, les
+    Mesuré le 2026-10-14 sur HD 10700: en prenant le BERV de l'en-tête, les
     poses au BERV le plus négatif sortaient à 1.3 et 4 km/s du groupe et le
     rms de LBL était de 1311 m/s."""
     select = pytest.importorskip("lbl.instruments.select",
@@ -264,7 +264,7 @@ def test_to_observer_et_le_masque_a_la_majorite_vont_ensemble():
     couvre un intervalle décalé de son BERV, et `correct.mask: common` exige
     l'accord de TOUTES: l'intersection de 85 intervalles décalés ne garde que
     39,7 % des échantillons contre 61,5 % sur la grille livrée. Mesuré le
-    2026-10-15 sur tau Ceti, 64 poses communes:
+    2026-10-15 sur HD 10700, 64 poses communes:
 
         livrés                              1,56 m/s
         0-7 BERV nul                        1,89

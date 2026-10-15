@@ -4,7 +4,7 @@ pca2d met les ordres pairs sur une ligne et les impairs sur l'autre, ce qui
 suppose que deux ordres de même parité ne se touchent jamais. Vrai sur SPIRou
 et HARPS; FAUX sur ESPRESSO, dont les 170 ordres sont 85 ordres physiques
 coupés en deux tranches: à l'intérieur d'une tranche, deux ordres consécutifs
-se recouvrent de 3,4 nm (mesuré le 2026-10-14 sur un S2D de tau Ceti), dont
+se recouvrent de 3,4 nm (mesuré le 2026-10-14 sur un S2D de HD 10700), dont
 1,8 nm survivent à l'érosion des bords.
 
 Sans arbitrage, les deux écriraient dans la même colonne de la grille. La

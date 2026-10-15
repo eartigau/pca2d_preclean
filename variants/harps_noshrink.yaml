@@ -2,7 +2,7 @@
 #
 # Le comptage des degres de liberte predit qu'un bloc de 7 composantes sur 170
 # lignes ne peut manger que 2% du bruit (sqrt(1 - 7/170) = 0.979) et donner un
-# chi2 de 0.96. La mesure sur tau Ceti donne 0.85 et 0.51: il y a donc BIEN
+# chi2 de 0.96. La mesure sur HD 10700 donne 0.85 et 0.51: il y a donc BIEN
 # PLUS de parametres libres que les sept composantes.
 #
 # Les deux suspects sont `shrink`, un facteur par colonne, et surtout
