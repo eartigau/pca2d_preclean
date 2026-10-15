@@ -716,6 +716,16 @@ instruments:
                             # empreinte: cube_s2d_<hash>
       pattern: "*_S2D_A.fits"
       blaze_min_frac: 0.0
+      to_observer: true     # comme HARPS et ESPRESSO: le get_berv de la
+                            # classe HARPSN/ESO de LBL rend ZERO, donc la
+                            # grille livree est deja barycentrique et
+                            # l'ajustement a deux reperes n'aurait aucun
+                            # levier sans cette option. Mis par coherence
+                            # avec la mesure faite sur HARPS, et NON par
+                            # analogie: la regle est « to_observer la ou
+                            # get_berv rend zero », et SOPHIE, qui lit son
+                            # en-tete, le laisse a false. Reste a verifier
+                            # sur de vraies donnees HARPS-N.
     domain:
       wave_min: 383.0
       wave_max: 693.0

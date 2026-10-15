@@ -252,3 +252,40 @@ def test_to_observer_refuse_d_inventer_un_berv():
     source = inspect.getsource(readers.read)
     assert "input.to_observer demande de defaire" in source
     assert "raise ValueError" in source
+
+
+def test_to_observer_suit_le_get_berv_de_lbl():
+    """LA REGLE: `input.to_observer` est vrai exactement là où le get_berv de
+    LBL rend zéro, c'est-à-dire là où la grille livrée est déjà barycentrique
+    et où l'ajustement à deux repères n'aurait aucun levier.
+
+    Elle n'est pas affaire d'analogie entre instruments: HARPS, HARPS-N et
+    ESPRESSO lus par l'ESO rendent zéro, SOPHIE lit son en-tête et doit donc
+    rester dans son fichier. Vérifié sur la configuration elle-même, pour
+    qu'un instrument ajouté sans y penser le fasse échouer."""
+    import yaml
+
+    pytest.importorskip("lbl.instruments.select",
+                        reason="LBL est dans environment.yml")
+    with open("config.yaml", encoding="utf-8") as stream:
+        table = (yaml.safe_load(stream).get("instruments") or {})
+    checked = 0
+    for name, block in table.items():
+        lbl = block.get("lbl") or {}
+        if not lbl.get("instrument"):
+            continue
+        # les t.fits d'APERO passent par le lecteur natif: to_observer ne les
+        # concerne pas, et leur get_berv depend du DATA_TYPE
+        if str(lbl["instrument"]).upper() in readers.NATIVE:
+            continue
+        inst = readers.instrument(lbl["instrument"], lbl.get("data_source"))
+        try:
+            already = inst.get_berv({}) == 0
+        except Exception:                                      # noqa: BLE001
+            already = False
+        asked = bool((block.get("input") or {}).get("to_observer"))
+        assert already == asked, (
+            "%s: get_berv rend %s mais to_observer vaut %s"
+            % (name, "zero" if already else "l'en-tete", asked))
+        checked += 1
+    assert checked >= 3, "la regle doit etre verifiee sur plusieurs instruments"
