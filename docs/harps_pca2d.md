@@ -149,6 +149,57 @@ une composante, 4,4 % à deux, 3,4 % à trois, 2,9 % à sept). Un ajustement par
 moindres carrés ne peut pas faire cela, donc quelque chose entre la solution et
 son application ne tient pas.
 
+## LA CHAÎNE COMPLÈTE : nettoyage tellurique, puis pca2d, puis LBL
+
+Montée le 2026-10-15 à la demande de l'utilisateur, dans le bon ordre cette
+fois. `lbl_telluclean` divise la transmission TAPAS ajustée pose par pose
+(exposant d'eau et exposant sec, mesurés sur chaque spectre) et écrit dans
+`<science>/<OBJECT>_tc/`. pca2d ajuste ensuite les **résidus** de ce nettoyage,
+et LBL mesure les vitesses sur le tout.
+
+| série | poses | rms | erreur | chi2 réduit |
+|---|---|---|---|---|
+| livrés, sans nettoyage | 67 | 1,57 | 0,39 | 27,2 |
+| livrés + pca2d 0-2 | 65 | 1,79 | 0,92 | 5,3 |
+| **nettoyés, sans pca2d** | 67 | **1,58** | 0,39 | 27,6 |
+| **nettoyés + pca2d 0-2** | 66 | 2,09 | 0,93 | 6,6 |
+
+Sur les 64 poses communes : 1,56 / 1,80 / 1,57 / 1,79 m/s.
+
+**Le nettoyage tellurique ne change rien aux vitesses** (1,56 → 1,57 m/s), et
+pca2d coûte la même chose avant comme après (1,80 contre 1,79).
+
+### Mais pca2d fait bien son travail sur les résidus
+
+Dans la bande B de l'oxygène, variation d'une pose à l'autre de
+`ln(flux / continu)`, **sur les mêmes 3000 colonnes et les mêmes 94 poses** :
+
+| | |
+|---|---|
+| nettoyés par LBL | 0,368 |
+| **nettoyés + pca2d** | **0,094** |
+
+**pca2d retire 74 % de la variation tellurique résiduelle.** Il fait donc
+exactement ce qu'on lui demande dans la bande.
+
+Et il faut corriger ici une mesure que j'avais annoncée plus haut : le
+« ×4,6 » comparait des jeux de pixels différents, parce que la correction met
+des échantillons à NaN. Sur des pixels identiques, le signe s'inverse.
+
+### Ce que cela dit
+
+Deux faits qui ne se contredisent pas : **pca2d nettoie très bien la bande
+tellurique, et cela ne se voit pas dans les vitesses.** Sur HD 10700 le résidu
+tellurique n'est tout simplement pas ce qui limite la mesure : une G8V très
+calme observée à 1,3 m/s par le DRS, dont les raies profondes sont ailleurs
+que dans les bandes de l'oxygène. Ce que la correction gagne dans la bande,
+elle le perd en bruit ajouté sur le reste du domaine (l'erreur par pose passe
+de 0,39 à 0,92 m/s).
+
+C'est la même conclusion que `berv-span-decides-the-correction` sous un autre
+angle : la correction se juge sur une cible où le résidu tellurique domine, et
+HD 10700 n'en est pas une.
+
 ## Où cela laisse pca2d sur HARPS
 
 **1,80 m/s corrigé contre 1,56 m/s livré**, soit 15 % de plus. Il n'y a donc

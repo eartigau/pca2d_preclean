@@ -997,6 +997,19 @@ objects:
                             # inscrire, pour qu'une composante qui suivrait
                             # l'une d'elles se voie.
 
+  HD10700_TC:
+    input:
+      # LA CHAINE COMPLETE: les memes spectres HARPS, mais apres le nettoyage
+      # tellurique de LBL (lbl_telluclean, qui divise la transmission TAPAS
+      # ajustee pose par pose et ecrit dans <science>/<OBJECT>_tc/). pca2d
+      # ajuste donc les RESIDUS de ce nettoyage, ce qui est l'ordre voulu:
+      # correction tellurique, puis ajustement des residus, puis LBL.
+      object_header: [HD10700, tau-Cet, HR509]
+    lbl:
+      teff: 5310
+    target:
+      planets: [20.0, 49.41, 636.13]
+
   HD10700_ESPRESSO:
     input:
       # la MEME etoile que HD10700_HARPS, sur un autre spectrographe: c'est
