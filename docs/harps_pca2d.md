@@ -200,6 +200,58 @@ C'est la même conclusion que `berv-span-decides-the-correction` sous un autre
 angle : la correction se juge sur une cible où le résidu tellurique domine, et
 HD 10700 n'en est pas une.
 
+## POURQUOI L'INCERTITUDE TRIPLE : le masque, pas les pixels
+
+« Ça n'a pas de sens d'avoir des incertitudes qui triplent en cours de route »
+(2026-10-15). C'est juste, et la cause n'est pas celle qu'on croirait.
+
+L'erreur par pose passe de 0,39 à 0,92 m/s, et elle se décompose en deux
+facteurs qui se multiplient :
+
+| | nettoyés | nettoyés + pca2d |
+|---|---|---|
+| raies utilisables | 10926 | **7239** (−33 %) |
+| erreur par raie, médiane | 141 m/s | **244 m/s** (+73 %) |
+| erreur combinée | 0,34 | 0,80 |
+
+**Ce n'est pas le bruit des pixels.** Mesuré sur les mêmes pixels d'une même
+pose : le bruit pixel à pixel ne bouge pas dans le bleu (−0 %), ni dans le
+vert (−0 %), et **baisse de 4 %** dans la bande B. La correction n'abîme donc
+pas les spectres.
+
+**C'est le masque de raies.** Après pca2d, LBL en trouve PLUS mais de moins
+bonne qualité :
+
+| | nettoyés | nettoyés + pca2d |
+|---|---|---|
+| raies du masque | 17162 | **18799** |
+| `line_snr` médian | 8,76 | **6,38** |
+| raies de `line_snr` > 20 | 4766 | **3964** |
+
+Et les raies en trop sont concentrées **dans le bleu**, là où il n'y a presque
+pas de tellurique : +628 entre 380 et 430 nm, +344 entre 430 et 480, contre
++61 seulement entre 530 et 580.
+
+**Le mécanisme, bout à bout.** Le `rms` du gabarit n'est pas une erreur
+photonique mais la dispersion entre bacs de BERV (`lbl_template.py:556`,
+`rms = (p84 − p16) / 2` sur 19 bacs). pca2d rend les poses plus semblables
+entre elles, donc cette dispersion **baisse** : dans le bleu, 0,00296 contre
+0,00315. Or `find_mask_lines` garde un extrêmum quand la dérivée y est
+significative **devant ce rms**. Un seuil plus bas laisse donc passer des
+extrêmums de bruit : 3954 extrêmums dans le bleu du gabarit corrigé contre
+3111 dans celui des spectres nettoyés.
+
+Autrement dit : **pca2d est pénalisé par le fait même de réduire la
+dispersion**, parce que le seuil de sélection des raies est calculé sur cette
+dispersion. Plus la correction marche, plus le masque se remplit de bruit.
+
+**Ce qu'il faudrait.** Que le seuil de `find_mask_lines` ne soit pas lié à une
+quantité que la correction modifie, ou que les deux séries soient mesurées sur
+**le même masque** (celui des spectres non corrigés, ou un masque bâti sur le
+modèle PHOENIX, voir `tools/mask_from_model.py`). C'est la première chose à
+faire avant de rejuger une correction par ses vitesses, et cela vaut pour tous
+les instruments, pas seulement HARPS.
+
 ## Où cela laisse pca2d sur HARPS
 
 **1,80 m/s corrigé contre 1,56 m/s livré**, soit 15 % de plus. Il n'y a donc
