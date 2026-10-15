@@ -69,10 +69,42 @@ def order_bounds(path):
     from .io import robust_open
     from .tfits import extensions_for
 
-    with robust_open(path) as hdulist:
-        # NOT a hardcoded extension name, for the reason given above
-        _, e_wave, _, _ = extensions_for(hdulist)
-        wave = np.asarray(hdulist[e_wave].data, dtype=float)
+    try:
+        with robust_open(path) as hdulist:
+            # NOT a hardcoded extension name, for the reason given above
+            _, e_wave, _, _ = extensions_for(hdulist)
+            wave = np.asarray(hdulist[e_wave].data, dtype=float)
+    except Exception:                                         # noqa: BLE001
+        # UN SPECTRE DU VISIBLE N'A PAS D'EXTENSION D'APERO, et la table ne
+        # connait que SPIRou et NIRPS: elle levait, l'appelant avalait
+        # l'exception, et la parite n'etait JAMAIS choisie. Les deux parites
+        # restaient alors empilees sur la meme page, ce qui met cote a cote
+        # deux jeux d'ordres differents et fait pencher ce qui devrait etre
+        # vertical. Vu le 2026-10-15 sur la fenetre 626-630 nm de HD 10700,
+        # 174 lignes tracees au lieu de 87.
+        #
+        # On passe donc par le pont de LBL, qui sait lire n'importe quel
+        # instrument, exactement comme le cube l'a lu.
+        from astropy.io import fits
+
+        from . import readers as _readers
+        name = str(fits.getheader(path).get("INSTRUME", "")).strip().upper()
+        # LA SOURCE SE MESURE, ELLE NE SE DEVINE PAS. Un instrument a
+        # plusieurs classes de lecture (HARPS: ORIG, ESO, ESSP) et elles ne
+        # lisent pas le meme fichier: l'une veut des polynomes d'en-tete que
+        # ce fichier n'a pas. On essaie donc celles que LBL declare et on
+        # garde la premiere qui rend une grille, ce qui est aussi la seule
+        # facon de le savoir sans la configuration du run.
+        wave = None
+        for source in _readers.KNOWN.get(name, ()):
+            try:
+                wave = np.atleast_2d(np.asarray(
+                    _readers.read(path, name, source)["wave"], dtype=float))
+                break
+            except Exception:                                 # noqa: BLE001
+                continue
+        if wave is None:
+            raise
     wave = np.where(np.isfinite(wave) & (wave > 0), wave, np.nan)
     lo = np.full(wave.shape[0], np.nan)
     hi = np.full(wave.shape[0], np.nan)

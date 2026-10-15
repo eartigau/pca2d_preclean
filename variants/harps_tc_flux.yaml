@@ -1,0 +1,19 @@
+# harps_tc_flux: LES AMPLITUDES MESUREES SUR LE FLUX, pas sur la vitesse.
+#
+# `correct.weight: velocity` reajuste le coefficient de chaque pose sur des
+# poids (dT/dv)^2, la derivee du spectre STELLAIRE: l'idee est qu'un
+# contaminant ne deplace une raie que par son recouvrement avec cette
+# derivee. Mais dans une bande TELLURIQUE l'etoile n'a presque pas de
+# structure, donc ces poids s'effondrent et le coefficient avec eux.
+#
+# Mesure le 2026-10-15, fenetre d'eau 593-595 nm: le modele a la bonne forme
+# (la 1re composante locale correle a 0.73 avec la globale) mais une
+# amplitude 5 fois trop petite (0.0126 contre 0.0614), et pca2d n'y retire
+# que 4.4% de la variance ponderee la ou une SVD locale a deux composantes en
+# retirerait 54%. Le shrink n'y est pour rien: le couper ne change pas les
+# fichiers ecrits (0.01181 contre 0.01179).
+note: "HD 10700 nettoye, 2026-10-15: amplitudes sur le flux, pas sur (dT/dv)^2"
+correct:
+  mask: common
+  mask_share: 0.50
+  weight: flux

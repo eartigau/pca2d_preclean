@@ -1,0 +1,23 @@
+# harps_tc_noshrink: SANS LE RETRECISSEMENT, sur les spectres nettoyes.
+#
+# Observation de l'utilisateur le 2026-10-15, fenetre 593-595 nm (bande
+# d'eau): « il y a des residus evidents qui devraient se manifester dans la
+# composante observateur et ne sortent pas », « ils survivent au PCA 2d ».
+#
+# La mesure lui donne raison, et designe le shrink:
+#   ce que pca2d retire dans 593-595      4.4% de la variance ponderee
+#   ce qu'une SVD locale a 2 comp. ferait  54%
+#   amplitude du modele                   0.0126 contre 0.0614 dans les
+#                                         donnees, soit 5 fois trop petit
+#   forme des composantes                 bonne (la 1re locale correle a
+#                                         0.73 avec la 1re globale)
+#   poids de la fenetre                   1.56e4, PLUS eleve que sur Mg b
+#
+# Les composantes savent quoi faire, leurs coefficients sont trop faibles. Le
+# shrink les annule sur 70% et 64% des colonnes, facteur moyen 0.18 et 0.23:
+# c'est exactement le facteur 5 qui manque.
+note: "HD 10700 nettoye, 2026-10-15: 2 composantes, repere observateur, SANS shrink"
+correct:
+  mask: common
+  mask_share: 0.50
+  shrink: false
