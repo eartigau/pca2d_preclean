@@ -371,11 +371,27 @@ def read(path, instrument_name, data_source, config_file=None,
 
     def key(name, default=None):
         """Un mot-clé par son nom LBL, que chaque classe traduit pour son
-        instrument: KW_BERV est BERV sur APERO et HIERARCH ESO QC BERV sur ESO."""
+        instrument: KW_BERV est BERV sur APERO, HIERARCH ESO QC BERV sur ESO,
+        HIERARCH TNG QC BERV sur HARPS-N et HIERARCH OHP DRS BERV sur SOPHIE.
+
+        UNE ENTREE PEUT ETRE UNE LISTE. ESPRESSO donne quatre mots-clés pour
+        la masse d'air, un par télescope unitaire du VLT, dont un seul est
+        rempli selon l'UT qui a observé: `header[liste]` lèverait. On prend
+        donc le premier qui est là (2026-10-14).
+        """
         try:
-            return header[inst.params[name]]
+            wanted = inst.params[name]
         except Exception:                                       # noqa: BLE001
             return default
+        for candidate in (wanted if isinstance(wanted, (list, tuple))
+                          else [wanted]):
+            try:
+                value = header[candidate]
+            except Exception:                                   # noqa: BLE001
+                continue
+            if value is not None:
+                return value
+        return default
 
     def plain(name, default=None):
         """Un mot-clé par son nom FITS, sans passer par la table de LBL."""
@@ -423,8 +439,7 @@ def read(path, instrument_name, data_source, config_file=None,
     # dict incomplet ne provoque pas une lecture degradee mais un KeyError au
     # milieu d'une campagne. Ce que l'en-tete ne porte pas vaut NaN, qui est
     # la reponse honnete, et jamais une valeur inventee.
-    bjd = number(key("KW_BJD"), plain("HIERARCH ESO QC BJD"),
-                 plain("HIERARCH ESO DRS BJD"))
+    bjd = number(key("KW_BJD"), key("KW_MJDATE"))
     if np.isfinite(bjd) and bjd < 1.0e6:
         # un en-tete qui ne donne qu'un MJD: le BJD est a 2400000.5 pres, et
         # l'ecart barycentrique (au plus 8 minutes) n'a pas de sens ici
@@ -434,8 +449,7 @@ def read(path, instrument_name, data_source, config_file=None,
     # (zero sur un S2D deja barycentrique), soit celui de l'observateur, et
     # alors on DEFAIT la correction barycentrique de la grille et on rend le
     # BERV de l'en-tete, qui redevient a appliquer.
-    header_berv = number(key("KW_BERV"),
-                         plain("HIERARCH ESO QC BERV"), plain("BERV"))
+    header_berv = number(key("KW_BERV"))
     berv = berv_of(inst, header, header_berv)
     if to_observer:
         if not np.isfinite(header_berv):
@@ -451,21 +465,32 @@ def read(path, instrument_name, data_source, config_file=None,
             # lambda_observateur = lambda_bary / doppler(BERV), relativiste
             wave = wave / _doppler(header_berv)
             berv = float(header_berv)
-    air_start = number(plain("HIERARCH ESO TEL AIRM START"), airmass)
-    air_end = number(plain("HIERARCH ESO TEL AIRM END"), airmass)
+    # le debut et la fin de pose n'ont pas de nom chez LBL: on les cherche
+    # sous les graphies connues, et a defaut la masse d'air qu'il donne
+    air_start = number(plain("HIERARCH ESO TEL AIRM START"),
+                       plain("HIERARCH TNG TEL AIRM START"),
+                       plain("HIERARCH OHP TEL AIRM START"),
+                       plain("AIRMASS"), airmass)
+    air_end = number(plain("HIERARCH ESO TEL AIRM END"),
+                     plain("HIERARCH TNG TEL AIRM END"),
+                     plain("HIERARCH OHP TEL AIRM END"),
+                     plain("AIRMASS"), airmass)
     meta = {
         "filename": os.path.basename(path),
         "bjd": float(bjd),
         "mjdmid": float(mjd),
         "mjdate": float(mjd),
         "berv": berv,
-        "bervmax": float(number(plain("HIERARCH ESO QC BERVMAX"))),
+        "bervmax": float(number(key("KW_BERVMAX"),
+                                plain("HIERARCH ESO QC BERVMAX"))),
         "exptime": float(number(plain("EXPTIME"), key("KW_EXPTIME"))),
         "airmass_start": float(air_start),
         "airmass_end": float(air_end),
         "airmass": float(airmass if airmass is not None else np.nan),
-        "seeing": float(number(plain("HIERARCH ESO TEL AMBI FWHM START"))),
-        "humidity": float(number(plain("HIERARCH ESO TEL AMBI RHUM"))),
+        "seeing": float(number(plain("HIERARCH ESO TEL AMBI FWHM START"),
+                               plain("HIERARCH TNG METEO FWHM"))),
+        "humidity": float(number(plain("HIERARCH ESO TEL AMBI RHUM"),
+                                 plain("HIERARCH TNG METEO HUMIDITY"))),
         "sun_elevation": float("nan"),
         "drs_mode": str(plain("HIERARCH ESO INS MODE", "") or "").strip(),
         "dprtype": str(key("KW_DPRTYPE", "") or "").strip(),

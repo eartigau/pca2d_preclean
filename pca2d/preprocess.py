@@ -144,9 +144,32 @@ def register(wave_obs, values, good, berv, target_berv, grid,
     """
     shift = float(doppler(berv) / doppler(target_berv))
     wave_shifted = wave_obs * shift
+    values = np.asarray(values, dtype=np.float64)
+    good = np.asarray(good)
+
+    # LE SPLINE EXIGE DES ABSCISSES CROISSANTES, et une solution en longueur
+    # d'onde ne l'est pas toujours. Mesure le 2026-10-14: 5 des 60 poses
+    # ESPRESSO de tau Ceti ont, au bord bleu de leur ordre le plus bleu, 177
+    # pixels dont la longueur d'onde RECULE avant de repartir, et scipy
+    # s'arretait sur « x must be increasing ». Les trier remet ces pixels a
+    # la longueur d'onde que leur solution leur donne, ce qui est la seule
+    # lecture honnete de ce qu'elle dit; order_quality les a deja retires du
+    # masque, donc ils ne pesent sur rien, mais le spline a quand meme besoin
+    # d'une abscisse ordonnee pour exister. Un tri est sans effet quand
+    # l'ordre est deja croissant, ce qui est le cas partout ailleurs.
+    if not np.all(np.diff(wave_shifted) > 0):
+        order = np.argsort(wave_shifted, kind="stable")
+        wave_shifted, values, good = (wave_shifted[order], values[order],
+                                      good[order])
+        # deux pixels a la MEME longueur d'onde restent interdits: on ne garde
+        # que le premier de chaque groupe, l'autre ne mesure rien de nouveau
+        keep = np.ones(wave_shifted.size, dtype=bool)
+        keep[1:] = np.diff(wave_shifted) > 0
+        wave_shifted, values, good = (wave_shifted[keep], values[keep],
+                                      good[keep])
 
     spline = InterpolatedUnivariateSpline(
-        wave_shifted, np.asarray(values, dtype=np.float64), k=spline_order, ext=1
+        wave_shifted, values, k=spline_order, ext=1
     )
     out = spline(grid)
 

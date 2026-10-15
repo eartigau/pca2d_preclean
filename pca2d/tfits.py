@@ -263,6 +263,27 @@ def order_quality(payload: dict, config: dict):
             ratio = np.abs(sky) / np.where(flux > 0, flux, np.nan)
         good &= ~(np.isfinite(ratio) & (ratio > float(max_sky)))
 
+    # UNE SOLUTION EN LONGUEUR D'ONDE QUI RECULE N'EST PAS UNE SOLUTION. Le
+    # reechantillonnage est un spline, qui exige des abscisses croissantes, et
+    # scipy s'arrete sur « x must be increasing ». Mesure le 2026-10-14: 5 des
+    # 60 poses ESPRESSO de tau Ceti ont, au bord bleu de leur ordre le plus
+    # bleu, 177 pixels dont la longueur d'onde DECROIT avant de repartir. Ce
+    # n'est pas une oscillation numerique (le recul vaut 0.00026 nm contre un
+    # pas median de 0.00062) mais un bout de solution qui ne tient pas. On
+    # rejette ces pixels, comme on rejette un flux negatif, plutot que
+    # d'arreter la campagne ou de les reordonner en silence.
+    rising = np.ones_like(good)
+    forward = np.diff(wave, axis=1) > 0
+    rising[:, 1:] &= forward
+    rising[:, :-1] &= forward
+    if not rising.all():
+        lost = int((good & ~rising).sum())
+        if lost:
+            log("%d samples sit where the wavelength solution runs backwards"
+                " and are dropped: a spline cannot resample them" % lost,
+                "warn")
+    good &= rising
+
     if blaze_frac > 0:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
@@ -329,12 +350,22 @@ def _order_sigma(flux, recon, good, snr_order):
     return shape
 
 
-def _overlap_blaze(w_shift, blaze_order, ok, grid, start, stop):
-    """Le blaze median de cet ordre sur la zone [start, stop] de la grille.
+def _overlap_blaze(w_shift, blaze_order, ok, grid, start, stop,
+                   flux_order=None):
+    """Ce que cet ordre porte comme signal sur la zone [start, stop].
 
     Sert a arbitrer un recouvrement entre deux ordres de meme parite: celui
-    dont le blaze est le plus haut y porte le plus de signal, l'autre y est sur
-    son bord et son flux y est bruite.
+    qui porte le plus de signal y est au milieu de son ordre, l'autre y est
+    sur son bord et son flux y est bruite. Le perdant est mis a NaN.
+
+    LE BLAZE D'ABORD, LE FLUX QUAND IL NE DIT RIEN. Sur un t.fits d'APERO le
+    blaze decrit la reponse de l'ordre et repond seul. Sur un S2D de l'ESO il
+    vaut UN partout, parce que la classe de LBL ne deblaze pas: il ne
+    departage alors rien, et c'est le flux median qui le fait. Mesure le
+    2026-10-14 sur un S2D d'ESPRESSO, zone commune aux ordres 0 et 2: 16036
+    contre 11749, soit le bord rouge de l'ordre 0 contre le bord bleu de
+    l'ordre 2, et le premier gagne. Comparer des flux ne vaut qu'entre deux
+    ordres de la MEME pose au MEME endroit, ce qui est exactement le cas ici.
     """
     if stop < start:
         return None
@@ -343,6 +374,12 @@ def _overlap_blaze(w_shift, blaze_order, ok, grid, start, stop):
     if not inside.any():
         return None
     values = np.asarray(blaze_order, dtype=float)[inside]
+    values = values[np.isfinite(values)]
+    if values.size and not np.allclose(values, values[0]):
+        return float(np.median(values))
+    if flux_order is None:
+        return float(np.median(values)) if values.size else None
+    values = np.asarray(flux_order, dtype=float)[inside]
     values = values[np.isfinite(values)]
     return float(np.median(values)) if values.size else None
 
@@ -382,9 +419,10 @@ def resample_exposure(payload: dict, grid: np.ndarray, config: dict):
 
     shift = float(doppler(berv) / doppler(target))
     last_stop = {0: -1, 1: -1}
-    #: le blaze median de chaque parite sur sa derniere zone posee, pour
-    #: arbitrer un recouvrement en faveur du meilleur signal
-    last_blaze = {0: None, 1: None}
+    #: le dernier ordre pose de chaque parite, garde pour lui redemander ce
+    #: qu'il porte sur la zone que le suivant va recouvrir: (longueurs d'onde
+    #: decalees, masque, numero d'ordre)
+    last_order = {0: None, 1: None}
     n_written = 0
 
     edge = int(reg.get("edge_pixels", 1))
@@ -418,9 +456,19 @@ def resample_exposure(payload: dict, grid: np.ndarray, config: dict):
             # Cette branche ne se declenche donc pas sur SPIRou ni sur HARPS
             # (recouvrement nul); elle est la pour les geometries a venir.
             overlap_hi = min(stop - 1, last_stop[parity])
+            # LES DEUX MESURES SUR LA MEME ZONE, celle du recouvrement. Un
+            # ordre moyenne sur toute sa largeur contre un autre pris sur son
+            # bord ne se comparent pas: le premier gagnerait toujours. On
+            # redemande donc au precedent ce qu'il porte ICI, avec ses
+            # longueurs d'onde et son masque a lui (2026-10-14).
             here = _overlap_blaze(w_shift, blaze[order], ok, grid,
-                                  start, overlap_hi)
-            before = last_blaze.get(parity)
+                                  start, overlap_hi, flux[order])
+            before = None
+            previous = last_order.get(parity)
+            if previous is not None:
+                p_shift, p_ok, p_order = previous
+                before = _overlap_blaze(p_shift, blaze[p_order], p_ok, grid,
+                                        start, overlap_hi, flux[p_order])
             if before is not None and here is not None and here < before:
                 # l'ordre deja pose est le meilleur: celui-ci cede la zone
                 start = last_stop[parity] + 1
@@ -435,8 +483,9 @@ def resample_exposure(payload: dict, grid: np.ndarray, config: dict):
                 " echantillons: on garde le blaze le plus haut"
                 % (grid[start], overlap_hi - start + 1), "warn")
         last_stop[parity] = stop - 1
-        last_blaze[parity] = _overlap_blaze(w_shift, blaze[order], ok, grid,
-                                            start, stop - 1)
+        # de quoi redemander a cet ordre ce qu'il porte sur une zone qu'on ne
+        # connait pas encore, celle de son recouvrement avec le suivant
+        last_order[parity] = (w_shift, ok, order)
         segment = grid[start:stop]
 
         # blaze out before splining: the raw extracted flux swings by a factor
