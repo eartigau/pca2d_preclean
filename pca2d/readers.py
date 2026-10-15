@@ -444,11 +444,32 @@ def read(path, instrument_name, data_source, config_file=None,
         # un en-tete qui ne donne qu'un MJD: le BJD est a 2400000.5 pres, et
         # l'ecart barycentrique (au plus 8 minutes) n'a pas de sens ici
         bjd += 2400000.5
-    # LE REPERE DANS LEQUEL ON REND LE SPECTRE. Voir `to_observer` plus bas:
-    # soit celui du fichier, et alors le BERV est celui que LBL applique
-    # (zero sur un S2D deja barycentrique), soit celui de l'observateur, et
-    # alors on DEFAIT la correction barycentrique de la grille et on rend le
-    # BERV de l'en-tete, qui redevient a appliquer.
+    # LE REPERE DANS LEQUEL ON REND LE SPECTRE.
+    #
+    # LA REGLE EST CELLE DE LBL, ET ELLE EST UNIFORME. Chaque classe de LBL
+    # repond a une seule question par son get_berv: « que reste-t-il a
+    # appliquer pour atteindre le repere de l'etoile ». Un t.fits de SPIRou
+    # est dans le repere de l'observateur et la reponse est le BERV de
+    # l'en-tete; un S2D de l'ESO porte une grille deja barycentrique et la
+    # reponse est zero. LBL ne traite pas ces deux cas differemment ensuite:
+    # il appelle get_berv une fois (science/general.py, « instrument specific
+    # berv --> use instrument method ») et tout le reste est commun.
+    #
+    # pca2d donne a meta["berv"] EXACTEMENT ce sens-la, parce que c'est deja
+    # celui qu'il lui donnait: twoframe decale le repere de l'etoile de
+    # -pixel_shift(meta["berv"]). Passer par get_berv plutot que par l'en-tete
+    # n'ajoute donc aucune regle, il en retire une: pca2d n'a plus a savoir
+    # quel instrument livre quel repere, LBL le sait pour lui.
+    #
+    # CE QUE `to_observer` CHANGE, ET CE QU'IL NE CHANGE PAS. Verifie le
+    # 2026-10-15 au pixel: avec ou sans, la raie stellaire tombe a la MEME
+    # longueur d'onde (380.455648 nm sur la premiere pose de tau Ceti), donc
+    # le repere de l'ETOILE est le meme et la physique est inchangee. Ce qui
+    # change est le repere de l'OBSERVATEUR: sans l'option il est la grille
+    # barycentrique, la meme pour toutes les poses, et le bloc observateur du
+    # modele n'a alors rien a quoi s'accrocher; avec, il est le repere reel du
+    # telescope, et les deux blocs redeviennent distinguables. C'est une
+    # option de l'AJUSTEMENT, pas de la lecture.
     header_berv = number(key("KW_BERV"))
     berv = berv_of(inst, header, header_berv)
     if to_observer:

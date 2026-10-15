@@ -6,12 +6,31 @@ d'aller jusqu'à une séquence LBL complète sur des données HARPS, avec et san
 correction. Les deux sont faits. Ce document dit comment, et surtout ce que la
 mesure a répondu, qui n'est pas ce qu'on espérait.
 
+## Où en est chaque instrument, au 2026-10-15
+
+| instrument | lecture | cube | ajustement | correction | LBL |
+|---|---|---|---|---|---|
+| SPIRou, NIRPS | native (t.fits) | oui | oui | oui | oui |
+| **HARPS** | pont LBL | oui | oui | oui | **oui, de bout en bout** |
+| **ESPRESSO** | pont LBL | oui | oui | oui | oui |
+| HARPS-N | pont LBL | *pas de données* | | | |
+| SOPHIE | pont LBL | *pas de données* | | | |
+
+Les 23 combinaisons instrument/source de `readers.KNOWN` s'instancient toutes.
+HARPS-N et SOPHIE ne sont pas en échec : DACE sert leur série de vitesses mais
+aucun spectre 2D téléchargeable (sondé le 2026-10-15 sur `s1d`, `e2ds` et
+`all` pour HD 185144, 1382 poses SOPHIE : rien ne descend). Leur bloc de
+configuration est écrit, leur classe LBL se charge, et il ne manque que des
+fichiers.
+
 ## Résumé en trois lignes
 
-1. **Le pont fonctionne.** pca2d lit un S2D de l'ESO par la classe de lecture
-   de LBL, et LBL rend sur ces spectres **11,17 m/s de rms avec une erreur
-   médiane de 11,04 et un chi2 réduit de 1,07** : un résultat de manuel pour
-   tau Ceti sur HARPS.
+1. **Le pont fonctionne mécaniquement.** pca2d lit un S2D de l'ESO par la
+   classe de lecture de LBL, en sort un cube, un ajustement, des spectres
+   corrigés qui restent des S2D valides, et LBL les lit. Mais les vitesses
+   qu'il en tire, **11,17 m/s contre 1,48 pour le DRS officiel sur les mêmes
+   poses**, disent qu'il reste un facteur 7,7 à comprendre en amont : voir la
+   réserve plus bas, qui conditionne tout le reste.
 2. **La correction, en l'état, dégrade :** 11,17 → 51,6 m/s. Ce n'est ni un
    réglage, ni un bogue.
 3. **La raison est structurelle et était prévue.** Sur HARPS la grille est
@@ -128,6 +147,42 @@ c'est LBL qui le saura.
 **La vérification, par LBL lui-même :** la pente de `vrad` contre le BERV
 d'en-tête vaut **+0,00002 km/s par km/s** (corrélation 0,018) sur 52 km/s
 d'étendue, avec 11,17 m/s de résidu. La grille est bien déjà barycentrique.
+
+## LA RÉSERVE QUI DOMINE TOUT : nos vitesses sont bien plus bruitées que le DRS
+
+À mettre avant toute lecture des tableaux ci-dessous. Sur **les mêmes 72 poses**
+de tau Ceti, comparé aux vitesses nominales que DACE publie :
+
+| série | rms | erreur médiane |
+|---|---|---|
+| **DACE, DRS officiel (HARPS)** | **1,48 m/s** | 0,34 |
+| notre LBL, spectres livrés | 11,33 m/s | 11,07 |
+| notre LBL, 0-7 repère observateur sans shrink | 12,84 m/s | 1,50 |
+
+Et sur ESPRESSO, même étoile : DACE **0,93 m/s** contre notre LBL **85,07 m/s**
+(erreur 5,63, chi2 réduit 228).
+
+Notre chaîne est donc **7,7 fois plus bruitée que le DRS sur HARPS** et bien
+davantage sur ESPRESSO. Ce que la mesure dit de l'origine :
+
+- les erreurs par pose égalent la dispersion (11,07 contre 11,33), donc LBL
+  croit son propre modèle de bruit et ne se trompe pas sur lui-même ;
+- l'erreur **par raie** vaut 3517 m/s de médiane, là où l'ordre de grandeur
+  photonique d'une raie HARPS à SNR 88 donne 33 à 83 m/s ;
+- la dispersion **réelle** d'une raie d'une pose à l'autre vaut 886 m/s, donc
+  l'erreur annoncée est 4,3 fois pessimiste, mais la dispersion de 886 m/s est
+  elle-même réelle et suffit à expliquer nos 11 m/s (886/sqrt(10355) = 8,7) ;
+- les données ne sont pas en cause : flux/erreur de 172 par pixel, SNR 326
+  annoncé par l'en-tête, `ERRDATA` à 1,47 fois sqrt(flux), et le S2D est bien
+  déblazé comme la classe de LBL le suppose (bord/centre 0,981) ;
+- le gabarit n'est pas en cause : 96,7 % de points finis, raies à 0,8 du
+  continu, 195 fois son propre rms.
+
+**Donc le facteur 7,7 reste inexpliqué, et il est en amont de pca2d :** il est
+déjà là sur les spectres livrés, que pca2d n'a pas touchés. Tant qu'il n'est
+pas compris, les tableaux ci-dessous comparent des corrections entre elles sur
+une base trop bruitée, et aucun d'eux ne dit ce que pca2d ferait sur une série
+au niveau du DRS. C'est le premier travail à reprendre.
 
 ## Ce que LBL mesure, avant et après
 
