@@ -64,3 +64,30 @@ pas, leur grille étant dans le repère de l'observateur.
 
 C'est en amont de pca2d : la correction tellurique de LBL est touchée pour
 elle-même, que pca2d tourne ensuite ou non.
+
+## Vérification par le graphique
+
+`/Users/eartigau/tmp/diagnostic_harps/abso_check.pdf` trace, pour quatre
+fenêtres, le spectre brut, le spectre nettoyé, et le modèle TAPAS des deux
+façons : évalué dans le repère du sol (`lambda / D(BERV)`) et sur la grille
+barycentrique, c'est-à-dire ce que LBL fait aujourd'hui.
+
+Accord entre le modèle et le spectre, par fenêtre :
+
+| fenêtre | repère du sol | grille barycentrique | part tellurique du signal |
+|---|---|---|---|
+| **O2 bande B** (686-690) | **0,973** | **−0,035** | 1,12 |
+| O2 gamma (626-630) | 0,282 | −0,001 | 0,55 |
+| eau (593-595) | 0,183 | 0,035 | 0,26 |
+| eau (646-652) | 0,087 | −0,008 | 0,15 |
+
+Dans la bande B, l'accord passe de **−0,035**, c'est-à-dire aucune corrélation,
+à **0,973**. Le modèle était simplement ailleurs.
+
+Les accords faibles des trois autres fenêtres ne cachent pas un second
+problème : ils suivent la **part tellurique du signal**, donnée dans la
+dernière colonne comme le rapport entre la profondeur du modèle et celle du
+spectre. Là où les telluriques ne font que 15 % de la structure (eau à
+649 nm), les raies stellaires dominent la corrélation et la noient. L'ordre
+des quatre valeurs est le même dans les deux colonnes, ce qui est le
+comportement attendu.
