@@ -95,29 +95,51 @@ Deux conclusions. D'abord **le blocage disparaît** : 2 poses sur 40 au lieu de
 librement il vaut 0,971 fois la masse d'air, et le fixer ne coûte rien du tout
 (+0,0 % de dispersion). C'est bien la physique, pas un pis-aller.
 
-## Le résultat
+## Le résultat, sur les 100 poses
 
-Dispersion du gradient dans 593-595 nm, la fenêtre où les résidus se voient,
-40 poses :
+Dispersion du gradient dans 593-595 nm, la fenêtre où les résidus se voient :
 
-| | dispersion | gain |
+| | dispersion | |
 |---|---|---|
-| brut | 364,7 | |
-| LBL | 349,5 | −4,1 % |
-| **méthode complète** | **325,1** | **−10,8 %** |
+| brut | 344,8 | |
+| **LBL** | 359,6 | **+4,3 %**, il DÉGRADE |
+| **méthode par la dérivée** | **304,1** | **−11,8 %** |
 
-**2,6 fois mieux que LBL.** La méthode est implémentée dans
-`tools/tellu_deriv.py` :
+## Ce qu'il a fallu pour que les bornes ne soient jamais atteintes
 
-- `water_exponent` : l'exposant H2O d'un fichier, Nelder-Mead sur la
-  dispersion pondérée du gradient, modèle convolué, sec fixé à la masse
-  d'air, vitesse non libre ;
-- `water_mask` et `WATER_BANDS_HARPS` : les trois bandes d'eau du domaine
-  HARPS (586-600, 644-664, 686-696 nm), mesurées sur TAPAS, où l'exposant
-  s'ajuste. Hors de ces bandes l'eau ne dépasse pas 1 % de profondeur et
-  l'ajustement se faisait noyer par les raies stellaires ;
-- `objective`, `transmission_weights`, `weighted_nanstd` : le critère de
-  `telluric_fit`, repris tel quel.
+« Il y a toujours de l'eau », « les bornes ne doivent pas être atteintes »,
+« basé sur des dizaines de milliers de spectres IR » (2026-10-15). C'est le
+critère qui a guidé le réglage, et trois choses ont été nécessaires :
 
-Reste à brancher dans `lbl_telluclean`, en remplacement de son extrapolation
-polynomiale.
+1. **La formulation du code qui marche** : la profondeur optique
+   `tau = -ln(T)` sur une grille log uniforme, puis exponentiation, et la
+   convolution à la résolution de l'instrument APRÈS la puissance. Une
+   première version qui interpolait des transmissions déjà exponentiées sur
+   la grille irrégulière du spectre tapait la borne sur 35 % des poses.
+2. **L'ajustement en logarithme** de l'exposant : `alpha` reste strictement
+   positif quoi que fasse le simplexe, et une variation relative compte
+   autant en haut qu'en bas de la gamme. En linéaire, une pose tombait
+   exactement à zéro.
+3. **Un garde-fou sur les poses sans signal.** Il reste 9 poses sur 100 dont
+   l'exposant s'effondre, et ce sont celles dont le SNR est faible : leur
+   courbe de coût est **plate** (17,76 à 17,94 entre alpha 0,005 et 0,8, soit
+   1 % de variation, là où une pose qui marche montre un minimum net). Le
+   critère n'a pas de quoi trancher, donc les forcer inventerait une valeur :
+   elles reçoivent la **médiane de la campagne**.
+
+Après quoi l'exposant d'eau va de **0,091 à 1,097**, et **aucune pose n'est
+sur une borne**.
+
+Le réglage retenu :
+
+| | |
+|---|---|
+| H2O | libre par fichier, ajusté en ln, sur les trois bandes d'eau |
+| sec | **fixé à la masse d'air** : libre, il vaut 0,961 fois la masse d'air et ouvre un second mode d'échec (0,19 pour une masse d'air de 1,2) |
+| vitesse | non libre, modèle dans le repère du sol |
+| poses sans signal | médiane de la campagne, seuil à 0,05 |
+
+`tools/tellu_deriv.py` porte l'implémentation : `fit_exponents` pour une
+pose, `fit_campaign` pour une campagne avec le garde-fou, `model_grid` et
+`transmission` pour le modèle, `objective` et `weighted_nanstd` pour le
+critère de `telluric_fit` repris tel quel.
