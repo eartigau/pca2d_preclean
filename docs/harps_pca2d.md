@@ -309,6 +309,54 @@ sont le bon nombre, et que le problème est ailleurs.
 2. **Ajuster par région** plutôt qu'une base unique sur 380-692 nm, pour que
    les composantes de la bande ne soient pas imposées par le vert.
 
+## LE NETTOYAGE TELLURIQUE NE NETTOYAIT RIEN : l'exposant restait au plancher
+
+« Le ln(f/savgol f) va de 0,6 à −0,6, ce qui sous-entend des résidus de
+correction de plus de 50 %. On n'a pas ça post-correction dans le LBL »
+(2026-10-15). L'objection était la bonne, et elle a trouvé un vrai bogue.
+
+Deux choses à dire, et la première d'abord : **tout ce que j'appelais
+« spectres livrés » était AVANT toute correction tellurique.** Les S2D bruts
+de l'archive ESO, avec `RUN_LBL_TELLUCLEAN=False` dans tous les runs.
+
+Et quand le nettoyage a enfin été lancé, il ne nettoyait presque rien :
+rapport médian nettoyé/original de **1,0015**, et des raies encore à 1,6 % de
+transmission après correction. La cause, dans le journal :
+
+```
+water expo=0.0100, dry expo=0.0500, airmass=1.0760
+```
+
+**Les exposants restaient collés à leurs bornes inférieures** (0,0500 pour la
+composante sèche, 0,0100 pour l'eau) : 64 % des 100 poses pour le sec, 59 %
+pour l'eau. Pour une masse d'air de 1,08, l'exposant sec devrait valoir ~1,1.
+
+`lbl_telluclean` extrapole cet exposant d'un polynôme ajusté sur les premières
+itérations (`tellu_clean.py:555-578`), et cette extrapolation s'effondre sur la
+borne. Le paramètre `TELLUCLEAN_FORCE_AIRMASS`, à `False` par défaut, force au
+contraire l'exposant sec à la masse d'air. **C'est la physique** : O2 et CO2
+sont bien mélangés, leur colonne suit la masse d'air par construction.
+
+Avec `TELLUCLEAN_FORCE_AIRMASS: true`, l'exposant sec vaut 1,03 à 1,07 au lieu
+de 0,05, et le nettoyage divise jusqu'à **×2,67** au lieu de ×1,96.
+
+| bande B de l'oxygène, 25 poses | profondeur moyenne | variation entre poses |
+|---|---|---|
+| S2D bruts | 0,502 | 0,0509 |
+| nettoyés, exposant au plancher | 0,400 | 0,0539 |
+| **nettoyés, exposant forcé** | **0,307** | **0,0898** |
+
+**Le correctif retire bien 39 % de la tellurique**, mais il **augmente** la
+variation d'une pose à l'autre, parce que diviser par une transmission faible
+amplifie le bruit : mesuré sur une pose, le bruit pixel à pixel **double**
+(×2,0) même là où la transmission vaut 0,5 à 1,0.
+
+Et les vitesses ne bougent pas : **1,56 m/s sans nettoyage, 1,57 avec**.
+
+Ce correctif vaut bien au-delà de pca2d : il concerne toute mesure LBL sur un
+instrument du visible où la composante sèche domine. À vérifier sur SPIRou et
+NIRPS, où le même défaut d'extrapolation existe.
+
 ## Où cela laisse pca2d sur HARPS
 
 **1,80 m/s corrigé contre 1,56 m/s livré**, soit 15 % de plus. Il n'y a donc
