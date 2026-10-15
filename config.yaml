@@ -684,6 +684,23 @@ instruments:
                             # ce que l'ajustement y gagne en levier ne
                             # compense pas. Laisse a false.
                             #
+                            # CE QUI COUTE, mesure: dans le repere du sol
+                            # chaque pose couvre un intervalle decale de son
+                            # BERV, et `correct.mask: common` ne garde que
+                            # l'intersection de toutes. Resultat: 43% de
+                            # pixels a NaN contre 21.7% sans l'option. C'est
+                            # le prix direct du changement de repere, et il
+                            # depasse ce que le levier rapporte.
+                            #
+                            # A REPRENDRE, parce que la logique est la bonne:
+                            # l'ajustement doit travailler dans le repere de
+                            # l'observateur et celui de l'etoile, comme sur
+                            # SPIRou et NIRPS, et seule la grille de depart
+                            # differe. Ce qui manque est un masque commun qui
+                            # n'exige pas l'accord de TOUTES les poses (une
+                            # fraction suffirait), ou un masque ancre dans le
+                            # repere de l'etoile.
+                            #
                             # ANCIENNE NOTE, fausse, gardee pour memoire:
                             # par raie 2.8 fois trop petites sur les spectres
                             # corriges (1249 contre 3517 m/s), alors que les
