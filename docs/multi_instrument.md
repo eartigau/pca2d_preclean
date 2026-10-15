@@ -195,31 +195,44 @@ lui-même, qui est l'autorité ici : la pente de ses vitesses contre le BERV
 d'en-tête vaut +0,00002 km/s par km/s sur 52 km/s d'étendue, donc l'étoile est
 bel et bien au repos dans cette grille.)
 
-**Où il est, autant que la mesure le dise : dans le MASQUE de raies que LBL
-construit.** Sur les mêmes poses à SNR 247, DACE annonce 0,34 m/s d'erreur et
-nous 11,07, soit un facteur **32** sur la barre d'erreur, ce qui n'est pas une
-différence de méthode puisque le LBL fait normalement mieux que la CCF. Le
-masque (25071 raies, 400-691 nm) dit pourquoi :
+**Où il est : dans la colonne `rms` du gabarit, et donc dans le `line_snr` des
+raies.** Deux fausses pistes d'abord, parce qu'elles valent d'être écartées :
 
-- sa profondeur médiane vaut **-0,0006**, et 45 % seulement de ses raies ont
-  une profondeur positive ;
-- son `line_snr` médian vaut **1,46**, et 32 % seulement de ses raies passent 5 ;
-- aux positions de ses raies, la profondeur du **gabarit** vaut -0,269 de
-  médiane, et la corrélation entre les deux profondeurs est **négative**
-  (-0,272).
+- *le masque ne serait pas aux bons endroits.* Non : un masque LBL contient
+  **à la fois des features positifs et négatifs**, parce que `find_mask_lines`
+  garde tous les points où la dérivée change de signe, donc les **maxima et
+  les minima** (`general.py:3270`), et le code gère les deux signes. Une
+  profondeur médiane de -0,0006 avec 45 % de positives est la définition même
+  du masque `full` (14081 `pos` + 10990 `neg` = 25071), pas un défaut. Le
+  masque est de plus correctement pondéré : 63 % du poids total vient des
+  raies de `line_snr` supérieur à 5.
+- *le `line_snr` de 1,46 viendrait du pas d'échantillonnage.* Non : un gabarit
+  bâti sur le modèle PHOENIX donne `line_snr` ≈ 15 à 0,25, 0,50 et 1,00 km/s
+  de pas (15,4 / 15,2 / 14,1). Le chiffre est stable, donc la différence avec
+  1,46 est réelle.
 
-Autrement dit, les raies du masque ne tombent pas sur les creux du gabarit,
-alors que le gabarit lui-même est bon (96,7 % de points finis, raies à 0,8 du
-continu, 195 fois son propre rms). Avec 886 m/s par raie et 8060 raies de
-`line_snr` supérieur à 5, l'erreur combinée tombe à 9,9 m/s : exactement ce
-que nous mesurons.
+**Ce qui reste, et qui boucle le compte.** `line_snr = |depth × flux / rms|`,
+et la colonne `rms` du gabarit mesuré vaut **0,00411** alors que le bruit réel
+du gabarit, mesuré comme la dispersion de `flux` autour de `flux_savgol_d0`,
+vaut **0,00081**. Un facteur **5,1**, à comparer au sqrt(100) = 10 qu'on
+attendrait d'un gabarit bâti sur 100 poses : `rms` est égal à `eflux` au
+centième près, c'est-à-dire l'erreur propagée d'**une** pose, et non celle de
+leur moyenne.
+
+Avec le bruit réel, `line_snr` passerait de 1,46 à 7,4 et l'erreur par pose de
+11,07 à **2,2 m/s**, soit le niveau du DRS (1,48). Le compte est bouclé.
+
+**Ce qu'il faut en faire, et ce que l'utilisateur a indiqué le 2026-10-15 :**
+prendre les **positions** des raies dans le modèle PHOENIX de Göttingen, qui
+est sans bruit et en donne 30835 contre 51113 extrema dans le gabarit mesuré
+(donc 20000 de trop, qui sont du bruit pris pour des raies), mais **garder le
+gabarit mesuré comme référence de vitesse**, parce que les profils du modèle
+« n'ont pas exactement les bonnes formes ». Le script
+`scratchpad/mask_from_model.py` fait exactement cela et reste à brancher dans
+la chaîne.
 
 **C'est en amont de pca2d**, qui ne touche ni au gabarit ni au masque : le
-facteur est déjà là sur les spectres livrés. C'est le premier point à
-reprendre, du côté de la construction du masque pour une naine G par LBL. Tant qu'il n'est
-pas compris, les tableaux ci-dessous comparent des corrections entre elles sur
-une base trop bruitée, et aucun d'eux ne dit ce que pca2d ferait sur une série
-au niveau du DRS. C'est le premier travail à reprendre.
+facteur est déjà là sur les spectres livrés.
 
 ## Ce que LBL mesure, avant et après
 
