@@ -195,8 +195,28 @@ lui-même, qui est l'autorité ici : la pente de ses vitesses contre le BERV
 d'en-tête vaut +0,00002 km/s par km/s sur 52 km/s d'étendue, donc l'étoile est
 bel et bien au repos dans cette grille.)
 
-**Donc le facteur 7,7 reste inexpliqué, et il est en amont de pca2d :** il est
-déjà là sur les spectres livrés, que pca2d n'a pas touchés. Tant qu'il n'est
+**Où il est, autant que la mesure le dise : dans le MASQUE de raies que LBL
+construit.** Sur les mêmes poses à SNR 247, DACE annonce 0,34 m/s d'erreur et
+nous 11,07, soit un facteur **32** sur la barre d'erreur, ce qui n'est pas une
+différence de méthode puisque le LBL fait normalement mieux que la CCF. Le
+masque (25071 raies, 400-691 nm) dit pourquoi :
+
+- sa profondeur médiane vaut **-0,0006**, et 45 % seulement de ses raies ont
+  une profondeur positive ;
+- son `line_snr` médian vaut **1,46**, et 32 % seulement de ses raies passent 5 ;
+- aux positions de ses raies, la profondeur du **gabarit** vaut -0,269 de
+  médiane, et la corrélation entre les deux profondeurs est **négative**
+  (-0,272).
+
+Autrement dit, les raies du masque ne tombent pas sur les creux du gabarit,
+alors que le gabarit lui-même est bon (96,7 % de points finis, raies à 0,8 du
+continu, 195 fois son propre rms). Avec 886 m/s par raie et 8060 raies de
+`line_snr` supérieur à 5, l'erreur combinée tombe à 9,9 m/s : exactement ce
+que nous mesurons.
+
+**C'est en amont de pca2d**, qui ne touche ni au gabarit ni au masque : le
+facteur est déjà là sur les spectres livrés. C'est le premier point à
+reprendre, du côté de la construction du masque pour une naine G par LBL. Tant qu'il n'est
 pas compris, les tableaux ci-dessous comparent des corrections entre elles sur
 une base trop bruitée, et aucun d'eux ne dit ce que pca2d ferait sur une série
 au niveau du DRS. C'est le premier travail à reprendre.
