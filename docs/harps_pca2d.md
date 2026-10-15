@@ -357,6 +357,26 @@ Ce correctif vaut bien au-delà de pca2d : il concerne toute mesure LBL sur un
 instrument du visible où la composante sèche domine. À vérifier sur SPIRou et
 NIRPS, où le même défaut d'extrapolation existe.
 
+## LE TABLEAU FINAL, les quatre branches
+
+64 poses communes, avec le masque de LBL réparé et le nettoyage tellurique
+qui nettoie enfin (`TELLUCLEAN_FORCE_AIRMASS: true`).
+
+| série | rms | erreur | chi2 réduit |
+|---|---|---|---|
+| **S2D bruts** | **1,56** | 0,39 | 27,2 |
+| bruts + pca2d 0-2 | 1,80 | 0,92 | 5,3 |
+| nettoyés | 1,57 | 0,39 | 27,5 |
+| nettoyés + pca2d 0-2 | 1,86 | 0,92 | 8,4 |
+
+**Rien ne bat les spectres bruts sur cette cible.** Le nettoyage tellurique
+coûte 0,01 m/s, pca2d en coûte 0,24, et les deux ensemble 0,30.
+
+Le rapport est dans
+`outputs/_harps_obs_n2/HD10700_TC/0-2/report/HD10700_TC_0-2_bbdc05.pdf` :
+36 pages dont **24 de river plots**, quatre panneaux pour chacune des six
+fenêtres telluriques.
+
 ## Où cela laisse pca2d sur HARPS
 
 **1,80 m/s corrigé contre 1,56 m/s livré**, soit 15 % de plus. Il n'y a donc
