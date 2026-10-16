@@ -214,6 +214,15 @@ DEFAULTS = {
         "min_rjd": None,
         "max_rjd": None,
         "nights": None,
+        # LE MODE DU SPECTROGRAPHE: la liste des modes gardes, lue dans
+        # HIERARCH ESO INS MODE. null garde tout, ce qui est le defaut parce
+        # qu'un seul mode est le cas ordinaire. Sur les 100 poses HARPS de
+        # HD 10700, 8 sont en EGGS (la fibre de 1.4") et veulent le modele
+        # tellurique decale de +16 km/s la ou les 92 autres le veulent a
+        # zero: autre fibre, autre solution en longueur d'onde, donc un
+        # autre instrument du point de vue d'une base commune. Hashe dans la
+        # cle du cache de cube quand il est mis.
+        "drs_modes": None,
     },
     "weights": {
         "mode": "photon",            # 'photon' or 'uniform'

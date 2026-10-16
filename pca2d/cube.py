@@ -772,6 +772,24 @@ def _quality_reason(meta, wave, quality):
         if int(np.floor(rjd)) not in {int(n) for n in nights}:
             return "rjd %.2f is not one of the %d nights asked for" % (
                 rjd, len(nights))
+    # LE MODE DU SPECTROGRAPHE EST UN AUTRE INSTRUMENT. Mesure le 2026-10-15
+    # sur les 100 poses HARPS de HD 10700: 8 sont en mode EGGS, la fibre de
+    # 1.4" a haute efficacite, et ce sont EXACTEMENT les 8 dont l'ajustement
+    # tellurique refuse tout exposant d'eau. Elles veulent le modele TAPAS
+    # decale de +16.0 km/s, la meme valeur pour toutes, la ou les poses HARPS
+    # le veulent a 0.0: autre fibre, autre solution en longueur d'onde. Leur
+    # cout residuel reste de 1142 a 1593 contre 505 pour une pose HARPS, et
+    # baisser la resolution du modele de 115000 a 50000 n'y change rien, donc
+    # ce n'est pas un elargissement des raies mais bien un repere different.
+    # Les melanger, c'est demander a une seule base de porter deux
+    # instruments.
+    modes = quality.get("drs_modes")
+    if modes:
+        mode = str(meta.get("drs_mode", "") or "").strip()
+        if mode not in {str(m).strip() for m in modes}:
+            return ("instrument mode %r is not one of the %d asked for (%s)"
+                    % (mode or "(unset)", len(modes),
+                       ", ".join(str(m) for m in modes)))
     return None
 
 

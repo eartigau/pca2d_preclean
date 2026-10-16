@@ -142,6 +142,9 @@ general:
                             # filter window mostly filled by interpolation.
     min_rjd: null
     max_rjd: null
+    drs_modes: null         # la liste des modes de HIERARCH ESO INS MODE a
+                            # garder. null garde tout. Mis pour HARPS plus bas:
+                            # 8 des 100 poses de HD 10700 sont en mode EGGS.
 
   weights:
     mode: photon
@@ -635,6 +638,20 @@ instruments:
   # -------------------------------------------------------------------------
 
   HARPS:
+    quality:
+      drs_modes: [HARPS]    # UN SEUL MODE PAR CAMPAGNE. Mesure le 2026-10-15
+                            # sur les 100 poses de HD 10700: 8 sont en mode
+                            # EGGS, la fibre de 1.4" a haute efficacite, et ce
+                            # sont EXACTEMENT les 8 dont l'ajustement
+                            # tellurique refuse tout exposant d'eau. Elles
+                            # veulent le modele TAPAS decale de +16.0 km/s,
+                            # la meme valeur pour les trois testees, la ou les
+                            # poses HARPS le veulent a 0.0; leur cout residuel
+                            # reste de 1142 a 1593 contre 505, et baisser la
+                            # resolution du modele de 115000 a 50000 n'y
+                            # change rien. Autre fibre, autre solution en
+                            # longueur d'onde: deux instruments, pas une
+                            # campagne.
     lbl:
       instrument: HARPS
       data_source: ESO      # le S2D de l'archive ESO, celui que DACE livre.
