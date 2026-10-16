@@ -530,6 +530,14 @@ DEFAULTS = {
         # at its mean amplitude (lbltemplate.py), written by LBL's own writer
         # where LBL looks for it, so LBL's template step finds it and skips.
         # A template LBL made for that object is never replaced.
+        # LE RAPPORT PDF que lbl/report ecrit apres compile, dans
+        # <DATA_DIR>/reports: la table des statistiques du run, la sequence,
+        # la vitesse contre le BERV, les periodogrammes, le FIP et la qualite
+        # de la correction tellurique. Vrai par defaut, parce qu'il coute
+        # quelques secondes a la fin d'un run qui en a pris des minutes. A
+        # mettre a false quand on enchaine des dizaines de variantes et que
+        # seuls les .rdb comptent.
+        "report": True,
         "star_template": True,
         # With two or more star components, the ones past the first go to
         # LBL as RESPROJ tables STRPCA2..N, in the place of its DTEMP

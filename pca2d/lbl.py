@@ -600,6 +600,12 @@ def runparams(config: dict, data_dir: str, instrument: str, data_source: str,
     tables = dtemp_table(block, teff)
     if tables:
         params["RESPROJ_TABLES"] = tables
+    # LE RAPPORT DE LBL, celui que lbl/report ecrit apres compile. Il est vrai
+    # par defaut chez LBL comme ici: il coute quelques secondes a la fin d'un
+    # run qui en a pris des minutes, et c'est lui qui dit si le run a marche.
+    # Mis a false dans la config quand on enchaine des dizaines de variantes
+    # et que seuls les .rdb comptent.
+    params["REPORT"] = bool(block.get("report", True))
     return params
 
 
