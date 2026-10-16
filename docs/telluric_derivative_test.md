@@ -311,3 +311,45 @@ lieu d'être absorbé par la pente.
 Un bug du code livré a dû être corrigé pour faire cette mesure : `free_dry=True`
 levait `IndexError` dès le balayage, qui ne passait qu'un paramètre sur les deux
 attendus. L'option était donc inutilisable.
+
+## La limite de la méthode : une naine M à bas flux
+
+Testée le 2026-10-16 sur **GJ 581** (M3.0 V, 120 poses HARPS en mode HAM),
+la méthode **ne trouve rien** : les 10 premières poses reçoivent toutes la
+valeur de repli, la courbe de coût ne variant que de 3,5 à 4,1 %, sous le
+seuil de platitude de 5 %.
+
+Ce n'est **pas** un défaut du garde-fou, qui fait exactement ce pour quoi il
+a été écrit. Quatre hypothèses ont été écartées par la mesure :
+
+- **les raies stellaires qui noieraient le critère** : non. Restreint aux 1103
+  pixels d'eau la plus profonde, GJ 581 veut toujours 0,002 là où HD 10700
+  trouve franchement 0,200.
+- **le bruit par pose** : non plus. Cumulé sur 20 poses, le coût reste
+  **strictement monotone croissant**, sans minimum intérieur. Cumuler ne crée
+  pas un signal absent.
+- **le repère** : le balayage en vitesse donne −22 km/s, mais avec un contraste
+  de 1,031 contre 2,712 pour HD 10700, donc il est plat lui aussi et ne dit
+  rien.
+- **le domaine** : les bandes d'eau tombent dans la partie la mieux exposée de
+  la naine M (SNR 44 à 63 par pixel entre 590 et 692 nm).
+
+**La vraie cause est le rapport signal sur bruit du signal tellurique
+lui-même.** Dans les bandes d'eau :
+
+| | SNR par pixel | une raie d'eau de 5 % vaut |
+|---|---|---|
+| GJ 581 (M3V) | 55 | **2,8 sigma** |
+| HD 10700 (G8V) | 268 | **13,4 sigma** |
+
+Cinq fois moins de signal par rapport au bruit, et le critère de lissage n'a
+plus de quoi trancher. À noter que les spectres de GJ 581 n'ont pas été
+corrigés par le DRS (`telluric_corr_sw = 0`) alors que ceux de HD 10700 l'ont
+été (`= 1`), donc le signal tellurique y est pourtant **plus** fort en
+absolu : c'est bien le flux stellaire qui manque, pas l'absorption.
+
+**Conclusion** : la méthode par la dérivée demande un flux minimal, de l'ordre
+de SNR 100 par pixel dans les bandes d'eau. En dessous, le repli est le bon
+comportement, et une correction tellurique pour ces étoiles doit venir
+d'ailleurs (modèle par nuit, étoile de référence, ou simplement masquage des
+régions telluriques par LBL).
