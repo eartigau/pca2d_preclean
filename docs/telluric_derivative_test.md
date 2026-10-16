@@ -214,3 +214,29 @@ contre 505 pour une pose HARPS.
 `null` par défaut). Elles sont encore nettoyées, puisque LBL ne connaît pas ce
 réglage, mais `rms_table.py` compare sur les **poses communes** aux deux
 séries, donc elles tombent de la comparaison de part et d'autre.
+
+## Le bord du balayage cassait onze poses saines
+
+Le garde-fou décrit plus haut mettait **19 poses sur 100** au repli, et le mode
+EGGS n'en explique que 8. En étendant le balayage de 0,02 à **0,002**, les onze
+poses HARPS restantes montrent toutes un minimum **franc et intérieur**, de
+0,2 à 1,0, avec 25 à 45 % de variation de coût. Elles n'avaient aucun
+problème : le bord du balayage tombait du mauvais côté, leur contraste de coût
+(1,6 à 2,2) étant plus faible que celui des poses faciles (2,7). Un balayage en
+vitesse le confirme : ces onze veulent le modèle à 0,0 km/s, comme les poses
+qui marchent, donc leur repère n'est pas en cause.
+
+Sur les 100 poses :
+
+| | bord à 0,02 | bord à 0,002 |
+|---|---|---|
+| poses au repli | 19 | **2** |
+| dont EGGS | 8 | 1 |
+| dont HARPS | 11 | **1** |
+| eau médiane | 0,332 | 0,301 |
+| eau minimale | 0,0994 | 0,0039 |
+
+La seule pose HARPS encore au repli est celle du 2003-09-22T06:26, SNR 6,6,
+dont la courbe de coût ne varie que de 3 % : le vrai échec, celui pour lequel
+le garde-fou a été écrit. Sur les poses HARPS seules, l'eau va de 0,0932 à sa
+médiane de 0,304, sans toucher aucune borne.
