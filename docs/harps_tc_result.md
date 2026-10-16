@@ -64,3 +64,45 @@ regarder :
 
 La comparaison doit aussi se faire **à masque commun** pour que les deux séries
 mesurent les mêmes raies (`tools/mask_from_model.py` existe pour ça).
+
+## Le balayage du nombre de composantes, refait, et ce qu'il ne dit pas
+
+Refait le 2026-10-16 avec le seuil par pixel en SNR (les balayages précédents
+tournaient avec le seuil de profondeur, qui vidait 13,7 % des pixels dont le
+fond des raies : ils mesuraient quel `n_earth` reconstruit le mieux un spectre
+troué).
+
+| composantes | RMS | MAD |
+|---|---|---|
+| 0 (non corrigé) | 2,19 | 1,74 |
+| 1 | 2,11 | 1,63 |
+| 2 | 2,08 | 1,58 |
+| 3 | 2,09 | 1,61 |
+| 4 | 2,04 | **1,40** |
+| 6 | 2,07 | 1,60 |
+
+**Et aucun de ces écarts n'est significatif.** Le bootstrap sur les 86 poses
+donne une incertitude de **0,20 à 0,24** sur chaque MAD, alors que l'écart
+entre le meilleur (1,40) et le non-corrigé (1,74) vaut 0,34. Les intervalles à
+68 % se recouvrent tous.
+
+Le test apparié, qui est la bonne comparaison puisqu'il porte sur les mêmes
+poses et annule le bruit commun, le confirme :
+
+| composantes | gain de MAD | tirages donnant un gain |
+|---|---|---|
+| 1 | +0,105 | 55 % |
+| 2 | +0,156 | 71 % |
+| 3 | +0,125 | 79 % |
+| 4 | +0,333 | **82 %** |
+| 6 | +0,133 | 63 % |
+
+82 % au mieux, c'est-à-dire pas une preuve. La non-monotonie de la série
+(1,63 → 1,58 → 1,61 → 1,40 → 1,60) est elle-même la signature du bruit : un
+vrai optimum se détacherait de ses voisins.
+
+**Ce qu'il faudrait pour trancher** : plus de poses. À 86 poses et un MAD de
+l'ordre de 1,5 m/s, l'incertitude est de 0,22, donc distinguer deux réglages
+qui diffèrent de 0,2 m/s demande environ quatre fois plus d'époques. HD 69830
+en a 713 dans l'archive et GJ 581 252, ce qui est une raison de plus de les
+mesurer.
