@@ -345,9 +345,46 @@ def highpass_against_template(values, good, template, window, polyorder,
     if usable.sum() < window:
         return np.zeros_like(values), np.zeros(values.shape, dtype=bool)
 
+    # LES DEUX SAVGOL NE VOIENT PAS LE MEME SUPPORT, et c'est tout l'interet.
+    #
+    # Sur un support IDENTIQUE la formule se simplifierait, le savgol etant
+    # lineaire: (s - t) - sg(s - t) + t - sg(t) = s - sg(s), soit le
+    # passe-haut ordinaire. Verifie le 2026-10-16: les deux coincident alors
+    # a 2e-16.
+    #
+    # MAIS LES SUPPORTS DIFFERENT. La pose a des pixels masques la ou une
+    # tellurique saturee lui mange le coeur d'une raie; le template median,
+    # lui, n'en a pas, puisque la tellurique bouge avec le BERV et que la
+    # mediane la gomme. Le residu est donc filtre sur un support troue et le
+    # template sur un support plein, les deux filtres ne s'annulent plus, et
+    # la raie stellaire est rendue depuis le template PLEIN au lieu d'etre
+    # reconstruite depuis une pose trouee. Mesure sur une raie de 1.2 en ln
+    # avec dix pixels masques en son coeur: 0.2365 d'ecart entre les deux
+    # formules, contre 2e-16 sans masque.
+    #
+    # CE QUI COMPTE EST QUE LES PIXELS PERDUS SE DEPLACENT. Un masque fixe ne
+    # ferait qu'un biais constant, que la PCA absorberait; c'est le
+    # DEPLACEMENT du trou avec le BERV qui injecte un signal. Mesure le
+    # 2026-10-16 sur un spectre SYNTHETIQUE garde identique, dont seul le
+    # masque de dix pixels se deplace autour du coeur d'une raie de 1.2 en
+    # ln, en relevant un pixel du continu voisin:
+    #
+    #     decalage du masque   classique    vs template
+    #              -30 px       0.078476       0.078364
+    #              -10 px       0.076784       0.077253
+    #                0 px       0.071938       0.077854   <- le creux
+    #              +10 px       0.076951       0.078194
+    #              +30 px       0.077911       0.077810
+    #
+    #     dispersion            0.002265       0.000372   (6.1 fois moins)
+    #
+    # Le passe-haut ordinaire decroche quand le trou tombe sur le coeur,
+    # c'est-a-dire pour une poignee de BERV seulement: le biais est
+    # intermittent, donc invisible a une correlation lineaire avec le BERV.
     residual, _ = _fill_gaps(np.where(usable, log_flux - template, np.nan))
     residual = residual - savgol_filter(residual, window, polyorder)
 
+    # le template est filtre sur SON support, qui est plein
     filled_template, _ = _fill_gaps(np.where(np.isfinite(template), template,
                                              np.nan))
     star = filled_template - savgol_filter(filled_template, window, polyorder)

@@ -550,7 +550,7 @@ def _build_tfits(config: dict, files: list[str], grid: np.ndarray,
         n_used += 1
 
     if held:
-        n_used += _highpass_against_template(coadd, held, grid, config, log)
+        n_used += _highpass_against_template(coadd, held, grid, config)
 
     if n_used == 0:
         raise RuntimeError("every exposure was rejected")
@@ -724,7 +724,7 @@ def _build_s1d(config: dict, files: list[str], grid: np.ndarray):
     return grid, data, sigma, trans, meta_table
 
 
-def _highpass_against_template(coadd, held, grid, config, log):
+def _highpass_against_template(coadd, held, grid, config):
     """La seconde passe: le passe-haut pris sur le residu a un template median.
 
     LE PROBLEME QU'ELLE RESOUT. Un Savitzky-Golay passe sur un spectre entier
