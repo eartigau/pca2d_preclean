@@ -143,3 +143,40 @@ Le réglage retenu :
 pose, `fit_campaign` pour une campagne avec le garde-fou, `model_grid` et
 `transmission` pour le modèle, `objective` et `weighted_nanstd` pour le
 critère de `telluric_fit` repris tel quel.
+
+## Le greffon dans LBL, et ce qu'il a fallu corriger
+
+La méthode est maintenant **dans LBL** (`lbl/science/tellu_derivative.py`,
+activée par `TELLUCLEAN_DERIVATIVE_WATER`) et seulement pour l'optique :
+`Harps_ESO`, `HarpsN_ESO` et `Espresso`. SPIRou et NIRPS arrivent déjà
+corrigés d'APERO et ne passent jamais par ce recipe.
+
+**Le garde-fou devait descendre d'un étage.** Il vivait dans `fit_campaign`,
+qui remplace par la médiane de campagne les poses dont l'exposant s'effondre.
+Mais LBL appelle `fit_exponents` **une pose à la fois** et n'a aucune médiane
+sous la main : sur les 34 premières poses de HD 10700, trois sont passées au
+travers, dont deux à 0,0001, c'est-à-dire aucune correction d'eau.
+
+Le test est donc maintenant **dans `fit_exponents`**, avant le simplexe : on
+balaie neuf valeurs d'alpha de 0,02 à 2,5 et on regarde la **forme** de la
+courbe de coût. Mesure sur deux poses de HD 10700 de la même nuit
+(2003-09-22, 24 500 pixels dans les bandes d'eau) :
+
+| pose | masse d'air | coût à alpha=0,005 | coût à alpha=2,0 | variation | minimum |
+|---|---|---|---|---|---|
+| 04:00 | 1,23 | 340,1 | 408,0 | **41 %** | intérieur, vers 0,5 |
+| 06:26 | 1,03 | 17,76 | 18,23 | **2,6 %** | **monotone** |
+
+La seconde n'a pas de minimum du tout : son coût monte dès la plus petite
+valeur essayée, donc le simplexe la pousse à zéro quelle que soit la
+paramétrisation. Les deux signatures sont séparées d'un ordre de grandeur,
+donc une pose est refusée si sa courbe varie de moins de 5 % **ou** si son
+minimum tombe sur un bord du balayage ; elle reçoit alors 0,35, la médiane
+des poses qui convergent.
+
+Le simplexe part désormais du meilleur point du balayage, et son résultat est
+rejeté s'il sort de la plage balayée.
+
+Vérification sur ces deux mêmes poses : celle qui marche garde **0,5936** (elle
+donnait 0,6074 avec l'ancien point de départ), celle qui échoue reçoit
+**0,3500** au lieu de 0,0001.
