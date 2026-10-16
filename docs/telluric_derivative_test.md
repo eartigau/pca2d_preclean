@@ -417,3 +417,32 @@ les télluriques.
 `USE_TEMPLATE="True"` dans le journal, et pas seulement `="False"`. Si les
 exposants ne bougent pas d'une passe à l'autre, c'est que le template n'est pas
 utilisé.
+
+## Le repli corrige-t-il correctement ? Oui, vérifié
+
+Question posée le 2026-10-16 : les 19 poses de HD 10700 qui reçoivent le repli
+(0,35, la médiane de la campagne) sont-elles mal corrigées ?
+
+Le résidu brut semble le dire : la dispersion relative du gradient dans les
+bandes d'eau vaut **0,027** pour elles contre **0,0072** pour les poses
+mesurées, soit 3,8 fois plus. Mais cela confond deux choses, parce que ces
+poses sont aussi les plus bruitées.
+
+**La bonne mesure se fait après division par le template**, puisque c'est ce
+que le critère voit, et **rapportée au bruit de photons** attendu :
+
+| | poses | résidu | résidu × SNR |
+|---|---|---|---|
+| au repli | 11 | 0,0195 | **1,70** |
+| mesurées | 81 | 0,0073 | **1,85** |
+
+(mode HAM seul ; les 8 poses EGGS, que pca2d écarte de toute façon, sont
+exclues)
+
+Un résidu × SNR proche de 1 signifie qu'il ne reste que le bruit de photons.
+Les poses au repli sont à **1,70**, les mesurées à **1,85** : elles sont aussi
+bien corrigées, et même légèrement mieux.
+
+**Le repli est donc le bon comportement**, pas un pis-aller. Leur résidu brut
+plus grand vient uniquement de leur SNR (médiane 96 contre 265), ce qui est
+précisément la raison pour laquelle le critère n'a pas pu trancher sur elles.
