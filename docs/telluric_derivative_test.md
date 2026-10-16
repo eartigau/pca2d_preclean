@@ -279,3 +279,35 @@ HARPS : creux de 0,135 contre 0,122 dans la bande B).
 `quality.drs_modes: [HARPS]` les écarte donc parce que leur correction est
 manifestement fausse, **pas** parce qu'on a compris pourquoi. C'est une
 question ouverte.
+
+## Le sec libre : la pente est bonne, l'offset ne l'est pas
+
+Mesuré le 2026-10-16 sur les **92 poses du mode HAM** (EGGS exclu, c'est un
+autre lot), le sec ajusté **librement par la dérivée** sur les bandes sèches
+(O2 gamma à 627-632 nm, bande B à 686-696 nm, et 759-771 nm) :
+
+| | valeur |
+|---|---|
+| sec / masse d'air | **0,961**, MAD 0,026 |
+| ajustement robuste (Theil-Sen) | pente 0,926, ordonnée +0,043 |
+| moindres carrés | pente 0,980, ordonnée −0,019 |
+| résidu contre la pente 1 par l'origine | médiane **−0,0475**, MAD 0,033 |
+
+**La pente est compatible avec 1** : les espèces sèches sont bien mélangées et
+leur colonne suit la masse d'air. L'écart entre Theil-Sen et les moindres
+carrés (0,926 contre 0,980) dit surtout que la pente est mal contrainte, la
+masse d'air ne couvrant que 1,03 à 2,27.
+
+**Mais l'ordonnée à l'origine ne l'est pas**, et c'est le point : le sec vaut
+**96,1 %** de ce que TAPAS prédit à la masse d'air, soit 4 % de colonne en
+moins. Une altitude de 2400 m (La Silla) l'explique naturellement, TAPAS étant
+calculé pour une colonne de référence qui n'est pas celle-là.
+
+C'est pourquoi la figure `telluric_exponents.py` ajuste **pente et ordonnée
+libres** et prend le résidu contre la droite ajustée, et non contre la
+bissectrice : un offset d'altitude est physique et doit pouvoir apparaître au
+lieu d'être absorbé par la pente.
+
+Un bug du code livré a dû être corrigé pour faire cette mesure : `free_dry=True`
+levait `IndexError` dès le balayage, qui ne passait qu'un paramètre sur les deux
+attendus. L'option était donc inutilisable.
