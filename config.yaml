@@ -639,7 +639,27 @@ instruments:
 
   HARPS:
     quality:
-      drs_modes: [HARPS]    # UN SEUL MODE PAR CAMPAGNE. Mesure le 2026-10-15
+      # DEUX FIBRES SONT DEUX INSTRUMENTS, ET CHACUNE A SON OFFSET. HARPS
+      # observe en mode HAM (fibre de 1") et en mode EGGS (fibre de 1.4", a
+      # haute efficacite). Ce ne sont pas des poses a jeter: ce sont deux
+      # LOTS, chacun avec son propre zero de vitesse, son template et son
+      # masque. Les melanger dans une seule campagne revient a additionner
+      # deux echelles de vitesse differentes.
+      #
+      # LA MESURE, sur les CCF du DRS de l'ESO (2026-10-16, HD 10700, les
+      # vitesses que le pipeline lui-meme publie, sans rien de pca2d):
+      #     mode HAM    92 poses   -16684 m/s, rms 2.15, erreur 0.34
+      #     mode EGGS    8 poses      -819 m/s (6 poses) et -31900 (2 poses),
+      #                              erreur 15 a 33 m/s
+      # soit un offset de l'ordre de 16 km/s, et une erreur CCF cinquante
+      # fois plus grande. Melangees, les 100 poses donnent un rms de 4404 m/s
+      # contre 2.15 pour le seul mode HAM.
+      #
+      # `drs_modes` garde ici le mode principal. Pour mesurer l'autre lot, on
+      # relance avec drs_modes: [EGGS] et un nom d'objet a lui: il aura alors
+      # son template, son masque et sa vitesse systemique, et les deux series
+      # se comparent ensuite en DIFFERENTIEL, chacune autour de sa mediane.
+      drs_modes: [HARPS]    # UN SEUL MODE PAR LOT. Mesure le 2026-10-15
                             # sur les 100 poses de HD 10700: 8 sont en mode
                             # EGGS, la fibre de 1.4" a haute efficacite, et ce
                             # sont EXACTEMENT les 8 dont l'ajustement

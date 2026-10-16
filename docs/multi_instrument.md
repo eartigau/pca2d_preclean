@@ -402,3 +402,39 @@ Trois pistes, dans l'ordre où il faut les prendre :
 - `cube.ORDER_FORMATS` / `FLAT_FORMATS` : ce que `input.format` décide est la
   dimension, pas le nom du fichier
 - `tests/test_readers.py` : 11 tests, qui tournent sans données et sans réseau
+
+## Deux fibres sont deux instruments, et chacune a son offset
+
+Un même spectrographe peut observer avec plusieurs fibres, et le changement de
+fibre déplace le zéro de vitesse. **Ce ne sont pas des poses à jeter : ce sont
+des lots séparés**, chacun avec son propre zéro, son template et son masque.
+Les additionner dans une seule campagne revient à mélanger deux échelles de
+vitesse.
+
+HARPS en est le cas d'école : mode **HAM** (fibre de 1", la valeur `HARPS` de
+`HIERARCH ESO INS MODE`) et mode **EGGS** (fibre de 1,4", haute efficacité).
+
+La mesure, sur les CCF du DRS de l'ESO pour HD 10700, donc les vitesses que le
+pipeline publie lui-même, sans rien de pca2d :
+
+| mode | poses | vitesse CCF | erreur CCF |
+|---|---|---|---|
+| HAM | 92 | −16 684 m/s | 0,34 m/s |
+| EGGS | 6 | −819 m/s | 15 à 33 m/s |
+| EGGS | 2 | −31 900 m/s | 24 à 26 m/s |
+
+Soit un décalage de l'ordre de 16 km/s et une erreur cinquante fois plus
+grande. Mélangées, les 100 poses donnent un RMS de **4404 m/s** contre **2,15**
+pour le seul mode HAM.
+
+`quality.drs_modes` sélectionne le lot. Pour mesurer l'autre, on relance avec
+`drs_modes: [EGGS]` et un nom d'objet à lui ; les deux séries se comparent
+ensuite **en différentiel**, chacune autour de sa propre médiane.
+
+## Les statistiques sont robustes partout
+
+Une seule pose aberrante suffit à rendre un RMS illisible : sur HD 10700, huit
+poses sur 99 portaient le RMS de 2,2 à 1792 m/s. Les tableaux donnent donc le
+**MAD** (1,4826 × l'écart absolu médian, qui coïncide avec l'écart-type sur une
+gaussienne) à côté du RMS brut, et les ajustements se font autour de la
+médiane.
