@@ -52,6 +52,12 @@ SHIFTS = np.arange(-30.0, 30.1, 1.0)
 #: OU le modele colle, pas combien il y a d'eau, et un exposant plausible
 #: suffit pour que les raies soient a la bonne place
 ALPHA = 0.3
+#: les bandes etroites de la page 3, ou les raies d'eau se comptent a l'oeil.
+#: Choisies sur TAPAS le 2026-10-15: ce sont les plus profondes du domaine
+#: HARPS, donc celles ou un decalage se voit sans ambiguite
+ZOOMS = ((688.0, 690.5, "eau et O2, bande B"),
+         (594.0, 595.5, "eau 594, isolee"),
+         (651.5, 653.0, "eau 652"))
 #: la profondeur d'eau minimale d'un pixel retenu. Sans elle, les raies
 #: stellaires, qui ne bougent pas avec le modele, diluent le signal
 MIN_DEPTH = 0.02
@@ -88,13 +94,54 @@ def _frame(path, spl_water, bands):
     good = np.isfinite(w) & np.isfinite(f) & (f > 0)
     w, f = w[good], f[good]
     order = np.argsort(w)
+    # LE SPECTRE COMPLET EN PLUS, pour le dessin. Le filtre MIN_DEPTH sert au
+    # critere, ou les pixels sans eau ne font que diluer le signal; mais une
+    # figure qui ne montrerait que ces pixels-la tracerait des morceaux
+    # disjoints et illisibles (vu le 2026-10-15), alors que l'oeil a besoin du
+    # continu de part et d'autre de chaque raie pour juger d'un decalage.
+    allkeep = np.zeros(ground.shape, dtype=bool)
+    for low, high in bands:
+        allkeep |= (ground > low) & (ground < high)
+    aw = ground[allkeep].ravel()
+    af = flux[allkeep].ravel()
+    agood = np.isfinite(aw) & np.isfinite(af) & (af > 0)
+    aw, af = aw[agood], af[agood]
+    aorder = np.argsort(aw)
     return dict(
         wave=w[order], flux=f[order], berv=berv,
+        draw_wave=aw[aorder], draw_flux=af[aorder],
         airmass=float(hdr.get("HIERARCH ESO TEL AIRM START", np.nan)),
         snr=float(hdr.get("HIERARCH ESO QC ORDER50 SNR", np.nan)),
         mjd=float(hdr.get("MJD-OBS", np.nan)),
         mode=str(hdr.get("HIERARCH ESO INS MODE", "?")).strip(),
         name=os.path.basename(path))
+
+
+def local_minimum(curve):
+    """Le minimum LOCAL le plus proche de zero, et non le minimum global.
+
+    POURQUOI PAS argmin. Mesure le 2026-10-15 sur HD 10700: trois poses HARPS
+    a bon SNR (183 a 337) sortaient un decalage prefere de +16 a +18 km/s par
+    argmin, alors que la figure montre leurs raies parfaitement alignees a
+    zero. Leur courbe de cout a bien son creux a 0.0, mais elle remonte moins
+    haut d'un cote que de l'autre, si bien que le dernier point du balayage
+    passe sous le creux: le cout a zero n'est que 1.3 a 19% au-dessus du
+    minimum global. Un argmin sur un intervalle borne lit alors le BORD, pas
+    le creux.
+
+    Ce qui nous interesse est le creux, donc on descend depuis zero tant qu'un
+    voisin est plus bas. Rend l'indice de ce creux.
+    """
+    curve = np.asarray(curve, dtype=float)
+    k = int(np.argmin(np.abs(SHIFTS)))
+    while 0 < k < curve.size - 1:
+        if curve[k - 1] < curve[k] and curve[k - 1] <= curve[k + 1]:
+            k -= 1
+        elif curve[k + 1] < curve[k]:
+            k += 1
+        else:
+            break
+    return k
 
 
 def cost_curve(frame, deriv, model):
@@ -142,14 +189,18 @@ def main(directory=None, out=None):
         curve = cost_curve(frame, deriv, model)
         frames.append(frame)
         curves.append(curve)
-        best = SHIFTS[int(np.nanargmin(curve))]
+        best = SHIFTS[local_minimum(curve)]
         print("  %3d/%d %s  mode %-5s BERV %+7.2f -> decalage %+6.1f km/s"
               % (i, len(files), frame["name"][7:26], frame["mode"],
                  frame["berv"], best), flush=True)
 
     curves = np.array(curves)
-    best = SHIFTS[np.nanargmin(curves, axis=1)]
-    contrast = np.nanmax(curves, axis=1) / np.nanmin(curves, axis=1)
+    best = np.array([SHIFTS[local_minimum(c)] for c in curves])
+    # le contraste du CREUX: combien le cout remonte de part et d'autre de lui,
+    # ce qui dit si le creux a un sens, la ou max/min global melange le creux
+    # et la forme des bords
+    contrast = np.array([float(np.nanmax(c) / c[local_minimum(c)])
+                         for c in curves])
     modes = np.array([f["mode"] for f in frames])
     _draw(out, frames, curves, best, contrast, modes, deriv, spl_water, spl_dry)
     print("\n%s" % out)
@@ -219,42 +270,63 @@ def _draw(out, frames, curves, best, contrast, modes, deriv,
         pdf.savefig(fig)
         plt.close(fig)
 
-        # page 3: l'oeil tranche. Les poses les plus decalees, spectre et
-        # modele a zero et au decalage prefere
-        worst = np.argsort(-np.abs(best))[:4]
-        fig, axes = plt.subplots(len(worst), 1, figsize=(11, 2.6 * len(worst)),
-                                 squeeze=False)
-        for ax, idx in zip(axes[:, 0], worst):
+        # page 3 et suivantes: L'OEIL TRANCHE. Une page par pose decalee, sur
+        # une bande ETROITE ou les raies d'eau se comptent, et le spectre
+        # DIVISE par le modele en dessous: c'est la que le residu en forme de
+        # derivee se voit, pas sur le spectre brut ou tout se superpose.
+        worst = [int(i) for i in np.argsort(-np.abs(best))[:4]]
+        for idx in worst:
             frame = frames[idx]
             model = deriv.model_grid(spl_water, spl_dry,
                                      frame["wave"].min() * 0.996,
                                      frame["wave"].max() * 1.004, 115000.0)
-            band = (frame["wave"] > 687.0) & (frame["wave"] < 690.0)
-            if band.sum() < 50:
-                band = np.ones(frame["wave"].shape, dtype=bool)
-            w = frame["wave"][band]
-            f = frame["flux"][band]
-            f = f / np.nanpercentile(f, 95)
-            ax.plot(w, f, "k-", lw=0.8, label="spectre (repere du sol)")
-            for v, style, colour in ((0.0, "-", "tab:blue"),
-                                     (best[idx], "--", "tab:red")):
-                ratio = np.sqrt((1.0 + v / C) / (1.0 - v / C))
-                trans = deriv.transmission(model, w * ratio, ALPHA,
-                                           frame["airmass"])
-                ax.plot(w, trans, style, lw=1.2, color=colour, alpha=0.8,
-                        label="modele a %+.1f km/s" % v)
-            ax.set_title("%s  mode %s  BERV %+.2f km/s"
-                         % (frame["name"][7:26], frame["mode"], frame["berv"]),
-                         fontsize=9)
-            ax.set_ylabel("flux normalise")
-            ax.legend(fontsize=7, ncol=3)
-            ax.grid(alpha=0.3)
-        axes[-1, 0].set_xlabel("longueur d'onde (nm), repere du sol")
-        fig.suptitle("LES QUATRE POSES LES PLUS DECALEES: ou le modele"
-                     " tombe-t-il vraiment?")
-        fig.tight_layout()
-        pdf.savefig(fig)
-        plt.close(fig)
+            fig, axes = plt.subplots(len(ZOOMS), 2,
+                                     figsize=(12, 3.0 * len(ZOOMS)),
+                                     squeeze=False)
+            for row, (low, high, what) in enumerate(ZOOMS):
+                band = ((frame["draw_wave"] > low)
+                        & (frame["draw_wave"] < high))
+                if band.sum() < 30:
+                    for col in (0, 1):
+                        axes[row, col].text(0.5, 0.5, "pas de pixel retenu",
+                                            ha="center", va="center",
+                                            transform=axes[row, col].transAxes)
+                    continue
+                w = frame["draw_wave"][band]
+                f = frame["draw_flux"][band]
+                f = f / np.nanpercentile(f, 95)
+                top, bottom = axes[row, 0], axes[row, 1]
+                top.plot(w, f, "k-", lw=0.9, label="spectre")
+                for v, style, colour in ((0.0, "-", "tab:blue"),
+                                         (best[idx], "--", "tab:red")):
+                    ratio = np.sqrt((1.0 + v / C) / (1.0 - v / C))
+                    trans = deriv.transmission(model, w * ratio, ALPHA,
+                                               frame["airmass"])
+                    top.plot(w, trans, style, lw=1.3, color=colour, alpha=0.85,
+                             label="modele %+.1f km/s" % v)
+                    # le residu: ce qui resterait si on divisait par ce modele
+                    bottom.plot(w, f / np.clip(trans, 1e-3, None), style,
+                                lw=0.9, color=colour, alpha=0.85,
+                                label="%+.1f km/s" % v)
+                bottom.axhline(1.0, color="k", lw=0.8, ls=":")
+                top.set_title("%s  (%s)" % (what, "spectre et modele"),
+                              fontsize=9)
+                bottom.set_title("%s  (spectre DIVISE par le modele)" % what,
+                                 fontsize=9)
+                for ax in (top, bottom):
+                    ax.grid(alpha=0.3)
+                    ax.legend(fontsize=7, ncol=3)
+                top.set_ylabel("flux normalise")
+                bottom.set_ylabel("apres division")
+            for col in (0, 1):
+                axes[-1, col].set_xlabel("longueur d'onde (nm), repere du sol")
+            fig.suptitle("%s   mode %s   BERV %+.2f km/s   SNR %.0f\n"
+                         "le critere prefere %+.1f km/s, contraste %.2f"
+                         % (frame["name"][7:26], frame["mode"], frame["berv"],
+                            frame["snr"], best[idx], contrast[idx]))
+            fig.tight_layout()
+            pdf.savefig(fig)
+            plt.close(fig)
 
 
 if __name__ == "__main__":

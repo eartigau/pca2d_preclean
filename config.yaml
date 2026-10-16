@@ -643,15 +643,30 @@ instruments:
                             # sur les 100 poses de HD 10700: 8 sont en mode
                             # EGGS, la fibre de 1.4" a haute efficacite, et ce
                             # sont EXACTEMENT les 8 dont l'ajustement
-                            # tellurique refuse tout exposant d'eau. Elles
-                            # veulent le modele TAPAS decale de +16.0 km/s,
-                            # la meme valeur pour les trois testees, la ou les
-                            # poses HARPS le veulent a 0.0; leur cout residuel
-                            # reste de 1142 a 1593 contre 505, et baisser la
-                            # resolution du modele de 115000 a 50000 n'y
-                            # change rien. Autre fibre, autre solution en
-                            # longueur d'onde: deux instruments, pas une
-                            # campagne.
+                            # tellurique echoue: l'exposant d'eau y tombe
+                            # entre 0.004 et 0.047, cent fois moins que les
+                            # 0.30 des poses HARPS, alors qu'il y a toujours
+                            # de l'eau au-dessus d'un telescope.
+                            #
+                            # CE N'EST PAS UN DECALAGE EN VITESSE. Je l'ai
+                            # d'abord cru, et c'etait faux: le modele TAPAS
+                            # tombe a sa place sur ces poses comme sur les
+                            # autres, minimum local du cout entre 0 et +3 km/s
+                            # pour 7 des 8, le cout a zero restant a moins de
+                            # 3% du creux (tools/tellu_shift.py, page 2). Le
+                            # +16 km/s que j'avais annonce etait un argmin lu
+                            # sur le BORD du balayage, pas un creux.
+                            #
+                            # Ce n'est pas non plus la resolution: de R=115000
+                            # a R=60000, l'eau de ces poses ne monte que de
+                            # 0.0039 a 0.0089. Et les telluriques y sont bien,
+                            # a la meme profondeur que dans les poses HARPS
+                            # (creux de 0.135 contre 0.122 dans la bande B).
+                            #
+                            # CE QUI CLOCHE SUR CES POSES RESTE A TROUVER. On
+                            # les ecarte parce que leur correction tellurique
+                            # est manifestement fausse, pas parce qu'on a
+                            # compris pourquoi.
     lbl:
       instrument: HARPS
       data_source: ESO      # le S2D de l'archive ESO, celui que DACE livre.

@@ -240,3 +240,42 @@ La seule pose HARPS encore au repli est celle du 2003-09-22T06:26, SNR 6,6,
 dont la courbe de coût ne varie que de 3 % : le vrai échec, celui pour lequel
 le garde-fou a été écrit. Sur les poses HARPS seules, l'eau va de 0,0932 à sa
 médiane de 0,304, sans toucher aucune borne.
+
+## Correction: il n'y a aucun décalage en vitesse, nulle part
+
+J'ai écrit plus haut que les poses EGGS voulaient le modèle TAPAS décalé de
++16 km/s. **C'était faux**, et `tools/tellu_shift.py` le montre.
+
+L'erreur était d'estimateur : je lisais le minimum du coût par un `argmin`
+**global** sur un balayage borné. Or la courbe de coût remonte moins haut d'un
+côté que de l'autre, si bien que le dernier point du balayage peut passer sous
+le creux. L'`argmin` lit alors le **bord**, pas le creux.
+
+En prenant le minimum **local le plus proche de zéro**, qui est la quantité
+qui a un sens :
+
+| | argmin global | minimum local | coût à 0 / creux |
+|---|---|---|---|
+| 3 poses HARPS à bon SNR (183-337) | +16 à +18 km/s | **0,0** | 1,01 à 1,19 |
+| 7 des 8 poses EGGS | +16 à +18 km/s | **0 à +3 km/s** | 1,00 à 1,03 |
+
+La page 3 de la figure le confirme à l'œil : sur une pose à SNR 227, les raies
+du modèle à 0,0 km/s tombent exactement sur celles du spectre, et celles à
++18 km/s sont visiblement à côté ; le spectre divisé par le modèle à zéro est
+propre, divisé par celui à +18 il laisse des pics à 15.
+
+**Le modèle est donc bien à sa place à vitesse zéro, et la vitesse ne doit pas
+être un paramètre libre** (elle ne l'est pas : `fit_exponents` n'en a aucun).
+
+### Ce qui reste vrai des poses EGGS, et ce qui reste à trouver
+
+Leur ajustement d'eau échoue bel et bien : l'exposant y tombe entre **0,004 et
+0,047**, cent fois moins que les 0,30 des poses HARPS, alors qu'il y a toujours
+de l'eau au-dessus d'un télescope. Mais la cause n'est ni le repère, ni la
+résolution (de R = 115 000 à 60 000, l'eau ne monte que de 0,0039 à 0,0089), ni
+une pré-correction (les télluriques y sont aussi profondes que dans les poses
+HARPS : creux de 0,135 contre 0,122 dans la bande B).
+
+`quality.drs_modes: [HARPS]` les écarte donc parce que leur correction est
+manifestement fausse, **pas** parce qu'on a compris pourquoi. C'est une
+question ouverte.

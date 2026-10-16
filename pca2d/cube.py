@@ -772,17 +772,19 @@ def _quality_reason(meta, wave, quality):
         if int(np.floor(rjd)) not in {int(n) for n in nights}:
             return "rjd %.2f is not one of the %d nights asked for" % (
                 rjd, len(nights))
-    # LE MODE DU SPECTROGRAPHE EST UN AUTRE INSTRUMENT. Mesure le 2026-10-15
-    # sur les 100 poses HARPS de HD 10700: 8 sont en mode EGGS, la fibre de
-    # 1.4" a haute efficacite, et ce sont EXACTEMENT les 8 dont l'ajustement
-    # tellurique refuse tout exposant d'eau. Elles veulent le modele TAPAS
-    # decale de +16.0 km/s, la meme valeur pour toutes, la ou les poses HARPS
-    # le veulent a 0.0: autre fibre, autre solution en longueur d'onde. Leur
-    # cout residuel reste de 1142 a 1593 contre 505 pour une pose HARPS, et
-    # baisser la resolution du modele de 115000 a 50000 n'y change rien, donc
-    # ce n'est pas un elargissement des raies mais bien un repere different.
-    # Les melanger, c'est demander a une seule base de porter deux
-    # instruments.
+    # LE MODE DU SPECTROGRAPHE, quand une campagne en melange deux. Mesure le
+    # 2026-10-15 sur les 100 poses HARPS de HD 10700: 8 sont en mode EGGS, la
+    # fibre de 1.4" a haute efficacite, et ce sont EXACTEMENT les 8 dont
+    # l'ajustement tellurique echoue, l'exposant d'eau y tombant entre 0.004
+    # et 0.047 contre 0.30 pour les poses HARPS.
+    #
+    # CE N'EST PAS UN DECALAGE EN VITESSE, contrairement a ce que ce
+    # commentaire a d'abord dit: le modele TAPAS tombe a sa place sur ces
+    # poses, minimum local entre 0 et +3 km/s pour 7 des 8. Ce n'est pas non
+    # plus la resolution (de 115000 a 60000, l'eau ne monte que de 0.0039 a
+    # 0.0089), et les telluriques y sont bien presentes, aussi profondes que
+    # dans les poses HARPS. Ce qui cloche reste a trouver; on les ecarte parce
+    # que leur correction est manifestement fausse, pas parce qu'on a compris.
     modes = quality.get("drs_modes")
     if modes:
         mode = str(meta.get("drs_mode", "") or "").strip()
