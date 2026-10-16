@@ -368,3 +368,52 @@ et décroît symétriquement (0,586 à −1 km/s, 0,591 à +1, 0,317 à −4, 0,
 Autrement dit, sur GJ 581 le repli applique une correction **bien placée mais
 d'amplitude inventée** : les pics du rapport après/avant sont nets et aux
 bonnes longueurs d'onde, jusqu'à un facteur 2,6 au fond de la bande B.
+
+## Le défaut principal : l'ajustement ne voyait pas le template
+
+Signalé le 2026-10-16. **Toute mesure d'absorption tellurique, dans LBL comme
+dans APERO, s'ajuste sur le spectre divisé par le template stellaire**, jamais
+sur le spectre brut. C'est de là que vient la contrainte.
+
+LBL le fait déjà, et en trois passes, enchaînées dans `lbl_wrap` à l'intérieur
+du bloc `RUN_LBL_TELLUCLEAN` :
+
+1. nettoyage **sans** template (`telluclean_use_template=False`)
+2. construction du template à partir des spectres ainsi nettoyés
+3. **re-nettoyage des spectres bruts avec ce template**
+   (`telluclean_use_template=True`)
+
+Et la boucle de `tellu_clean.py` divise bien : `sp_tmp = sp_tmp / template_vector`.
+
+**Mais le greffon de la méthode par la dérivée passait `sp_vector` brut.**
+L'ajustement voyait donc le spectre stellaire entier, et sur une étoile dense
+en raies ce sont les raies stellaires qui dominent la dispersion du gradient.
+
+**Le signe qui trahissait l'oubli** : sur HD 10700, les exposants sortaient
+**identiques** entre la passe sans template et la passe avec, médiane 0,332 des
+deux côtés. Le template ne changeait rien parce que la méthode ne le regardait
+pas.
+
+**Ce que la correction change**, mesuré sur GJ 581 avec un template grossier (la
+médiane des 25 premiers spectres alignés sur l'étoile) :
+
+| pose | sans template | avec template |
+|---|---|---|
+| 2004-05-27T04:51:08 | repli | **0,0275** |
+| 2005-05-21T06:18:18 | repli | **0,1486** |
+| 2005-07-22T00:07:08 | repli | **0,0347** |
+| 2005-07-23T23:22:11 | repli | repli |
+| 2005-07-26T02:03:23 | repli | repli |
+
+Trois poses sur cinq qui recevaient le repli convergent désormais vers une
+valeur mesurée.
+
+La troisième rangée de `tools/tellu_fallback.py` le montre : après division par
+le template, le spectre et la transmission modélisée se superposent presque
+parfaitement dans la bande B. Les raies stellaires ont disparu, il ne reste que
+les télluriques.
+
+**Vérification à faire sur tout run de correction tellurique** : chercher
+`USE_TEMPLATE="True"` dans le journal, et pas seulement `="False"`. Si les
+exposants ne bougent pas d'une passe à l'autre, c'est que le template n'est pas
+utilisé.
