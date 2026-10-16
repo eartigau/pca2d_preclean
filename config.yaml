@@ -1049,6 +1049,41 @@ objects:
                             # inscrire, pour qu'une composante qui suivrait
                             # l'une d'elles se voie.
 
+  GJ581_TC:
+    input:
+      # LA NAINE M DU LOT. GJ 581, M3.0 V, Teff 3500 K (NASA Exoplanet
+      # Archive, pscomppars, 2026-10-16). 252 poses HARPS03 en mode HAM sur
+      # DACE, dont 120 prises ici en echantillonnant regulierement la serie
+      # pour garder l'etendue en temps ET en BERV.
+      #
+      # POURQUOI ELLE: son SN50 median vaut 45 contre 219 pour HD 69830 et
+      # bien plus pour HD 10700, donc c'est le vrai test du seuil par pixel
+      # en SNR. Son etendue de BERV est de 59.0 km/s, la plus large des
+      # trois, ce qui est la condition pour separer les deux reperes.
+      # Le DRS de l'ESO lui trouve un rms de 10.0 m/s (erreur mediane 1.43).
+      object_header: [GJ581, Gl581, HIP74995, GJ 581]
+    lbl:
+      teff: 3500
+    target:
+      planets: [5.37, 12.92, 66.7]
+                            # GJ 581 e, b et c (NASA Exoplanet Archive, table
+                            # ps, 2026-10-16). Marquees sur les
+                            # periodogrammes, pas mesurees ici.
+
+  HD69830_TC:
+    input:
+      # LA K0V DU LOT. HD 69830, Teff 5385 K (meme source). 713 poses
+      # HARPS03 en mode HAM, dont 150 prises ici. SN50 median 219, etendue
+      # de BERV 51.4 km/s, rms DACE de 4.8 m/s pour une erreur mediane de
+      # 0.33: une serie tres propre, voisine de HD 10700 en qualite mais sur
+      # une etoile plus froide, avec trois Neptunes connues.
+      object_header: [HD69830, HD 69830, HIP40693]
+    lbl:
+      teff: 5385
+    target:
+      planets: [8.667, 31.56, 197.0]
+                            # HD 69830 b, c et d.
+
   HD10700_TC:
     input:
       # LA CHAINE COMPLETE: les memes spectres HARPS, mais apres le nettoyage

@@ -79,6 +79,20 @@ def read_exponents(directory, modes=None):
     )
 
 
+def robust_sigma(values):
+    """L'ecart-type ROBUSTE: 1.4826 fois l'ecart absolu median.
+
+    Partout plutot que l'ecart-type: une pose aberrante suffit a rendre une
+    dispersion illisible, et le facteur fait coincider les deux sur une
+    gaussienne, donc le chiffre se lit comme un sigma.
+    """
+    values = np.asarray(values, dtype=float)
+    good = values[np.isfinite(values)]
+    if good.size < 2:
+        return float("nan")
+    return float(1.4826 * np.median(np.abs(good - np.median(good))))
+
+
 def dry_is_fixed(data):
     """Le sec a-t-il ete fixe a la masse d'air plutot qu'ajuste?"""
     good = np.isfinite(data["dry"]) & np.isfinite(data["airmass"])
@@ -129,9 +143,13 @@ def draw(data, out):
         pdf.savefig(fig)
         plt.close(fig)
 
-        # ---- page 2: le sec contre la masse d'air, et le residu
-        fig, axes = plt.subplots(2, 1, figsize=(9, 7), sharex=True,
-                                 gridspec_kw=dict(height_ratios=[2, 1]))
+        # ---- page 2: le sec contre la masse d'air, le residu, l'histogramme
+        fig = plt.figure(figsize=(11, 7))
+        gs = fig.add_gridspec(2, 2, height_ratios=[2, 1], width_ratios=[3, 1],
+                              hspace=0.05, wspace=0.25)
+        axes = [fig.add_subplot(gs[0, 0])]
+        axes.append(fig.add_subplot(gs[1, 0], sharex=axes[0]))
+        ax_hist = fig.add_subplot(gs[:, 1])
         x, y = data["airmass"], data["dry"]
         axes[0].plot(x, y, "o", ms=5, color="C1", label="les poses")
         span = np.linspace(np.nanmin(x) * 0.98, np.nanmax(x) * 1.02, 10)
@@ -154,17 +172,38 @@ def draw(data, out):
         axes[1].set_xlabel("masse d'air")
         axes[1].set_ylabel("residu")
         axes[1].grid(alpha=0.3)
+
+        # L'HISTOGRAMME DU RESIDU, pour voir la dispersion d'un coup d'oeil.
+        # Mesure du 2026-10-16 sur les 92 poses du mode HAM, le sec ajuste
+        # librement: le rapport sec/masse d'air vaut 0.961 avec un MAD de
+        # 0.026, c'est-a-dire que la colonne seche suit la masse d'air a 2.6%
+        # pres. La largeur de cet histogramme EST cette dispersion.
+        good = np.isfinite(resid)
+        if good.sum() > 3:
+            ax_hist.hist(resid[good], bins=max(8, int(np.sqrt(good.sum()))),
+                         orientation="horizontal", color="C3", alpha=0.75)
+            spread = robust_sigma(resid[good])
+            for sign in (-1, 1):
+                ax_hist.axhline(sign * spread, color="k", lw=0.9, ls="--")
+            ax_hist.axhline(float(np.median(resid[good])), color="k", lw=1.0)
+            ax_hist.set_title("MAD %.4f" % spread, fontsize=9)
+        ax_hist.set_xlabel("poses")
+        ax_hist.grid(alpha=0.3)
+        ax_hist.set_ylim(axes[1].get_ylim())
+        plt.setp(axes[0].get_xticklabels(), visible=False)
         if fixed:
             note = ("LE SEC EST FIXE a la masse d'air a l'ajustement: le nuage"
                     " est sur la droite par CONSTRUCTION\net le residu est nul."
                     " Cette page verifie la contrainte, elle ne la mesure pas.")
         else:
-            rms = float(np.nanstd(resid, ddof=1))
             note = ("le sec est AJUSTE librement; residu contre la droite"
-                    " ajustee: rms %.4f\nune ordonnee a l'origine non nulle est"
-                    " attendue, l'observatoire etant en altitude" % rms)
+                    " ajustee: MAD %.4f (rms brut %.4f)\nune ordonnee a"
+                    " l'origine non nulle est attendue, l'observatoire etant"
+                    " en altitude"
+                    % (robust_sigma(resid), float(np.nanstd(resid, ddof=1))))
         fig.suptitle("Le sec contre la masse d'air\n%s" % note, fontsize=10)
-        fig.tight_layout()
+        # pas de tight_layout: le gridspec de cette page porte deja ses
+        # espacements, et tight_layout les ecrase en prevenant qu'il le fait
         pdf.savefig(fig)
         plt.close(fig)
 
