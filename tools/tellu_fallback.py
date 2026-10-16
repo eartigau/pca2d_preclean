@@ -113,6 +113,9 @@ def main(argv=None):
         raise SystemExit("pas de spectre brut pour %s" % tc_path)
     frame = ground_frame(raw_path)
     after = fits.getdata(tc_path, 1).astype(float)
+    # l'exposant REELLEMENT applique est dans l'en-tete du spectre NETTOYE,
+    # pas dans celle du brut, qui n'a jamais vu l'ajustement
+    applied = fits.getheader(tc_path).get("TLPEH2O")
     good = sorted(glob.glob(os.path.join(args.ok, "*.fits")))
     other = ground_frame(good[0]) if good else None
 
@@ -121,7 +124,8 @@ def main(argv=None):
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with PdfPages(args.out) as pdf:
         _page_cost(pdf, frame, other, deriv, spl_water, spl_dry, scan)
-        _page_effect(pdf, frame, after)
+        _page_effect(pdf, frame, after, deriv, spl_water, spl_dry,
+                     alpha=float(applied) if applied is not None else 0.35)
         _page_alphas(pdf, frame, deriv, spl_water, spl_dry)
     print("%s" % args.out)
 
@@ -156,7 +160,8 @@ def _page_cost(pdf, frame, other, deriv, spl_water, spl_dry, scan):
     plt.close(fig)
 
 
-def _page_effect(pdf, frame, after):
+def _page_effect(pdf, frame, after, deriv=None, spl_water=None, spl_dry=None,
+                 alpha=0.35):
     fig, axes = plt.subplots(2, len(ZOOMS), figsize=(11, 6), squeeze=False,
                              gridspec_kw=dict(height_ratios=[2, 1]))
     for col, (low, high, what) in enumerate(ZOOMS):
@@ -174,6 +179,17 @@ def _page_effect(pdf, frame, after):
         top, bottom = axes[0, col], axes[1, col]
         top.plot(w, before / scale, "k-", lw=0.9, label="avant")
         top.plot(w, now / scale, "-", lw=0.9, color="C3", label="apres")
+        # LA TRANSMISSION EN SURIMPRESSION, sur la meme echelle: le flux est
+        # normalise par son 95e centile, donc il vaut 1 au continu, exactement
+        # comme la transmission. Les deux se comparent alors directement, et
+        # on voit d'un coup d'oeil si chaque creux du spectre a bien une raie
+        # tellurique en face, et de la bonne profondeur.
+        if deriv is not None and spl_water is not None:
+            model = deriv.model_grid(spl_water, spl_dry, w.min() * 0.999,
+                                     w.max() * 1.001, 115000.0)
+            trans = deriv.transmission(model, w, alpha, frame["airmass"])
+            top.plot(w, trans, "-", lw=1.1, color="C0", alpha=0.75,
+                     label="transmission, alpha = %.2f" % alpha)
         top.set_title("%s" % what, fontsize=9)
         top.legend(fontsize=7)
         bottom.plot(w, now / np.clip(before, 1e-9, None), "-", lw=0.9,
