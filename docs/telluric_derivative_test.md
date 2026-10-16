@@ -353,3 +353,18 @@ de SNR 100 par pixel dans les bandes d'eau. En dessous, le repli est le bon
 comportement, et une correction tellurique pour ces étoiles doit venir
 d'ailleurs (modèle par nuit, étoile de référence, ou simplement masquage des
 régions telluriques par LBL).
+
+### Le modèle est bien placé sur la naine M, c'est l'amplitude qui manque
+
+Vérifié plutôt que supposé. Dans la bande B (688-690,5 nm), la corrélation
+entre le spectre normalisé et la transmission sèche modélisée vaut **0,612**
+sur GJ 581 contre **0,988** sur HD 10700.
+
+Cette corrélation plus faible pourrait venir d'un désalignement ou du bruit.
+Le balayage en décalage tranche : elle est **maximale exactement à 0,0 km/s**
+et décroît symétriquement (0,586 à −1 km/s, 0,591 à +1, 0,317 à −4, 0,370 à
++4). Le modèle tombe donc au bon endroit, et c'est bien le bruit qui limite.
+
+Autrement dit, sur GJ 581 le repli applique une correction **bien placée mais
+d'amplitude inventée** : les pics du rapport après/avant sont nets et aux
+bonnes longueurs d'onde, jusqu'à un facteur 2,6 au fond de la bande B.
