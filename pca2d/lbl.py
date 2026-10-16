@@ -788,6 +788,67 @@ def star_template(plan, config_file: str, name: str, files, place=True) -> dict:
             "status": status}
 
 
+#: les dossiers de l'arbre LBL ou un produit porte le nom de l'objet, et ou
+#: une collision de casse fait donc relire le produit d'un AUTRE run
+_NAMED_PRODUCTS = ("templates", "masks", "lblreftable", "lblrdb")
+
+
+def _warn_case_collisions(data_dir, objects):
+    """Dire quels produits d'un run precedent LBL va relire par collision de
+    casse, parce qu'il ne le dira pas, lui.
+
+    CE QUI S'EST PASSE le 2026-10-15. Le systeme de fichiers de macOS ne
+    distingue pas la casse, alors que LBL nomme ses produits d'apres l'objet.
+    Un run precedent sur HD10700_tc a donc laisse un template, un masque et un
+    .rdb que le run sur HD10700_TC a pris pour les siens:
+
+        Template ... exists. Skipping template creation.
+        File lbl_HD10700_TC_HD10700_TC.rdb exists, we will read it.
+
+    La deuxieme ligne est la pire: LBL venait de calculer 99 vitesses
+    fraiches, et il a compile un tableau de 74 lignes a partir du fichier d'un
+    autre run, sans rien signaler d'anormal.
+
+    On ne touche a rien: effacer le produit d'un autre run serait pire. On
+    nomme le fichier, l'objet qui le reclame et celui qui l'a ecrit, pour que
+    la decision soit prise en connaissance de cause.
+    """
+    import os
+
+    wanted = {str(name) for name in objects if name}
+    lowered = {name.lower(): name for name in wanted}
+    found = []
+    for sub in _NAMED_PRODUCTS:
+        folder = os.path.join(data_dir, sub)
+        try:
+            entries = sorted(os.listdir(folder))
+        except OSError:
+            continue
+        for entry in entries:
+            low = entry.lower()
+            for key, asked in lowered.items():
+                if key not in low:
+                    continue
+                # le nom tel qu'il est ecrit sur le disque, a la place du nom
+                # demande: s'ils ne different que par la casse, c'est une
+                # collision et non le produit de ce run
+                start = low.index(key)
+                written = entry[start:start + len(key)]
+                if written != asked:
+                    found.append((sub, entry, asked, written))
+                break
+    if not found:
+        return
+    log("%d product(s) of the LBL tree differ from this run's object name ONLY"
+        " BY CASE, and this filesystem does not tell them apart. LBL will"
+        " reuse them as if they were its own:" % len(found), "warn")
+    for sub, entry, asked, written in found:
+        log("    %-12s %s   (asked %r, on disk %r)"
+            % (sub, entry, asked, written), "warn")
+    log("    move them aside if they come from another run; LBL rebuilds what"
+        " it cannot find.", "warn")
+
+
 def prepare(plan, code=None) -> dict:
     """Stage both objects, make the star template, write LBL's config and the
     script that runs it. `code` is chosen(config), found here if not given."""
@@ -802,6 +863,7 @@ def prepare(plan, code=None) -> dict:
 
     log("LBL profile: instrument %s, data source %s, from %s"
         % (instrument, data_source, where), "value")
+    _warn_case_collisions(data_dir, [before] + ([after] if after else []))
 
     wanted = []
     corrected = []
