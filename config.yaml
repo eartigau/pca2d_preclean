@@ -1049,6 +1049,26 @@ objects:
                             # inscrire, pour qu'une composante qui suivrait
                             # l'une d'elles se voie.
 
+  GJ581_RAW:
+    input:
+      # LA NAINE M SANS NETTOYAGE TELLURIQUE, et c'est voulu. Mesure du
+      # 2026-10-16: la methode de la derivee ne trouve RIEN sur GJ 581, ses
+      # 120 poses recevant toutes la valeur de repli, parce qu'une raie d'eau
+      # de 5% n'y vaut que 2.8 sigma par pixel contre 13.4 sur HD 10700
+      # (docs/telluric_derivative_test.md).
+      #
+      # Appliquer quand meme un exposant arbitraire a 120 poses reviendrait a
+      # soustraire un signal faux. Les spectres bruts laissent au contraire
+      # les telluriques entieres, ce qui est exactement ce que les
+      # composantes de l'OBSERVATEUR savent modeliser: elles sont fixes en
+      # longueur d'onde pendant que l'etoile se decale avec le BERV, et
+      # l'etendue de 59 km/s de cette campagne est la plus large des trois.
+      object_header: [GJ581, Gl581, HIP74995, GJ 581]
+    lbl:
+      teff: 3500
+    target:
+      planets: [5.37, 12.92, 66.7]
+
   GJ581_TC:
     input:
       # LA NAINE M DU LOT. GJ 581, M3.0 V, Teff 3500 K (NASA Exoplanet
