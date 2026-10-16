@@ -1046,10 +1046,50 @@ def refit_row(model, path, config, shifter, base_row, weight="flux",
     """
     grid = model["grid"]
     payload = _readers.read_any(path, config)
-    values, sigma, trans, good, n_written, _segments = sptf.resample_exposure(
+    values, sigma, trans, good, n_written, segments = sptf.resample_exposure(
         payload, grid, config)
     if not n_written or not good.any():
         return None, None
+
+    # LE MEME PASSE-HAUT QUE LE CUBE, et pas un autre. Avec
+    # highpass.against_template, resample_exposure rend du ln(flux) brut et
+    # laisse le filtre a la seconde passe; il faut donc la refaire ici, avec
+    # LE MEME template, sans quoi on retranche des composantes ajustees sur un
+    # residu passe-haut a un spectre qui ne l'est pas. Vu le 2026-10-16: les
+    # valeurs sortaient de mediane +10.14 au lieu de +0.017, et le bruit des
+    # spectres corriges doublait (0.0148 contre 0.0075) pendant que les river
+    # plots, eux, restaient propres.
+    if (config.get("highpass") or {}).get("against_template"):
+        from . import cube as _cube
+        from . import preprocess as _prep
+
+        template = _cube.load_template(config)
+        if template is None:
+            raise SystemExit(
+                "highpass.against_template is on but the cube kept no"
+                " template: rebuild the cube (--rebuild-cube) so that"
+                " `correct` filters the spectra the same way the fit did")
+        reg = config["registration"]
+        berv = float(payload["meta"]["berv"])
+        here = np.empty_like(template)
+        for parity in range(template.shape[0]):
+            finite = np.isfinite(template[parity])
+            shifted, shifted_good = _prep.register(
+                grid, np.where(finite, template[parity], 0.0), finite, 0.0,
+                berv, grid, spline_order=reg["spline_order"],
+                mask_threshold=reg["mask_threshold"])
+            here[parity] = np.where(shifted_good, shifted, np.nan)
+        hip = config["highpass"]
+        out = np.zeros_like(values)
+        keep = np.zeros(good.shape, dtype=bool)
+        for parity, start, stop in segments:
+            seg, seg_good = _prep.highpass_against_template(
+                values[parity, start:stop], good[parity, start:stop],
+                here[parity, start:stop], hip["window"], hip["polyorder"],
+                already_log=True)
+            out[parity, start:stop] = seg
+            keep[parity, start:stop] = seg_good
+        values, good = np.where(keep, out, 0.0), keep
 
     # The SAME weights the fit used, not merely 1/sigma^2. twoframe.load_cube
     # also zeroes anything below ln_clip_low, ramps by the telluric

@@ -144,6 +144,10 @@ def _save_cache(path: str, grid, data, sigma, trans, meta):
     if trans is not None:
         np.save(os.path.join(tmp, "trans.npy"), trans)
     meta.write(os.path.join(tmp, "meta.fits"), overwrite=True)
+    if _PENDING_TEMPLATE is not None:
+        # le template du passe-haut voyage avec le cube: `correct` doit
+        # filtrer les spectres exactement comme le fit l'a fait
+        np.save(os.path.join(tmp, TEMPLATE_FILE), _PENDING_TEMPLATE)
     shutil.rmtree(path, ignore_errors=True)
     os.rename(tmp, path)
     log("cached cube -> %s" % path)
@@ -724,6 +728,48 @@ def _build_s1d(config: dict, files: list[str], grid: np.ndarray):
     return grid, data, sigma, trans, meta_table
 
 
+#: le nom du template, a cote du cube
+TEMPLATE_FILE = "hp_template.npy"
+
+
+def template_path(config):
+    """Ou le template du passe-haut est range, ou None s'il n'y en a pas."""
+    from .config import cache_key
+
+    if not (config.get("highpass") or {}).get("against_template"):
+        return None
+    fmt = str(config["input"].get("format", "tfits"))
+    folder = os.path.join(config["output"].get("cache_directory", "cache"),
+                          "cube_%s_%s" % (fmt, cache_key(config)))
+    return os.path.join(folder, TEMPLATE_FILE)
+
+
+#: le template que la seconde passe vient de construire, en attente d'etre
+#: ecrit avec le cube. IL NE PEUT PAS ETRE ECRIT TOUT DE SUITE: _save_cache
+#: batit le cube dans un dossier .partial puis efface le dossier final avant
+#: de renommer, donc un fichier depose la avant serait emporte (vu le
+#: 2026-10-16: le template etait construit, annonce dans le journal, et
+#: absent du disque).
+_PENDING_TEMPLATE = None
+
+
+def _stash_template(config, template):
+    """Mettre le template de cote jusqu'a l'ecriture du cube."""
+    global _PENDING_TEMPLATE
+    _PENDING_TEMPLATE = np.asarray(template, dtype=np.float32)
+
+
+def load_template(config):
+    """Le template du passe-haut, ou None."""
+    path = template_path(config)
+    if path is None or not os.path.exists(path):
+        return None
+    try:
+        return np.load(path)
+    except (OSError, ValueError):
+        return None
+
+
 def _highpass_against_template(coadd, held, grid, config):
     """La seconde passe: le passe-haut pris sur le residu a un template median.
 
@@ -777,6 +823,14 @@ def _highpass_against_template(coadd, held, grid, config):
     covered = int(np.sum(np.isfinite(template)))
     log("high pass against a median template built in the star's frame:"
         " %d of %d samples covered" % (covered, template.size), "value")
+    # LE TEMPLATE EST ECRIT A COTE DU CUBE, parce que l'etape `correct` doit
+    # appliquer EXACTEMENT le meme passe-haut: elle resample les memes
+    # spectres et retranche les composantes ajustees ici, donc un filtre
+    # different de part et d'autre compare des choses qui ne sont pas a la
+    # meme echelle. Vu le 2026-10-16: sans cela `correct` recevait du
+    # ln(flux) brut (mediane +10.14) la ou le cube portait un residu
+    # passe-haut (mediane +0.017), et le bruit des spectres corriges doublait.
+    _stash_template(config, template)
 
     n_used = 0
     for (label, values, sig, tr, good, meta, segments), berv in zip(held,
