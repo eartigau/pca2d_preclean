@@ -1082,6 +1082,16 @@ def update_earth(data, w, P, Q, a, b, shifter, delta, chunk, alpha=None,
 _LOAD_BLOCK_BYTES = 256 * 1024 * 1024
 
 
+#: LE SEUIL PAR PIXEL, EN SNR. Un pixel dont le bruit est sous ce rapport
+#: n'apporte rien au fit; au-dessus, il compte par son poids 1/sigma^2, et le
+#: fond d'une raie profonde reste donc dans le jeu. 5 est bas exprès: le but
+#: est d'ecarter le pixel mort, pas de trier par brillance. Mesure du
+#: 2026-10-16 sur HD 10700 (voir docs/harps_tc_result.md): l'ancien seuil de
+#: profondeur laissait 13.7% de NaN dans les spectres corriges et coutait a
+#: LBL le tiers de ses raies.
+DEFAULT_MIN_PIXEL_SNR = 5.0
+
+
 def read_cube_files(path, dtype=np.float64, columns=None, lazy=False):
     """Read a cached cube, in either of the two formats `cube.py` has written.
 
@@ -1650,8 +1660,9 @@ def check_memory(rows, columns, dtype, fraction=None):
     return need
 
 
-def load_cube(path, ln_clip_low=-0.5, ramp_zero=0.5, min_snr_frac=0.5,
-              dtype=np.float64, columns=None, spill=None):
+def load_cube(path, ln_clip_low=None, ramp_zero=0.5, min_snr_frac=0.5,
+              dtype=np.float64, columns=None, spill=None,
+              min_pixel_snr=DEFAULT_MIN_PIXEL_SNR):
     """The observer-frame cube plus the weights, condensed from cube.py.
 
     `min_snr_frac` drops spectra whose band SNR is below that fraction of the
@@ -1661,6 +1672,14 @@ def load_cube(path, ln_clip_low=-0.5, ramp_zero=0.5, min_snr_frac=0.5,
     informative, and the weights already know that -- but it still gets a full
     vote in the median template and contributes a row of mostly-noise
     coefficients, so it is cheaper to drop it than to carry it.
+
+    `min_pixel_snr` est le seuil par PIXEL, en SNR, et il a remplace le
+    2026-10-16 un seuil de PROFONDEUR (`ln_clip_low`, qui valait -0.5 par
+    defaut ici et qu'aucun appelant ne passait). L'ancien tuait tout pixel
+    sous exp(-0.5) = 0.607 du continu, donc le fond de toute raie plus
+    profonde que 39%, c'est-a-dire l'endroit le plus riche en contenu de
+    vitesse. Passer `ln_clip_low` et `min_pixel_snr=None` retrouve l'ancien
+    comportement.
     """
     grid, data, sigma, trans, meta = read_cube_files(path, dtype, columns,
                                                     lazy=True)
@@ -1733,7 +1752,17 @@ def load_cube(path, ln_clip_low=-0.5, ramp_zero=0.5, min_snr_frac=0.5,
         with np.errstate(invalid="ignore", divide="ignore", over="ignore"):
             wb = np.where(np.isfinite(s_blk) & (s_blk > 0), 1.0 / s_blk ** 2, 0.0)
         wb[~np.isfinite(d_blk)] = 0.0
-        wb[d_blk < ln_clip_low] = 0.0
+        # LE SEUIL PAR PIXEL, et c'est ICI qu'il agit: le cube ne garde que
+        # data et sigma bruts, jamais les poids, donc ils sont refaits a chaque
+        # lecture. Il porte sur le SNR du pixel (1/sigma) et non sur sa
+        # profondeur, pour ne pas jeter le fond des raies profondes, qui est
+        # l'endroit le plus riche en contenu de vitesse. min_pixel_snr a None
+        # rend la main a ln_clip_low, l'ancien seuil de profondeur.
+        if min_pixel_snr is not None:
+            with np.errstate(invalid="ignore", divide="ignore"):
+                wb[~(1.0 / s_blk >= float(min_pixel_snr))] = 0.0
+        elif ln_clip_low is not None:
+            wb[d_blk < ln_clip_low] = 0.0
         if trans is not None:
             t_blk = take(trans)
             wb *= np.clip((t_blk - ramp_zero) / (1.0 - ramp_zero), 0.0, 1.0)

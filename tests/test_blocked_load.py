@@ -47,7 +47,15 @@ def read_whole(path, **kw):
     with np.errstate(invalid="ignore", divide="ignore"):
         w = np.where(np.isfinite(sigma) & (sigma > 0), 1.0 / sigma ** 2, 0.0)
     w[~np.isfinite(data)] = 0.0
-    w[data < kw.get("ln_clip_low", -0.5)] = 0.0
+    # LE SEUIL PAR PIXEL, le meme que load_cube: en SNR (1/sigma) et non en
+    # profondeur depuis le 2026-10-16. La reference suit le code qu'elle
+    # verifie, sinon elle ne verifie plus rien.
+    snr_cut = kw.get("min_pixel_snr", twoframe.DEFAULT_MIN_PIXEL_SNR)
+    if snr_cut is not None:
+        with np.errstate(invalid="ignore", divide="ignore"):
+            w[~(1.0 / sigma >= float(snr_cut))] = 0.0
+    elif kw.get("ln_clip_low") is not None:
+        w[data < kw["ln_clip_low"]] = 0.0
     if trans is not None:
         ramp = kw.get("ramp_zero", 0.5)
         w *= np.clip((trans - ramp) / (1.0 - ramp), 0.0, 1.0)

@@ -227,7 +227,22 @@ DEFAULTS = {
     "weights": {
         "mode": "photon",            # 'photon' or 'uniform'
         "snr_pixel_scale": 1.0,      # EXTSN is per e2ds pixel; rescale if wanted
-        "ln_clip_low": -0.5,         # y below this -> zero weight (deep lines)
+        # LE SEUIL PAR PIXEL EST UN SEUIL DE SNR, pas de profondeur. Un fond de
+        # raie profonde porte moins de photons, donc un RMS fractionnaire plus
+        # grand, mais c'est l'endroit ou le contenu en vitesse est le plus
+        # dense: ce qu'il faut ecarter est le pixel dont le bruit depasse ce
+        # que les photons expliquent, pas celui qui est sombre.
+        #
+        # sigma etant le sigma photonique du log-flux, 1/sigma EST le SNR
+        # local. 5 est bas exprès: ecarter le pixel mort, pas trier par
+        # brillance. Mis a null, c'est `ln_clip_low` qui reprend la main.
+        "min_pixel_snr": 5.0,
+        "ln_clip_low": None,         # ANCIEN: y below this -> zero weight.
+                                     # Remplace le 2026-10-16 par min_pixel_snr:
+                                     # a -0.5 il tuait le fond de toute raie
+                                     # plus profonde que 39% du continu, 13.7%
+                                     # des pixels sur HD 10700, et LBL y perdait
+                                     # le tiers de ses raies
         "ln_clip_high": None,        # y above this -> zero weight (None = keep)
         "sigma_floor_frac": 0.0,     # add this (in ln units) in quadrature
         "telluric_mode": "recon",        # 'recon'     = the paired

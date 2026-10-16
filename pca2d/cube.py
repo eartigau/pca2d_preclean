@@ -828,7 +828,31 @@ def build_weights(config: dict, grid, data, sigma, meta, trans=None, chunk=64):
         bad = ~np.isfinite(values)
         block[bad] = 0.0
         counters["dead"] += int(np.sum(block == 0))
-        if wcf["ln_clip_low"] is not None:
+        # LE SEUIL PORTE SUR LE SNR DU PIXEL, PAS SUR SA PROFONDEUR. Un fond de
+        # raie profonde porte moins de photons, donc un RMS fractionnaire plus
+        # grand, mais ce n'est pas une raison de le jeter: c'est au contraire
+        # l'endroit ou le contenu en vitesse est le plus dense. Ce qu'il faut
+        # ecarter, c'est le pixel dont le bruit depasse ce que les photons
+        # expliquent, pas celui qui est simplement sombre.
+        #
+        # sigma est le sigma photonique du log-flux (preprocess.photon_sigma),
+        # donc 1/sigma EST le SNR local, et le seuil se lit en SNR.
+        #
+        # CE QUE L'ANCIEN CRITERE COUTAIT, mesure le 2026-10-16 sur HD 10700:
+        # ln_clip_low = -0.5 tuait tout pixel sous exp(-0.5) = 0.607 du
+        # continu, c'est-a-dire le fond de TOUTE raie plus profonde que 39%.
+        # Au fond du Na D2 a 589.15 nm, les pixels perdus avaient une
+        # profondeur mediane de 0.340 contre 0.712 pour les gardes. Les
+        # spectres corrigeaient 13.7% de NaN contre 0.07% dans les livres, et
+        # LBL y perdait le tiers de ses raies (7860 au lieu de 11134) avec une
+        # erreur par raie de 340 m/s au lieu de 145.
+        if wcf.get("min_pixel_snr") is not None:
+            with np.errstate(invalid="ignore", divide="ignore"):
+                snr = 1.0 / np.sqrt(variance)
+            cut = ~(snr >= float(wcf["min_pixel_snr"]))
+            block[cut] = 0.0
+            counters["low"] += int(cut.sum())
+        elif wcf.get("ln_clip_low") is not None:
             cut = values < float(wcf["ln_clip_low"])
             block[cut] = 0.0
             counters["low"] += int(cut.sum())
@@ -846,7 +870,10 @@ def build_weights(config: dict, grid, data, sigma, meta, trans=None, chunk=64):
 
     log("zero-weight from non-finite / failed registration: %.3f%%"
         % (100.0 * counters["dead"] / n_total), "value")
-    if wcf["ln_clip_low"] is not None:
+    if wcf.get("min_pixel_snr") is not None:
+        log("zero-weight from pixel SNR < %.1f: %.3f%%"
+            % (wcf["min_pixel_snr"], 100.0 * counters["low"] / n_total), "value")
+    elif wcf.get("ln_clip_low") is not None:
         log("zero-weight from y < %.2f (deep lines): %.3f%%"
             % (wcf["ln_clip_low"], 100.0 * counters["low"] / n_total), "value")
     if wcf["ln_clip_high"] is not None:
