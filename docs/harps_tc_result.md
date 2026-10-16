@@ -106,3 +106,38 @@ l'ordre de 1,5 m/s, l'incertitude est de 0,22, donc distinguer deux réglages
 qui diffèrent de 0,2 m/s demande environ quatre fois plus d'époques. HD 69830
 en a 713 dans l'archive et GJ 581 252, ce qui est une raison de plus de les
 mesurer.
+
+### Complément : le MAD et le RMS ne mesurent pas la même chose, et ici ils se contredisent
+
+La section ci-dessus conclut, sur le MAD, qu'aucun écart n'est significatif.
+C'est vrai **pour le MAD**, et c'est incomplet. Sur le **RMS**, le même test
+apparié donne :
+
+| composantes | RMS | gain | tirages donnant un gain |
+|---|---|---|---|
+| 1 | 2,107 | +0,079 | 91 % |
+| 2 | 2,078 | +0,108 | 91 % |
+| 3 | 2,086 | +0,100 | 90 % |
+| 4 | 2,038 | +0,148 | 97 % |
+| 6 | 2,072 | +0,114 | 95 % |
+| 8 | 2,000 | +0,186 | **99 %** |
+
+Le gain est **monotone** avec le nombre de composantes et significatif, là où
+le MAD oscillait sans tendance.
+
+**Pourquoi les deux se contredisent**, mesuré sur `n_earth = 8` en découpant
+les poses par leur écart à la médiane :
+
+| les poses | avant | après | gain |
+|---|---|---|---|
+| cœur (sous la médiane de \|v\|) | 0,629 | 0,874 | **−0,245** |
+| 80e centile | 1,847 | 1,680 | +0,168 |
+| les 20 % les plus écartés | 3,484 | 3,045 | **+0,440** |
+
+**pca2d dégrade le cœur et redresse les extrêmes.** Le MAD ne regarde que le
+cœur par construction, donc il voit la dégradation ; le RMS pèse les extrêmes,
+donc il voit le gain. Les deux ont raison sur ce qu'ils mesurent.
+
+La conséquence pratique dépend de l'usage : pour chercher une planète dans une
+série déjà propre, la dégradation du cœur compte ; pour rendre utilisables des
+poses prises dans de mauvaises conditions, le redressement des extrêmes compte.
