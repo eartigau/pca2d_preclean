@@ -1063,7 +1063,12 @@ objects:
       # composantes de l'OBSERVATEUR savent modeliser: elles sont fixes en
       # longueur d'onde pendant que l'etoile se decale avec le BERV, et
       # l'etendue de 59 km/s de cette campagne est la plus large des trois.
-      object_header: [GJ581, Gl581, HIP74995, GJ 581]
+      object_header: [Gl581, GI581, GJ581, HIP74995, GJ 581]
+                            # GI581 avec un I MAJUSCULE n'est pas une faute
+                            # de frappe ici: c'est ce que portent 3 des 120
+                            # en-tetes de l'ESO, la ou les 117 autres disent
+                            # Gl581 avec un L minuscule. Trois poses perdues
+                            # en silence si on ne la nomme pas.
     lbl:
       teff: 3500
     target:
@@ -1081,7 +1086,12 @@ objects:
       # en SNR. Son etendue de BERV est de 59.0 km/s, la plus large des
       # trois, ce qui est la condition pour separer les deux reperes.
       # Le DRS de l'ESO lui trouve un rms de 10.0 m/s (erreur mediane 1.43).
-      object_header: [GJ581, Gl581, HIP74995, GJ 581]
+      object_header: [Gl581, GI581, GJ581, HIP74995, GJ 581]
+                            # GI581 avec un I MAJUSCULE n'est pas une faute
+                            # de frappe ici: c'est ce que portent 3 des 120
+                            # en-tetes de l'ESO, la ou les 117 autres disent
+                            # Gl581 avec un L minuscule. Trois poses perdues
+                            # en silence si on ne la nomme pas.
     lbl:
       teff: 3500
     target:
@@ -1097,7 +1107,10 @@ objects:
       # de BERV 51.4 km/s, rms DACE de 4.8 m/s pour une erreur mediane de
       # 0.33: une serie tres propre, voisine de HD 10700 en qualite mais sur
       # une etoile plus froide, avec trois Neptunes connues.
-      object_header: [HD69830, HD 69830, HIP40693]
+      object_header: [HD69830, HR3259, HD 69830, HIP40693]
+                            # HR3259 est la MEME etoile: 32 des 125 poses
+                            # la nomment ainsi et 218 HD69830. Releve sur
+                            # les en-tetes le 2026-10-16.
     lbl:
       teff: 5385
     target:
