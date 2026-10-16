@@ -1318,6 +1318,45 @@ def _velocity_pages(plan):
             % (type(exc).__name__, exc), "warn")
 
 
+def _check_lbl_tree(directory):
+    """Refuser de lancer LBL sur un arbre dont un dossier est un lien MORT.
+
+    CE QUI S'EST PASSE le 2026-10-15 a 22h55. outputs/lbl/ portait dix liens
+    vers /Volumes/irrisor, un disque externe qui n'etait pas monte. LBL s'est
+    arrete au bout de 1.9 seconde sur une FileExistsError en voulant creer son
+    dossier de log, et le journal de la nuit ne disait rien de plus: les
+    quatre etapes d'avant avaient reussi, donc la chaine avait l'air d'etre
+    allee au bout.
+
+    Le piege est que Path.exists() SUIT le lien: un lien casse n'existe pas
+    pour lui, donc io.make_dir de LBL passe dans sa branche "creer", et le
+    mkdir echoue parce que le nom, lui, est bien pris. Les deux moities du
+    test portent sur des choses differentes.
+
+    On regarde donc ici, une fois, avant de donner l'arbre a LBL, et on dit
+    quel lien et vers quoi plutot que de laisser LBL mourir sur un message qui
+    ne nomme pas la cause.
+    """
+    broken = []
+    try:
+        names = sorted(os.listdir(directory))
+    except OSError:
+        return
+    for name in names:
+        path = os.path.join(directory, name)
+        if os.path.islink(path) and not os.path.exists(path):
+            broken.append((name, os.readlink(path)))
+    if not broken:
+        return
+    log("%d folder(s) of the LBL tree are DEAD LINKS, and LBL would stop on"
+        " one of them without naming it:" % len(broken), "error")
+    for name, target in broken:
+        log("    %-14s -> %s" % (name, target), "error")
+    log("    the disk they point at is not mounted. Mount it, or point them"
+        " somewhere that exists, and run the lbl stage again.", "error")
+    raise SystemExit(2)
+
+
 def run_lbl(plan):
     from . import lbl as splbl
 
@@ -1339,6 +1378,7 @@ def run_lbl(plan):
     for sub in _storage.LBL_FOLDERS:
         _storage.link_dir(plan["config"],
                           os.path.join(lbl_directory(plan["config"]), sub))
+    _check_lbl_tree(lbl_directory(plan["config"]))
     if plan.get("members"):
         # one LBL object per star, each measured on its own; what they share is
         # the observer basis that corrected them, not their velocities
