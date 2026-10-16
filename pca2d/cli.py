@@ -1037,6 +1037,15 @@ def run_cube(plan):
     argv = [plan["written_config"]]
     if not cfg["output"]["use_cache"]:
         argv.append("--no-cache")
+    # LE REPERE DEMANDE EST RESPECTE. build.main ramene registration.frame a
+    # 'observer' sauf si on le lui interdit, parce que c'est le reglage de
+    # presque tous les runs et qu'un frame laisse par megarde dans un fichier
+    # de config coutait vingt minutes de cube inutile. Mais quand la config
+    # resolue demande vraiment un autre repere, c'est un choix et non un
+    # oubli: le passe-haut contre un template median, par exemple, n'a de
+    # sens que si les raies stellaires sont co-incidentes.
+    if (cfg.get("registration") or {}).get("frame", "observer") != "observer":
+        argv.append("--allow-any-frame")
     build_main(argv)
 
 

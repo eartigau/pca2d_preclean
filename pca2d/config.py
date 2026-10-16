@@ -188,6 +188,22 @@ DEFAULTS = {
                                      # t.fits always filters on the destination
                                      # grid, per order -- the native sampling is
                                      # not uniform in velocity.
+        # LE PASSE-HAUT SUR LE RESIDU AU TEMPLATE plutot que sur le spectre.
+        # Un savgol passe sur un spectre entier est tire vers le bas par
+        # chaque raie profonde, et quand une tellurique balaie le coeur d'une
+        # raie avec le BERV ce biais change D'UNE POSE A L'AUTRE: il reste
+        # alors, dans le repere de l'etoile, un residu qui suit le BERV sans
+        # etre stellaire. Mesure le 2026-10-16 sur HD 69830 a 688.85 nm: la
+        # tellurique parcourt 0.117 nm sur les 51 km/s de BERV, et sa
+        # profondeur au coeur passe de 3% a 89%, par intermittence.
+        #
+        # Avec cette option le passe-haut se fait en DEUX PASSES: template
+        # median de toutes les poses registrees, savgol sur le RESIDU au
+        # template, puis la structure stellaire rendue depuis le template
+        # seul. Aucune raie n'est masquee, rien n'entre ni ne sort selon le
+        # BERV. Demande frame: target, le passe-haut devant se faire dans le
+        # repere de l'etoile.
+        "against_template": False,
     },
     "quality": {
         "min_snr": 1.0,              # reject if the band SNR is below this
@@ -1186,8 +1202,12 @@ def cache_key(config: dict) -> str:
         # the window the width resolved to, not the width: dv is hashed with
         # the domain, and a config in samples from before width_kms has to
         # keep the key its cube was built under
+        # against_template est omis quand il est faux, pour la meme raison que
+        # les autres reglages ajoutes apres coup: son apparition dans le
+        # dictionnaire ne doit pas orpheliner les cubes deja construits.
         "highpass": {k: v for k, v in config["highpass"].items()
-                     if k != "width_kms"},
+                     if k != "width_kms"
+                     and not (k == "against_template" and not v)},
         # weights that are baked into the cube rather than applied later
         "weights": {
             k: config["weights"][k]

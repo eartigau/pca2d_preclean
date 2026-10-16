@@ -1046,7 +1046,7 @@ def refit_row(model, path, config, shifter, base_row, weight="flux",
     """
     grid = model["grid"]
     payload = _readers.read_any(path, config)
-    values, sigma, trans, good, n_written = sptf.resample_exposure(
+    values, sigma, trans, good, n_written, _segments = sptf.resample_exposure(
         payload, grid, config)
     if not n_written or not good.any():
         return None, None

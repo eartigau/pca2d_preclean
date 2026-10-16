@@ -426,6 +426,10 @@ def resample_exposure(payload: dict, grid: np.ndarray, config: dict):
     n_written = 0
 
     edge = int(reg.get("edge_pixels", 1))
+    #: les bornes des segments ecrits, quand le passe-haut est differe: la
+    #: seconde passe doit filtrer segment par segment, jamais a travers le
+    #: trou qui separe deux ordres de meme parite
+    segments = []
     for order in orders:
         # the last valid pixel beside every gap goes before the spline sees the
         # order: a cubic spline bends toward the straight line the gap is filled
@@ -521,6 +525,16 @@ def resample_exposure(payload: dict, grid: np.ndarray, config: dict):
                 seg_values = np.where(seg_good & (seg_values > 0),
                                       np.log(np.abs(seg_values)), 0.0)
             hp_good = seg_good & np.isfinite(seg_values)
+        elif hip.get("against_template"):
+            # LE PASSE-HAUT ATTEND LE TEMPLATE. On ne garde ici que le
+            # logarithme du flux; le filtre passera dans cube.py, sur le
+            # residu a un template median, une fois toutes les poses lues.
+            # Voir preprocess.highpass_against_template pour pourquoi.
+            with np.errstate(invalid="ignore", divide="ignore"):
+                seg_values = np.where(seg_good & (seg_values > 0),
+                                      np.log(np.abs(seg_values)), 0.0)
+            hp_good = seg_good & np.isfinite(seg_values)
+            segments.append((parity, start, stop))
         else:
             seg_values, hp_good = prep.highpass(
                 np.where(seg_good, seg_values, np.nan),
@@ -557,7 +571,10 @@ def resample_exposure(payload: dict, grid: np.ndarray, config: dict):
         good[parity, start:stop] = keep
         n_written += 1
 
-    return values, sigma, trans, good, n_written
+    # LES SEGMENTS SONT TOUJOURS RENDUS, meme vides: un retour dont le nombre
+    # d'elements depend d'un reglage se desynchronise au premier appelant
+    # qu'on oublie de mettre a jour.
+    return values, sigma, trans, good, n_written, segments
 
 
 def raw_block(payload: dict, grid: np.ndarray, a0: int, b0: int, config: dict):
@@ -574,5 +591,6 @@ def raw_block(payload: dict, grid: np.ndarray, a0: int, b0: int, config: dict):
     shift anyway. float32, NaN where nothing was measured.
     """
     cfg = dict(config, highpass=dict(config["highpass"], method="none"))
-    values, _sigma, _trans, good, _n = resample_exposure(payload, grid[a0:b0], cfg)
+    values, _sigma, _trans, good, _n, _seg = resample_exposure(
+        payload, grid[a0:b0], cfg)
     return np.where(good, values, np.nan).astype(np.float32)

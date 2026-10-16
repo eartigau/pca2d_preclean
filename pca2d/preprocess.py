@@ -285,3 +285,87 @@ def empirical_sigma(values, good, box=201):
     """
     s = running_abs_diff(values, good, box) / (2.0 / np.sqrt(np.pi))
     return np.where(np.isfinite(s) & (s > 0), s, np.nan)
+
+
+def highpass_against_template(values, good, template, window, polyorder,
+                              already_log=False):
+    """Le passe-haut pris sur le RESIDU au template, et non sur le spectre.
+
+    LE PROBLEME QU'IL RESOUT. Un Savitzky-Golay passe sur un spectre entier
+    est tire vers le bas par chaque raie profonde: le lisse n'est pas le
+    continu, c'est le continu moins une fraction de la raie. Tant que la raie
+    est la meme d'une pose a l'autre, ce biais est constant et la PCA ne le
+    voit pas. Mais une tellurique qui balaie le coeur d'une raie stellaire
+    avec le BERV change ce biais D'UNE POSE A L'AUTRE, et laisse dans le
+    repere de l'etoile un residu qui suit le BERV sans etre stellaire.
+
+    Mesure le 2026-10-16 sur HD 69830, raie a 688.85 nm: en balayant le BERV
+    de -25 a +25 km/s, la tellurique parcourt 0.117 nm, soit plusieurs
+    largeurs de raie, et sa profondeur au coeur passe de 3% a 89%. Le lisse
+    local change donc par intermittence, et pas de facon lineaire en BERV,
+    ce qui le rend invisible a une simple correlation (0.036 sur la
+    campagne).
+
+    LA METHODE. Les spectres etant deja dans le repere de l'etoile et sur une
+    grille commune:
+
+        residu  = ln(flux) - template        (le template est le meme pour
+                                              toutes les poses, donc il ne
+                                              peut pas biaiser une pose plus
+                                              qu'une autre)
+        residu -= savgol(residu)             (le passe-haut travaille sur un
+                                              residu PLAT, sans raie profonde
+                                              pour tirer le lisse)
+        sortie  = residu + (template - savgol(template))
+
+    Le dernier terme rend au spectre sa structure stellaire passe-haut, prise
+    une fois pour toutes sur le template et donc identique pour toutes les
+    poses. Aucune raie n'est masquee, et rien n'entre ou ne sort du masque
+    selon le BERV.
+
+    `template` est en ln(flux), sur la meme grille que `values`.
+    """
+    values = np.asarray(values, dtype=float)
+    template = np.asarray(template, dtype=float)
+    window = int(window)
+    if window % 2 == 0:
+        window += 1
+    window = min(window, (values.size - 1) | 1)
+
+    positive = np.asarray(good, dtype=bool) & np.isfinite(values)
+    if already_log:
+        # le chemin par ordres donne deja ln(flux): le reprendre en logarithme
+        # le mettrait au carre
+        log_flux = np.where(positive, values, np.nan)
+    else:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            log_flux = np.where(positive & (values > 0), np.log(
+                np.where(positive & (values > 0), values, 1.0)), np.nan)
+    usable = positive & np.isfinite(log_flux) & np.isfinite(template)
+    if usable.sum() < window:
+        return np.zeros_like(values), np.zeros(values.shape, dtype=bool)
+
+    residual, _ = _fill_gaps(np.where(usable, log_flux - template, np.nan))
+    residual = residual - savgol_filter(residual, window, polyorder)
+
+    filled_template, _ = _fill_gaps(np.where(np.isfinite(template), template,
+                                             np.nan))
+    star = filled_template - savgol_filter(filled_template, window, polyorder)
+
+    out = residual + star
+    usable &= np.isfinite(out)
+    return np.where(usable, out, 0.0), usable
+
+
+def median_template(rows, weights=None):
+    """Le template: la mediane des poses deja registrees, en ln(flux).
+
+    Chaque ordre est normalise par sa mediane avant d'entrer, pour qu'une
+    pose brillante ne pese pas plus qu'une pose faible.
+    """
+    stack = np.asarray(rows, dtype=float)
+    if stack.ndim != 2 or stack.shape[0] == 0:
+        return None
+    with np.errstate(invalid="ignore"):
+        out = np.nanmedian(stack, axis=0)
+    return out

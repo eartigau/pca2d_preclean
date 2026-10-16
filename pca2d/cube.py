@@ -482,6 +482,8 @@ def _build_tfits(config: dict, files: list[str], grid: np.ndarray,
     coadd = _Coadder(n_groups, 2, n_pixels, CUBE_DTYPE, use_recon)
 
     n_rejected = 0
+    #: les poses qui attendent le template, quand le passe-haut est differe
+    held = []
     n_used = 0
     parity_ratio = []
     blocks = _figure_blocks(config, grid) if snippets is not None else []
@@ -520,7 +522,9 @@ def _build_tfits(config: dict, files: list[str], grid: np.ndarray,
         # each exposure is registered with its OWN BERV before it is coadded:
         # within a night the BERV moves by up to 0.5 km/s, a whole destination
         # pixel, and stacking first would smear every stellar line by that much
-        values, sig, tr, good, n_orders = sptf.resample_exposure(payload, grid, config)
+        values, sig, tr, good, n_orders, segments = sptf.resample_exposure(
+            payload, grid, config)
+        deferred_hp = bool(config["highpass"].get("against_template"))
         if n_orders == 0 or not good.any():
             log("rejecting %s: no order survived in the domain" % meta["filename"],
                 "warn")
@@ -538,8 +542,15 @@ def _build_tfits(config: dict, files: list[str], grid: np.ndarray,
         if np.isfinite(ratio):
             parity_ratio.append(ratio)
 
+        if deferred_hp:
+            held.append((label, values, sig, tr if use_recon else None,
+                         good, meta, segments))
+            continue
         coadd.add(label, values, sig, tr if use_recon else None, good, meta)
         n_used += 1
+
+    if held:
+        n_used += _highpass_against_template(coadd, held, grid, config, log)
 
     if n_used == 0:
         raise RuntimeError("every exposure was rejected")
@@ -711,6 +722,87 @@ def _build_s1d(config: dict, files: list[str], grid: np.ndarray):
     log("kept %d / %d spectra -> %d cube rows" % (n_used, len(files), data.shape[0]),
         "value")
     return grid, data, sigma, trans, meta_table
+
+
+def _highpass_against_template(coadd, held, grid, config, log):
+    """La seconde passe: le passe-haut pris sur le residu a un template median.
+
+    LE PROBLEME QU'ELLE RESOUT. Un Savitzky-Golay passe sur un spectre entier
+    est tire vers le bas par chaque raie profonde: le lisse n'est pas le
+    continu, c'est le continu moins une fraction de la raie. Tant que la raie
+    est la meme d'une pose a l'autre, ce biais est constant et la PCA ne le
+    voit pas. Mais une tellurique qui balaie le coeur d'une raie stellaire
+    avec le BERV change ce biais D'UNE POSE A L'AUTRE, et laisse un residu qui
+    suit le BERV sans etre stellaire.
+
+    Mesure le 2026-10-16 sur HD 69830, raie a 688.85 nm: quand le BERV couvre
+    ses 51 km/s, la tellurique parcourt 0.117 nm, plusieurs largeurs de raie,
+    et sa profondeur au coeur passe de 3% a 89%. L'effet etant intermittent,
+    une correlation simple avec le BERV ne le voit pas (0.036 sur la
+    campagne).
+
+    LE TEMPLATE EST BATI DANS LE REPERE DE L'ETOILE, puis redescendu dans le
+    repere de chaque pose. Le cube, lui, ne change pas de repere: l'ajustement
+    a deux reperes fait son propre decalage du bloc stellaire et wizard.py
+    refuse un cube deja registre. Seul le template voyage.
+
+    LE FILTRE RESTE PAR SEGMENT D'ORDRE, jamais a travers le trou qui separe
+    deux ordres de meme parite, exactement comme la premiere passe.
+    """
+    from . import preprocess as prep
+
+    reg = config["registration"]
+    hip = config["highpass"]
+    bervs = np.array([float(m["berv"]) for _, _, _, _, _, m, _ in held])
+
+    # le template: la mediane des poses ramenees dans le repere de l'etoile
+    rows = []
+    for (_, values, _, _, good, _, _), berv in zip(held, bervs):
+        row = np.where(good, values, np.nan)
+        # chaque parite normalisee par sa mediane, pour qu'une pose brillante
+        # ne pese pas plus qu'une pose faible
+        with np.errstate(invalid="ignore"):
+            row = row - np.nanmedian(row, axis=1, keepdims=True)
+        moved = np.empty_like(row)
+        for parity in range(row.shape[0]):
+            finite = np.isfinite(row[parity])
+            shifted, shifted_good = prep.register(
+                grid, np.where(finite, row[parity], 0.0), finite, berv, 0.0,
+                grid, spline_order=reg["spline_order"],
+                mask_threshold=reg["mask_threshold"])
+            moved[parity] = np.where(shifted_good, shifted, np.nan)
+        rows.append(moved)
+    with np.errstate(invalid="ignore"):
+        template = np.nanmedian(np.array(rows), axis=0)
+    covered = int(np.sum(np.isfinite(template)))
+    log("high pass against a median template built in the star's frame:"
+        " %d of %d samples covered" % (covered, template.size), "value")
+
+    n_used = 0
+    for (label, values, sig, tr, good, meta, segments), berv in zip(held,
+                                                                   bervs):
+        here = np.empty_like(template)
+        for parity in range(template.shape[0]):
+            finite = np.isfinite(template[parity])
+            shifted, shifted_good = prep.register(
+                grid, np.where(finite, template[parity], 0.0), finite, 0.0,
+                berv, grid, spline_order=reg["spline_order"],
+                mask_threshold=reg["mask_threshold"])
+            here[parity] = np.where(shifted_good, shifted, np.nan)
+
+        out = np.zeros_like(values)
+        keep = np.zeros(good.shape, dtype=bool)
+        for parity, start, stop in segments:
+            seg, seg_good = prep.highpass_against_template(
+                values[parity, start:stop], good[parity, start:stop],
+                here[parity, start:stop], hip["window"], hip["polyorder"],
+                already_log=True)
+            out[parity, start:stop] = seg
+            keep[parity, start:stop] = seg_good
+        keep &= np.isfinite(sig) & (sig > 0)
+        coadd.add(label, np.where(keep, out, 0.0), sig, tr, keep, meta)
+        n_used += 1
+    return n_used
 
 
 def _quality_reason(meta, wave, quality):
