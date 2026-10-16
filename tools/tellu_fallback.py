@@ -48,6 +48,28 @@ ZOOMS = ((688.0, 690.5, "bande B, saturee"),
 ALPHAS = (0.05, 0.35, 1.0)
 
 
+def template_spline(path):
+    """Le template stellaire, en spline sur la longueur d'onde, ou None.
+
+    C'est ce par quoi l'ajustement DOIT diviser le spectre avant de mesurer
+    les telluriques: la logique d'APERO, que LBL applique aussi
+    (tellu_clean.py, sp_tmp / template_vector). Sans cela l'ajustement voit le
+    spectre stellaire entier, et sur une etoile dense en raies ce sont elles
+    qui dominent le critere.
+    """
+    if not path or not os.path.exists(path):
+        return None
+    table = fits.getdata(path)
+    wave = np.array(table["wavelength"], dtype=float)
+    flux = np.array(table["flux"], dtype=float)
+    good = np.isfinite(wave) & np.isfinite(flux)
+    if good.sum() < 100:
+        return None
+    wave, flux = wave[good], flux[good]
+    order = np.argsort(wave)
+    return IUS(wave[order], flux[order], k=1, ext=3)
+
+
 def splines(tapas):
     table = fits.getdata(tapas)
     wave = np.array(table["WAVELENGTH"], dtype=float)
@@ -96,6 +118,9 @@ def main(argv=None):
     parser.add_argument("--ok", default=base + "/science/HD10700",
                         help="une campagne qui converge, pour comparer")
     parser.add_argument("--tapas", default=base + "/other/tapas_lbl.fits")
+    parser.add_argument("--template", default="",
+                        help="le template stellaire; sans lui la troisieme"
+                             " rangee est omise")
     parser.add_argument("--out",
                         default="/Users/eartigau/tmp/diagnostic_harps/"
                                 "tellu_fallback.pdf")
@@ -116,6 +141,10 @@ def main(argv=None):
     # l'exposant REELLEMENT applique est dans l'en-tete du spectre NETTOYE,
     # pas dans celle du brut, qui n'a jamais vu l'ajustement
     applied = fits.getheader(tc_path).get("TLPEH2O")
+    tmpl = template_spline(args.template)
+    if tmpl is None:
+        print("pas de template (%s): la troisieme rangee sera omise"
+              % args.template)
     good = sorted(glob.glob(os.path.join(args.ok, "*.fits")))
     other = ground_frame(good[0]) if good else None
 
@@ -125,7 +154,8 @@ def main(argv=None):
     with PdfPages(args.out) as pdf:
         _page_cost(pdf, frame, other, deriv, spl_water, spl_dry, scan)
         _page_effect(pdf, frame, after, deriv, spl_water, spl_dry,
-                     alpha=float(applied) if applied is not None else 0.35)
+                     alpha=float(applied) if applied is not None else 0.35,
+                     tmpl=tmpl)
         _page_alphas(pdf, frame, deriv, spl_water, spl_dry)
     print("%s" % args.out)
 
@@ -161,9 +191,12 @@ def _page_cost(pdf, frame, other, deriv, spl_water, spl_dry, scan):
 
 
 def _page_effect(pdf, frame, after, deriv=None, spl_water=None, spl_dry=None,
-                 alpha=0.35):
-    fig, axes = plt.subplots(2, len(ZOOMS), figsize=(11, 6), squeeze=False,
-                             gridspec_kw=dict(height_ratios=[2, 1]))
+                 alpha=0.35, tmpl=None):
+    rows = 3 if tmpl is not None else 2
+    heights = [2, 1, 2] if tmpl is not None else [2, 1]
+    fig, axes = plt.subplots(rows, len(ZOOMS), figsize=(11, 3 * rows),
+                             squeeze=False,
+                             gridspec_kw=dict(height_ratios=heights))
     for col, (low, high, what) in enumerate(ZOOMS):
         band = ((frame["wave"] > low) & (frame["wave"] < high)
                 & np.isfinite(frame["flux"]) & (frame["flux"] > 0)
@@ -195,14 +228,44 @@ def _page_effect(pdf, frame, after, deriv=None, spl_water=None, spl_dry=None,
         bottom.plot(w, now / np.clip(before, 1e-9, None), "-", lw=0.9,
                     color="C3")
         bottom.axhline(1.0, color="k", lw=0.8, ls=":")
-        bottom.set_xlabel("longueur d'onde (nm), repere du sol")
+        if tmpl is None:
+            bottom.set_xlabel("longueur d'onde (nm), repere du sol")
         for ax in (top, bottom):
             ax.grid(alpha=0.3)
         top.set_ylabel("flux normalise")
         bottom.set_ylabel("apres / avant")
-    fig.suptitle("CE QUE LE REPLI A FAIT AU SPECTRE. Le rapport du bas est la"
-                 " correction appliquee,\nissue d'un exposant qui ne vient pas"
-                 " de ce spectre.", fontsize=10)
+
+        # LA TROISIEME RANGEE: le spectre DIVISE PAR LE TEMPLATE, qui est ce
+        # que l'ajustement doit voir. Les raies stellaires disparaissent et il
+        # ne reste que les telluriques, donc le critere n'a plus qu'elles a
+        # expliquer. C'est la contrainte qui manquait.
+        if tmpl is not None:
+            ax = axes[2, col]
+            # le template vit dans le repere de l'ETOILE: on le ramene au sol
+            ratio = np.sqrt((1.0 + frame["berv"] / C)
+                            / (1.0 - frame["berv"] / C))
+            tv = tmpl(w * ratio)
+            tv = tv / np.nanpercentile(tv, 95)
+            resid = (before / scale) / np.clip(tv, 1e-3, None)
+            ax.plot(w, resid, "k-", lw=0.9, label="spectre / template")
+            if deriv is not None and spl_water is not None:
+                model = deriv.model_grid(spl_water, spl_dry, w.min() * 0.999,
+                                         w.max() * 1.001, 115000.0)
+                trans = deriv.transmission(model, w, alpha, frame["airmass"])
+                ax.plot(w, trans, "-", lw=1.1, color="C0", alpha=0.8,
+                        label="transmission, alpha = %.2f" % alpha)
+            ax.axhline(1.0, color="0.6", lw=0.8, ls=":")
+            ax.set_ylabel("apres division")
+            ax.set_xlabel("longueur d'onde (nm), repere du sol")
+            ax.legend(fontsize=7)
+            ax.grid(alpha=0.3)
+            ax.set_ylim(np.nanpercentile(resid, 1) * 0.95,
+                        np.nanpercentile(resid, 99) * 1.05)
+    fig.suptitle("HAUT: le spectre avant et apres, et la transmission a la meme"
+                 " echelle.   MILIEU: la correction appliquee.\n"
+                 "BAS: le spectre DIVISE PAR LE TEMPLATE, qui est ce que"
+                 " l'ajustement doit voir: les raies stellaires ont disparu,"
+                 " il ne reste que les telluriques.", fontsize=9)
     fig.tight_layout()
     pdf.savefig(fig)
     plt.close(fig)
