@@ -180,3 +180,37 @@ rejeté s'il sort de la plage balayée.
 Vérification sur ces deux mêmes poses : celle qui marche garde **0,5936** (elle
 donnait 0,6074 avec l'ancien point de départ), celle qui échoue reçoit
 **0,3500** au lieu de 0,0001.
+
+## Ce que les huit poses récalcitrantes étaient vraiment
+
+Après le garde-fou, huit poses sur 100 recevaient encore le repli. J'ai
+successivement supposé un manque de signal, un signe inversé dans le passage
+au repère du sol, puis des raies stellaires qui noieraient le critère. **Les
+trois hypothèses étaient fausses**, et chacune est écartée par une mesure :
+
+- **le SNR est normal.** Six des sept poses au bord ont un SNR de 202 à 319,
+  pour une médiane de campagne de 263, et une variation de coût saine de 31 %.
+- **le signe est bon.** En balayant le sens du décalage, les poses qui
+  marchent donnent le coût minimal en *divisant* la grille par le facteur
+  Doppler : 505 contre 639 et 659 à BERV +23,7 km/s ; 394 contre 541 et 534 à
+  +3,5 km/s. C'est bien le repère du sol.
+- **les raies stellaires n'y sont pour rien.** Restreint aux 1045 pixels où
+  TAPAS prédit l'eau la plus profonde, le critère trouve franchement 0,2 et
+  0,6 sur les poses d'août et d'octobre, et reste collé au bord sur celles de
+  décembre.
+
+**Le balayage en vitesse a donné la réponse** : les poses qui marchent veulent
+le modèle décalé de 0,0 km/s, celles qui échouent de **+16,0 km/s**, la même
+valeur pour les trois testées. Et l'en-tête le confirme : `HIERARCH ESO INS
+MODE` vaut **EGGS** sur ces poses, la fibre de 1,4" à haute efficacité, et
+HARPS sur les autres. Le compte tombe juste : 8 poses EGGS sur 100, et ce sont
+exactement les 8 qui échouent.
+
+Ce n'est pas un élargissement des raies : baisser la résolution du modèle de
+115 000 à 50 000 ne récupère rien, et leur coût résiduel reste de 1142 à 1593
+contre 505 pour une pose HARPS.
+
+`quality.drs_modes` les écarte donc en amont (`[HARPS]` pour cet instrument,
+`null` par défaut). Elles sont encore nettoyées, puisque LBL ne connaît pas ce
+réglage, mais `rms_table.py` compare sur les **poses communes** aux deux
+séries, donc elles tombent de la comparaison de part et d'autre.
