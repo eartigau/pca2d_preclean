@@ -1190,7 +1190,8 @@ def cache_key(config: dict) -> str:
                          if not (k == "object_header" and v is None)}
     relevant["quality"] = {k: v for k, v in relevant["quality"].items()
                            if not (k in ("min_rjd", "max_rjd", "max_sky_ratio",
-                                         "isolated_window", "nights")
+                                         "isolated_window", "nights",
+                                         "drs_modes")
                                    and v is None)}
     relevant["weights"] = {k: v for k, v in relevant["weights"].items()
                            if not (k == "empirical_noise_box" and v is None)}
