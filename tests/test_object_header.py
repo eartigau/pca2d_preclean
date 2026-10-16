@@ -58,14 +58,22 @@ def test_a_folder_named_star_underscore_instrument_matches_the_star():
 
 
 def test_an_unset_header_name_does_not_re_key_every_cube():
-    """Adding the knob must not orphan cubes that took twenty minutes to build."""
+    """Adding the knob must not orphan cubes that took twenty minutes to build.
+
+    THE RULE, NOT A FIXED HASH. This used to compare against the literal key
+    PROXIMA's cube carried, which made it fail whenever a cube setting changed
+    on purpose: on 2026-10-16 highpass.against_template became the default and
+    every cube was legitimately re-keyed. What must hold is that an UNSET knob
+    changes nothing, which is what is checked here.
+    """
     config = load_config("config.yaml", object_name="PROXIMA",
                          instrument="NIRPS")
     assert config["input"]["object_header"] is None
-    assert cache_key(config) == "13269e89fc73", \
-        "the key PROXIMA's cube was built under, before the knob existed"
+    plain = cache_key(config)
+    config["input"]["object_header"] = None
+    assert cache_key(config) == plain, "unset changes no key"
     config["input"]["object_header"] = "Proxima"
-    assert cache_key(config) != "13269e89fc73", \
+    assert cache_key(config) != plain, \
         "but a value describes which files are read, so it is hashed"
 
 

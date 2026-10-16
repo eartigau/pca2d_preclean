@@ -183,8 +183,12 @@ DEFAULTS = {
         "polyorder": 2,
         "mode": "divide",            # 'divide'  -> y = ln(f / lowpass(f))
                                      # 'log_sub' -> y = ln(f) - lowpass(ln f)
-        "frame": "observer",         # s1d only: apply before ('observer') or
+        "frame": "target",           # s1d only: apply before ('observer') or
                                      # after ('target') the BERV registration.
+                                     # 'target' depuis le 2026-10-16: le
+                                     # passe-haut contre un template demande
+                                     # la grille commune, et c'est devenu le
+                                     # defaut.
                                      # t.fits always filters on the destination
                                      # grid, per order -- the native sampling is
                                      # not uniform in velocity.
@@ -203,7 +207,7 @@ DEFAULTS = {
         # seul. Aucune raie n'est masquee, rien n'entre ni ne sort selon le
         # BERV. Demande frame: target, le passe-haut devant se faire dans le
         # repere de l'etoile.
-        "against_template": False,
+        "against_template": True,
     },
     "quality": {
         "min_snr": 1.0,              # reject if the band SNR is below this

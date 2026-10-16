@@ -1,0 +1,22 @@
+# L'ANCIEN PASSE-HAUT, pour comparer avec le nominal.
+#
+# Depuis le 2026-10-16 le nominal filtre le RESIDU a un template median
+# (highpass.against_template). Ce variant remet le savgol passe sur chaque
+# spectre entier, qui est ce que faisaient tous les runs d'avant.
+#
+# Mesure sur HD 69830 (150 poses) et GJ 581 (116), poses communes, mode HAM:
+#
+#                              rms    MAD        rms    MAD
+#                            HD69830            GJ581
+#   CCF du DRS               3.71   3.57        97.8  11.68
+#   LBL nettoye              3.73   3.49         9.62 12.06
+#   + pca2d, ce variant      3.51   3.36         9.03 10.88
+#   + pca2d, nominal         3.50   3.29         9.06 10.76
+#
+# Les vitesses sont donc les memes a 0.03 m/s pres; le MAD est un peu
+# meilleur avec le template sur les deux etoiles. Le nominal a ete choisi
+# pour une raison CONCEPTUELLE et non pour ce gain: le filtre ne doit pas
+# dependre de ce qu'une tellurique a laisse visible d'une raie ce soir-la.
+highpass:
+  frame: observer
+  against_template: false
