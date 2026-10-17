@@ -1038,6 +1038,81 @@ objects:
       object_header: GJ1
     target:
       planets: [37.3, 365.25]
+  # LE WEEK-END DU 2026-10-17: dix naines M NIRPS a plus de 100 visites,
+  # tirees au hasard, deux par tranche de magnitude H (graine 20261017,
+  # outputs/reports/weekend/sample.json). Un seul mode, HE, impose ici; les
+  # cubes sur irrisor (le disque interne n'a pas la place de dix cubes). Noms
+  # neufs (_W) pour qu'aucun produit LBL anterieur ne soit relu.
+  GJ1_W:
+    input:
+      object_header: GJ1
+    quality:
+      drs_modes: [HE]
+    output:
+      cache_directory: /Volumes/irrisor/pca2d_preclean/cache_weekend
+  GL699_W:
+    input:
+      object_header: GL699
+    quality:
+      drs_modes: [HE]
+    output:
+      cache_directory: /Volumes/irrisor/pca2d_preclean/cache_weekend
+  YZ_CMI_W:
+    input:
+      object_header: YZ_CMI
+    quality:
+      drs_modes: [HE]
+    output:
+      cache_directory: /Volumes/irrisor/pca2d_preclean/cache_weekend
+  GL406_W:
+    input:
+      object_header: GL406
+    quality:
+      drs_modes: [HE]
+    output:
+      cache_directory: /Volumes/irrisor/pca2d_preclean/cache_weekend
+  GJ643_W:
+    input:
+      object_header: GJ643
+    quality:
+      drs_modes: [HE]
+    output:
+      cache_directory: /Volumes/irrisor/pca2d_preclean/cache_weekend
+  GJ3737_W:
+    input:
+      object_header: GJ3737
+    quality:
+      drs_modes: [HE]
+    output:
+      cache_directory: /Volumes/irrisor/pca2d_preclean/cache_weekend
+  GJ3618_W:
+    input:
+      object_header: GJ3618
+    quality:
+      drs_modes: [HE]
+    output:
+      cache_directory: /Volumes/irrisor/pca2d_preclean/cache_weekend
+  GJ3622_W:
+    input:
+      object_header: GJ3622
+    quality:
+      drs_modes: [HE]
+    output:
+      cache_directory: /Volumes/irrisor/pca2d_preclean/cache_weekend
+  TOI5524_W:
+    input:
+      object_header: TOI5524
+    quality:
+      drs_modes: [HE]
+    output:
+      cache_directory: /Volumes/irrisor/pca2d_preclean/cache_weekend
+  TOI210_W:
+    input:
+      object_header: TOI210
+    quality:
+      drs_modes: [HE]
+    output:
+      cache_directory: /Volumes/irrisor/pca2d_preclean/cache_weekend
   GJ328:
     target:
       planets: [3771.0, 241.8]          # b, K = 42.6 m/s on a 10.3 yr orbit
