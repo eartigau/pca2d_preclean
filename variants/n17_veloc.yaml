@@ -1,0 +1,11 @@
+# n17_veloc (2026-10-17): une VITESSE par pose ajustee a cote des composantes
+# (twoframe.velocity_term), ce qui interdit aux composantes d'absorber la
+# vitesse de l'etoile. Test d'absorption sur les cibles a faible envergure BERV:
+# sur TOI-210 (7.6 km/s) et TOI-206 (6.3 km/s), b2 et a1 suivent la vitesse
+# livree nuit apres nuit (Spearman 0.71-0.86) et le rms chute d'un facteur 2.5.
+# Si le gain disparait ici, c'etait de l'absorption.
+note: "une vitesse par pose a cote des composantes: test d'absorption"
+twoframe:
+  velocity_term: true
+lbl:
+  before: false

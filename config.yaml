@@ -1113,6 +1113,24 @@ objects:
       drs_modes: [HE]
     output:
       cache_directory: /Volumes/irrisor/pca2d_preclean/cache_weekend
+  # LE TEST D'INJECTION (2026-10-17): une keplerienne connue (50 m/s a 37.3 j)
+  # ajoutee aux spectres livres par tools/inject_planet.py. TOI-210 a faible
+  # envergure BERV (7.6 km/s), TOI-782 a grande (58 km/s) en temoin. Ce que la
+  # correction en laisse dit si elle efface les vitesses.
+  TOI210_INJ:
+    input:
+      object_header: TOI210
+    quality:
+      drs_modes: [HE]
+    output:
+      cache_directory: /Volumes/irrisor/pca2d_preclean/cache_weekend
+  TOI782_INJ:
+    input:
+      object_header: TOI782
+    quality:
+      drs_modes: [HE]
+    output:
+      cache_directory: /Volumes/irrisor/pca2d_preclean/cache_weekend
   # LES CIBLES FAIBLES (2026-10-17, demande de l'utilisateur): toutes les cibles
   # NIRPS a plus de 50 nuits dans leur mode majoritaire et dont le SNR de la
   # pipeline (EXTSN060, mediane des rdb de /Volumes/irrisor/rdbs_nirps) est sous
