@@ -45,4 +45,9 @@ table is measured on epochs the two series share, paired.
 Spearman rho = -1.000 over the five (p = 0.000 on the rank test, but five
 points only); the power-law fit gives gain ~ SNR^-0.45.
 
-**Proxima is to be redone** with the HARPS updates; that row is provisional.
+**The table mixes two code versions.** TOI-2120 was run on 2026-10-16 with
+the current code. The four NIRPS rows come from September products and
+predate three fixes that touch all of them: deep line cores no longer
+clipped (pca2d 7b88be6), the template high pass (pca2d c61b652), and LBL
+loading the HE profile for NIRPS HE + CADC (lbl-rapide 95bf4f4). They are
+to be rerun on one frozen version, Proxima first.
