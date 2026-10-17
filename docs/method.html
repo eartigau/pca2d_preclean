@@ -209,9 +209,12 @@
       <figure>
         <img src="figures/coefficients_vs_time.svg" alt="Fitted amplitudes of each component against time." />
         <figcaption>
-          TOI-2120, 316 exposures. Every panel is one component's amplitude
-          through the campaign. The Earth components move on the timescale of
-          the weather and the airmass; the star components do not.
+          TOI-2120, 316 exposures, with the nightly means ringed. Left is the
+          star-anchored block, right the Earth-anchored one, and each panel
+          carries its share of the weighted variance. The ordering is worth
+          noting: \(b_1\) carries 17.2&nbsp;% on its own, five times the
+          stellar component's 3.4&nbsp;%, which is what it looks like when the
+          thing being removed is larger than the thing being kept.
         </figcaption>
       </figure>
     </section>
@@ -221,10 +224,11 @@
       <figure>
         <img src="figures/correlations.svg" alt="Rank correlation of every coefficient against the ancillary quantities." />
         <figcaption>
-          Rank correlation of each amplitude against airmass, seeing, water
-          column, SNR and BERV. An Earth component tracking the airmass is
-          doing its job. A <em>star</em> component tracking the airmass is the
-          warning sign that the two blocks have started to mix.
+          Rank correlation of each amplitude against every quantity in the
+          headers. This is the diagnostic that says whether the two blocks have
+          stayed separate: a stellar component that starts tracking the sky, or
+          an observer component that tracks the BERV, is the sign they have
+          begun to mix.
         </figcaption>
       </figure>
     </section>
@@ -243,18 +247,35 @@
         \]
       </div>
       <p>
-        Nothing stellar is removed, nothing is smoothed, nothing is masked on
-        the way out, and the grid is never changed. A corrected file holds
-        exactly what the report's third panel shows, sample for sample,
-        which is a property the test suite checks rather than a claim.
+        Nothing stellar is removed, nothing is smoothed, and the grid is never
+        changed. A corrected file holds exactly what the report's third panel
+        shows, sample for sample, which is a property the test suite checks
+        rather than a claim.
       </p>
+      <div class="callout warn">
+        <strong>What it costs: samples.</strong> Every sample the fit could not
+        weight is written as NaN rather than guessed at, and with
+        <code>mask: common</code> the kept set is decided once for the whole
+        campaign rather than exposure by exposure, so the line list a velocity
+        code sees does not change from night to night. On TOI-2120 that takes
+        the files from 27.2&nbsp;% NaN as delivered to 51.3&nbsp;%: twenty-four
+        points of the spectrum, traded for a line set that is stable across the
+        campaign. On a star already photon-limited, that is a trade worth
+        checking before accepting.
+      </div>
       <figure>
         <img src="figures/corrected_file_1267nm.svg" alt="The corrected spectrum compared with panel three of the report." />
         <figcaption>
           The corrected files laid over panel 3 of the run's own report, around
-          1267&nbsp;nm. The two agree to an rms of 0.0225 in the high-passed log
-          flux, which is the interpolation back onto the original grid and
-          nothing else.
+          1267&nbsp;nm, every exposure ordered by BERV. Where both hold a value
+          they agree to an rms of 0.0225 in the high-passed log flux, which is
+          the interpolation back onto the original grid and nothing else. The
+          yellow in the middle panel is what the files do not hold: it is wider
+          than in panel 3 because <code>mask: common</code> fixes one line set
+          for the whole campaign, and it slants because that set is defined in
+          the observer's frame while the figure is drawn in the star's. The
+          bottom panel is how the files looked before 2026-09-10, when the
+          parity mean was still left in them.
         </figcaption>
       </figure>
     </section>

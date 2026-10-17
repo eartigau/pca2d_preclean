@@ -102,10 +102,12 @@
       <figure>
         <img src="figures/corrected_file_1267nm.svg" alt="The corrected spectrum compared with panel three of the report." />
         <figcaption>
-          A corrected file holds exactly what the third panel shows, sample for
-          sample. Nothing is smoothed, masked or interpolated on the way out:
-          the file is the delivered spectrum with the Earth block divided out,
-          on its own original wavelength grid.
+          A corrected file holds exactly what panel 3 of the report shows,
+          sample for sample, on its own original wavelength grid: nothing is
+          smoothed or interpolated on the way out. What it does <em>not</em>
+          hold is every sample: the yellow is what the fit gave no weight, and
+          it is written as NaN rather than guessed at. That is the method's
+          real cost, and it is not small (see below).
         </figcaption>
       </figure>
     </section>
@@ -165,9 +167,12 @@
       <figure>
         <img src="figures/coefficients_vs_time.svg" alt="The fitted amplitudes of each component against time." />
         <figcaption>
-          The fitted amplitude of every component, exposure by exposure. The
-          Earth components rise and fall on the timescale of the weather and
-          the airmass; the star components do not.
+          Every component's fitted amplitude, exposure by exposure, with the
+          nightly means ringed. The left column is the star-anchored block, the
+          right the Earth-anchored one, and each panel is labelled with the
+          share of weighted variance it carries: \(b_1\) alone accounts for
+          17.2&nbsp;%, against 3.4&nbsp;% for the stellar component and
+          1.0&nbsp;% each for \(b_2\) and \(b_3\).
         </figcaption>
       </figure>
     </section>
@@ -192,9 +197,11 @@
       <figure>
         <img src="figures/correlations.svg" alt="Rank correlation of each coefficient against the ancillary quantities." />
         <figcaption>
-          Rank correlation of each coefficient against airmass, seeing, water
-          column, SNR and the rest. An Earth component that follows the airmass
-          is doing its job; a star component that follows it is a warning.
+          Rank correlation of each coefficient against every quantity the
+          headers carry. On TOI-2120 nothing follows the airmass: the Earth
+          components track the clock (+0.805) and the throughput instead, and
+          one of them tracks the BERV at &minus;0.737, which is the component
+          to watch.
         </figcaption>
       </figure>
     </section>
@@ -251,13 +258,14 @@
       <h2>What it is worth, measured</h2>
       <p>
         On TOI-2120 (321 SPIRou exposures, a 37.9&nbsp;km/s barycentric
-        span, deep water bands across the stellar lines) the velocity
+        span, deep water bands across the stellar lines) the nightly velocity
         scatter drops by a factor of 3.4 on the 80 epochs the two series share:
       </p>
       <div class="stats-grid">
         <div class="stat"><div class="label">LBL on the delivered spectra</div><div class="value">47.98 m/s</div></div>
         <div class="stat"><div class="label">After precleaning</div><div class="value">14.20 m/s</div></div>
         <div class="stat"><div class="label">Paired gain, bootstrap 16&ndash;84 %</div><div class="value">3.14&ndash;3.65&times;</div></div>
+        <div class="stat"><div class="label">What it costs: samples kept</div><div class="value">73 &rarr; 49 %</div></div>
         <div class="stat"><div class="label">Reduced &chi;&sup2;, 158.7 &rarr; 9.5</div><div class="value">16.6&times;</div></div>
       </div>
       <p>

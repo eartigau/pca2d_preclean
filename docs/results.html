@@ -61,8 +61,12 @@
           <tr><th>Series</th><th>rms (m/s)</th><th>MAD (m/s)</th><th>Median error</th><th>Reduced \(\chi^2\)</th></tr>
         </thead>
         <tbody>
+          <tr><td colspan="5" class="hint">Nightly means, on the 80 epochs both series share</td></tr>
           <tr><td>LBL on the delivered spectra</td><td>47.98</td><td>34.76</td><td>3.70</td><td>158.7</td></tr>
           <tr class="best"><td>LBL after pca2d-preclean, 1&ndash;3</td><td>14.20</td><td>11.55</td><td>4.42</td><td>9.5</td></tr>
+          <tr><td colspan="5" class="hint">All 316 individual exposures, as the figure below plots them</td></tr>
+          <tr><td>LBL on the delivered spectra</td><td>47.71</td><td>34.99</td><td>7.29</td><td>&nbsp;</td></tr>
+          <tr class="best"><td>LBL after pca2d-preclean, 1&ndash;3</td><td>18.34</td><td>14.37</td><td>7.90</td><td>&nbsp;</td></tr>
         </tbody>
       </table>
       <div class="stats-grid">
@@ -72,9 +76,14 @@
         <div class="stat"><div class="label">Reduced \(\chi^2\)</div><div class="value">16.6&times; lower</div></div>
       </div>
       <p class="hint">
-        Both series come from the same LBL stage of the same run, on the same
-        80 common epochs, so nothing here is one pipeline's numbers compared
-        against another's. The bootstrap is paired over epochs, 2000 draws.
+        Both series come from the same LBL stage of the same run, so nothing
+        here is one pipeline's numbers compared against another's. The two
+        blocks measure different things and both are given: nightly means
+        average down the photon noise, which is why their error bars are
+        smaller and their reduced \(\chi^2\) larger. The quoted gain and its
+        bootstrap are on the nightly means, paired over the 80 shared epochs,
+        2000 draws; on the individual exposures the same comparison gives
+        2.6&times;.
       </p>
     </section>
 
@@ -120,30 +129,63 @@
     <section class="card span-3">
       <h2>What the components turned out to be</h2>
       <p>
-        With one stellar and three Earth components on TOI-2120, the rank
-        correlations against the ancillary quantities are:
+        With one stellar and three Earth components, the rank correlations
+        against every quantity the headers carry are these. They are the run's
+        own <code>correlations.csv</code>, not a separate analysis.
       </p>
       <table class="rvtable">
         <thead>
-          <tr><th>Component</th><th>Block</th><th>&rho; vs airmass</th><th>&rho; vs BERV</th></tr>
+          <tr><th>Component</th><th>BERV</th><th>airmass</th><th>seeing</th><th>median flux</th><th>time</th><th>water</th></tr>
         </thead>
         <tbody>
-          <tr><td>\(a_1\)</td><td>star</td><td>&minus;0.183</td><td>&minus;0.389</td></tr>
-          <tr><td>\(b_1\)</td><td>Earth</td><td>+0.099</td><td>&minus;0.093</td></tr>
-          <tr><td>\(b_2\)</td><td>Earth</td><td>+0.005</td><td>&minus;0.737</td></tr>
-          <tr><td>\(b_3\)</td><td>Earth</td><td>&minus;0.032</td><td>&minus;0.248</td></tr>
+          <tr><td>\(a_1\) <span class="hint">star</span></td>
+              <td>&minus;0.389</td><td>&minus;0.183</td><td>&minus;0.603</td><td>+0.395</td><td>&minus;0.192</td><td>&minus;0.057</td></tr>
+          <tr><td>\(b_1\) <span class="hint">Earth</span></td>
+              <td>&minus;0.093</td><td>+0.099</td><td>+0.356</td><td>&minus;0.540</td><td>+0.571</td><td>&minus;0.138</td></tr>
+          <tr><td>\(b_2\) <span class="hint">Earth</span></td>
+              <td>&minus;0.737</td><td>+0.005</td><td>+0.165</td><td>+0.232</td><td>+0.164</td><td>&minus;0.249</td></tr>
+          <tr><td>\(b_3\) <span class="hint">Earth</span></td>
+              <td>&minus;0.248</td><td>&minus;0.032</td><td>+0.051</td><td>&minus;0.185</td><td>+0.805</td><td>&minus;0.073</td></tr>
         </tbody>
       </table>
-      <p class="hint">
-        \(b_2\) follows the BERV strongly and the airmass not at all. That is
-        not the signature of a water column, it is the signature of something
-        whose <em>apparent</em> amplitude depends on how far the stellar
-        spectrum has slid past it: the residual of an imperfect
-        separation between the two frames, which the fit is absorbing into the
-        observer block. It is doing useful work there, and it is also a
-        reminder that a component is named by what it correlates with, not by
-        what one hoped it would be.
+      <p>
+        Three things are worth saying plainly about this table, because none of
+        them is what one would have predicted:
       </p>
+      <ul class="legend">
+        <li><strong>Nothing follows the airmass.</strong> The largest airmass
+          correlation anywhere in the table is 0.18, on the <em>stellar</em>
+          component. For a block that is supposed to be capturing the
+          atmosphere, that is not the expected signature, and it says the
+          residual tellurics APERO left behind are no longer airmass-ordered.</li>
+        <li><strong>\(b_3\) follows the clock</strong> at 0.805, and nothing
+          else. A component that drifts monotonically over 452 days is an
+          instrumental drift, not weather: this is the detector or the
+          wavelength solution ageing, and the fit is removing it.</li>
+        <li><strong>\(b_2\) follows the BERV</strong> at &minus;0.737 while
+          being flat in airmass. That is not a water column. It is the
+          signature of something whose apparent amplitude depends on how far
+          the stellar spectrum has slid past it: the residual of an imperfect
+          separation between the two frames, which the fit absorbs into the
+          observer block. It is doing useful work there, and it is also the
+          component to watch, since a BERV-ordered term is exactly what one
+          must not accidentally remove from a velocity.</li>
+      </ul>
+      <p>
+        The stellar component's strongest partner is the seeing, at
+        &minus;0.603, with the median flux at +0.395: \(a_1\) is largely
+        tracking how much light went down the fibre, which is a line-shape
+        effect rather than a photospheric one. On a star where activity
+        mattered more, one would expect this row to look different.
+      </p>
+      <figure>
+        <img src="figures/correlations.svg" alt="Rank correlation of every coefficient against every ancillary quantity." />
+        <figcaption>
+          The same table as the run draws it, over all 316 exposures. Blue is
+          anticorrelated, red correlated; only cells above 0.3 in absolute value
+          carry a printed number.
+        </figcaption>
+      </figure>
     </section>
 
     <section class="card span-3">
