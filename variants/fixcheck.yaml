@@ -1,0 +1,8 @@
+# fixcheck (2026-10-17): VERIFICATION du correctif de l'appariement des
+# coupures sur un cube empile. Le fit nominal de GJ1_N17, l'etape correct
+# seulement, sans LBL. Les en-tetes (PCA2RNAN) doivent montrer des coupures sur
+# toutes les poses de chaque nuit, et non plus sur la premiere seulement.
+reuse_fit: nominal
+note: "verification du correctif, pas une mesure"
+lbl:
+  before: false

@@ -949,6 +949,41 @@ def night_index(coeffs):
     return nights
 
 
+def night_row_names(cube):
+    """Le nom que le cube donne a chaque nuit: {nuit: nom de sa ligne}.
+
+    Sur un cube empile par nuit, la ligne d'une nuit porte le nom de sa
+    PREMIERE pose (meta.fits, colonne filename), et tout ce qui est calcule par
+    ligne (les coupures du residu, le plancher de la boucle) est range sous ce
+    nom. La nuit est floor(BJD - 0.5), la convention de night_index et du
+    constructeur du cube. Les deux parites d'une nuit partagent le meme nom.
+    """
+    from astropy.table import Table
+    meta = Table.read(os.path.join(cube, "meta.fits"))
+    names = {}
+    for name, bjd in zip(meta["filename"], np.asarray(meta["bjd"], dtype=float)):
+        names.setdefault(int(np.floor(bjd - 0.5)), os.path.basename(str(name)))
+    return names
+
+
+def cut_key(path, row, names_by_night):
+    """Sous quel nom chercher les coupures d'une pose.
+
+    Sans cube empile (names_by_night None), le nom du fichier lui-meme: chaque
+    pose a sa ligne. Avec, le nom de la ligne de SA nuit, retrouvee par le BJD
+    de la ligne de coefficients que rows_by_night lui a donnee. Avant le
+    2026-10-17, c'etait toujours le nom du fichier, si bien que seule la
+    premiere pose de chaque nuit recevait les coupures (mesure: GJ 1, 2658
+    echantillons coupes sur la premiere pose et 0 sur les autres; Proxima
+    7790 contre 0).
+    """
+    own = os.path.basename(path)
+    if not names_by_night:
+        return own
+    night = int(np.floor(float(row["bjd"]) - 0.5))
+    return names_by_night.get(night, own)
+
+
 def rows_by_night(model, args):
     """One (path, row) pair per t.fits in --source-dir, matched on its night.
 
@@ -1497,6 +1532,13 @@ def correct_many(model, args):
             " does to a velocity is its overlap with the star's derivative"
             % (velocity_fwhm, float(model["dv"]),
                float(getattr(args, "velocity_floor", VELOCITY_FLOOR))), "info")
+    # sur un cube empile par nuit, les coupures sont rangees par nuit
+    names_by_night = None
+    if args.by_night and getattr(args, "cube", None) and (
+            clipped_by_file is not None or floored_by_file is not None):
+        names_by_night = night_row_names(args.cube)
+        log("  the cube's rows are nights: each exposure gets the cuts of its"
+            " night's row, %d nights" % len(names_by_night), "info")
     written = skipped = refitted = 0
     permute = getattr(args, "permute_b", None)
     prepared = []
@@ -1524,10 +1566,13 @@ def correct_many(model, args):
         # mask; on a cube of nights the cube's rows are not this file
         alive = mask_for(mask_mode, own_alive, alive_by_file,
                          os.path.basename(path))
-        clipped = (clipped_by_file.get(os.path.basename(path))
+        # LES COUPURES DE LA NUIT, PAS CELLES DU FICHIER: sur un cube empile
+        # elles sont rangees sous le nom de la ligne de la nuit (cut_key)
+        key = cut_key(path, row, names_by_night)
+        clipped = (clipped_by_file.get(key)
                    if clipped_by_file is not None else None)
         if floored_by_file is not None:
-            floored = floored_by_file.get(os.path.basename(path))
+            floored = floored_by_file.get(key)
             if floored is not None:
                 clipped = floored if clipped is None else (clipped | floored)
         if permute is not None:
