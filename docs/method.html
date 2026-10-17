@@ -133,22 +133,22 @@
         \]
       </div>
       <ul class="legend">
-        <li>\(\bar{S}\) &mdash; the star's mean spectrum, in its own rest frame.
+        <li>\(\bar{S}\): the star's mean spectrum, in its own rest frame.
           <strong>It has no free amplitude.</strong> It enters with a coefficient
           of exactly one, so the fit cannot scale the star down to let an Earth
           component explain a stellar line. This was measured, not assumed: the
           first stellar component \(P_1\) comes out orthogonal to the mean, which
           is what one wants if the mean is genuinely carrying the star.</li>
-        <li>\(P_i\) &mdash; stellar variability: what changes in the star's own
+        <li>\(P_i\): stellar variability: what changes in the star's own
           frame from one exposure to the next. Activity, line-shape changes, and
           whatever the template does not capture.</li>
-        <li>\(Q_j\) &mdash; the observer block: telluric residuals, fringing,
+        <li>\(Q_j\): the observer block: telluric residuals, fringing,
           detector persistence, anything fixed in wavelength at the telescope.</li>
-        <li>\(\delta x_t\) &mdash; the shift, in grid pixels, that carries the
+        <li>\(\delta x_t\): the shift, in grid pixels, that carries the
           star's frame into the observer's for exposure \(t\). It is built from
           \(v_{\mathrm{sys}} - v_{\mathrm{berv}}(t)\) through the relativistic
           relation above.</li>
-        <li>\(\varepsilon\) &mdash; what is left, which is what we hope is
+        <li>\(\varepsilon\): what is left, which is what we hope is
           photon noise.</li>
       </ul>
       <p>
@@ -179,9 +179,8 @@
           each exposure gives an independent linear least-squares problem in
           \((a_i, b_j)\), weighted by the inverse variance of each pixel.</li>
         <li><strong>Update the bases.</strong> With the amplitudes held fixed, a
-          weighted PCA of the residual in each frame &mdash; the star's residual
-          carried into the star's frame, the observer's left where it is &mdash;
-          gives the next \(P\) and \(Q\).</li>
+          weighted PCA of the residual in each frame (the star's residual
+          carried into the star's frame, the observer's left where it is) gives the next \(P\) and \(Q\).</li>
         <li><strong>Repeat</strong> until the \(\chi^2\) stops moving.</li>
       </ol>
       <p>
@@ -246,7 +245,7 @@
       <p>
         Nothing stellar is removed, nothing is smoothed, nothing is masked on
         the way out, and the grid is never changed. A corrected file holds
-        exactly what the report's third panel shows, sample for sample &mdash;
+        exactly what the report's third panel shows, sample for sample,
         which is a property the test suite checks rather than a claim.
       </p>
       <figure>

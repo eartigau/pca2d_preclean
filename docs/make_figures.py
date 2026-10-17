@@ -75,8 +75,12 @@ FORMAT = "svg"
 
 
 def save(fig, out, name):
+    # 110 dpi ET PAS 150: les river plots sont des imshow de quelques
+    # centaines de lignes, donc 150 dpi ne fait que grossir le PNG que le SVG
+    # embarque (3.5 Mo pour une figure, sur une page qui en porte neuf). A
+    # 110 on est encore au-dessus de la resolution native de l'image.
     path = os.path.join(out, name + "." + FORMAT)
-    fig.savefig(path, bbox_inches="tight", dpi=150)
+    fig.savefig(path, bbox_inches="tight", dpi=110)
     plt.close(fig)
     log("wrote %s (%.0f kB)" % (path, os.path.getsize(path) / 1e3), "value")
 
@@ -375,7 +379,7 @@ def highpass_figure(out, fmt=None):
             label="filtered on the residual to a template (%.5f)"
                   % np.std(against))
     ax.set_xlabel("where the mask sits, in pixels from the line core")
-    ax.set_ylabel("high-passed value, one pixel of the nearby continuum")
+    ax.set_ylabel("high-passed value,\none continuum pixel")
     ax.set_title("The spectrum never changes; only the mask moves",
                  fontsize=10)
     ax.legend(fontsize=7.5)
@@ -383,6 +387,9 @@ def highpass_figure(out, fmt=None):
 
     fig.tight_layout()
     save(fig, out, "highpass_template")
+    log("  moving mask: ordinary %.5f | against a template %.5f (%.1fx less)"
+        % (np.std(ordinary), np.std(against),
+           np.std(ordinary) / np.std(against)), "value")
 
 
 def main(argv=None):

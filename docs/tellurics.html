@@ -53,8 +53,7 @@
       <p>
         In the near infrared, APERO has already removed the tellurics before
         pca2d ever sees the data, and the fit works on what APERO left behind.
-        In the optical &mdash; HARPS, HARPS-N, ESPRESSO &mdash; the spectra
-        arrive with the atmosphere still in them, so LBL's telluric cleaning
+        In the optical (HARPS, HARPS-N, ESPRESSO) the spectra arrive with the atmosphere still in them, so LBL's telluric cleaning
         runs first and pca2d fits the residuals of that cleaning.
       </p>
       <p>
@@ -69,8 +68,7 @@
       <h2>The absorption model</h2>
       <p>
         An atmospheric transmission spectrum, to first order, scales as a power
-        of a reference transmission &mdash; Beer-Lambert with the column as the
-        exponent. Two components suffice for a radial-velocity pipeline:
+        of a reference transmission: Beer-Lambert with the column as the exponent. Two components suffice for a radial-velocity pipeline:
       </p>
       <div class="mathblock">
         \[
@@ -123,7 +121,7 @@
           <tr><th>Method</th><th>Scatter of the gradient</th><th>Change</th></tr>
         </thead>
         <tbody>
-          <tr><td>Uncorrected</td><td>344.8</td><td>&mdash;</td></tr>
+          <tr><td>Uncorrected</td><td>344.8</td><td>-</td></tr>
           <tr><td>LBL's CCF loop</td><td>359.6</td><td>+4.3 % (worse)</td></tr>
           <tr class="best"><td>Derivative criterion</td><td>304.1</td><td>&minus;11.8 %</td></tr>
         </tbody>
@@ -140,8 +138,9 @@
           well: a water band through a whole campaign, in the star's rest
           frame. The stellar lines stand still and the atmospheric residual
           walks diagonally across them as the barycentric velocity changes
-          through the year. The middle panel is the part pca2d attributes to
-          the observer's frame, the right panel what survives.
+          through the year. Panel 2 is what the fit reconstructs, panel 3 what a
+          corrected file holds once the observer block is divided out, and panel
+          5 what nothing accounted for.
         </figcaption>
       </figure>
     </section>
@@ -178,8 +177,7 @@
       <p>
         What the division buys, measured on GJ&nbsp;581 (M3V): of five exposures
         that had been falling back to a default value for want of a measurable
-        signal, three converge to a real measurement (0.0275, 0.1486, 0.0347) as
-        soon as a template &mdash; even a crude one &mdash; is divided out.
+        signal, three converge to a real measurement (0.0275, 0.1486, 0.0347) as soon as a template, even a crude one, is divided out.
       </p>
     </section>
 
@@ -188,8 +186,7 @@
       <p>
         On a late M dwarf the water lines are genuinely faint against the
         stellar forest: a 5&nbsp;% water line is 2.8&nbsp;&sigma; per pixel on
-        GJ&nbsp;581 where it is 13.4&nbsp;&sigma; on HD&nbsp;10700. When the cost
-        curve is flat &mdash; less than 5&nbsp;% of span &mdash; or its minimum
+        GJ&nbsp;581 where it is 13.4&nbsp;&sigma; on HD&nbsp;10700. When the cost curve is flat (less than 5&nbsp;% of span) or its minimum
         sits on the edge of the scan, the fit refuses to report a number and
         falls back to a default column.
       </p>
@@ -253,8 +250,7 @@
     <section class="card span-3">
       <h2>Two fibres are two instruments</h2>
       <p>
-        HARPS has been through two fibre configurations &mdash; HAM, the 1&Prime;
-        fibre, and EGGS, the 1.4&Prime; one &mdash; and they have different
+        HARPS has been through two fibre configurations, HAM (the 1&Prime; fibre) and EGGS (the 1.4&Prime; one), and they have different
         instrumental profiles and different velocity zero points. Mixing them in
         a single series puts a step function in the middle of the time series
         that no amount of precleaning will fix.

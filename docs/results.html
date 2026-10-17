@@ -95,9 +95,10 @@
       <figure>
         <img src="figures/sequence_1267nm.svg" alt="River plot around 1267 nm, before, model and after." />
         <figcaption>
-          The water band near 1267&nbsp;nm. The diagonal streaks are the
-          atmosphere sliding across the stellar lines over the year; the right
-          panel is what remains. The window scatter drops 34&nbsp;% here.
+          The water band near 1267&nbsp;nm, every exposure stacked and ordered
+          by BERV. The slanted ridges in panel 1 are the atmosphere walking
+          across the stellar lines over the year; panel 3 is what the corrected
+          files hold. The window scatter drops 34&nbsp;%, from 0.0740 to 0.0490.
         </figcaption>
       </figure>
     </section>
@@ -107,7 +108,7 @@
       <figure>
         <img src="figures/sequence_1669nm.svg" alt="River plot around 1669 nm." />
         <figcaption>
-          The same three panels at 1669&nbsp;nm, in the methane band. Weaker
+          The same decomposition at 1669&nbsp;nm, in the methane band. Weaker
           contamination here, and correspondingly less to remove: the window
           scatter goes from 0.0470 to 0.0455, a 3&nbsp;% improvement. The fit
           does not invent a correction where there is nothing to correct, which
@@ -137,7 +138,7 @@
         \(b_2\) follows the BERV strongly and the airmass not at all. That is
         not the signature of a water column, it is the signature of something
         whose <em>apparent</em> amplitude depends on how far the stellar
-        spectrum has slid past it &mdash; the residual of an imperfect
+        spectrum has slid past it: the residual of an imperfect
         separation between the two frames, which the fit is absorbing into the
         observer block. It is doing useful work there, and it is also a
         reminder that a component is named by what it correlates with, not by
@@ -228,8 +229,7 @@
       <ol class="steps">
         <li><strong>One code version per comparison.</strong> Every star in a
           comparison runs on the same commit, frozen before the first run and
-          recorded in the output. If a fix lands mid-campaign, everything is
-          redone &mdash; even when the fix is provably cosmetic, because
+          recorded in the output. If a fix lands mid-campaign, everything is redone, even when the fix is provably cosmetic, because
           traceability is the point, not numerical equivalence.</li>
         <li><strong>One instrument mode per star.</strong> The mode with the most
           epochs, never a mixture.</li>

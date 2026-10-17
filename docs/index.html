@@ -59,9 +59,9 @@
       <p>
         One command reads a campaign of spectra, builds a cube, fits it, and
         writes corrected files that any velocity code can read. The whole
-        chain is five stages &mdash; <code>cube</code>, <code>fit</code>,
-        <code>correct</code>, <code>figures</code>, <code>lbl</code> &mdash;
-        and each one can be run alone.
+        chain is five stages (<code>cube</code>, <code>fit</code>,
+        <code>correct</code>, <code>figures</code>, <code>lbl</code>), and
+        each one can be run alone.
       </p>
       <p>
         The idea is simple enough to state in one line: over a campaign, the
@@ -79,17 +79,20 @@
     </section>
 
     <section class="card span-2">
-      <h2>The idea, in three panels</h2>
+      <h2>The idea, step by step</h2>
       <figure>
-        <img src="figures/sequence_1267nm.svg" alt="Three panels: the spectra as delivered, the Earth block the fit found, and what is left once it is removed." />
+        <img src="figures/sequence_1267nm.svg" alt="A water band through a whole campaign, decomposed step by step: the high pass, the reconstruction, and each block removed in turn." />
         <figcaption>
-          Every exposure of TOI-2120 around 1267 nm, in the star's rest frame,
-          top to bottom in time. <strong>Left:</strong> as delivered &mdash;
-          the stellar lines stand still, and the diagonal streaks are the
-          atmosphere sliding across them as the BERV changes through the year.
-          <strong>Middle:</strong> what the observer block alone accounts for.
-          <strong>Right:</strong> what is left in the corrected files. The
-          diagonals are gone; the stellar lines are untouched.
+          All 316 exposures of TOI-2120 around 1267&nbsp;nm, each row one
+          exposure, ordered by BERV, in the star's rest frame. <strong>Panel
+          1</strong> is the high-passed data: vertical structure belongs to the
+          star, and the slanted ridges are the atmosphere walking across it as
+          the barycentric velocity changes. <strong>Panel 3</strong> is what a
+          corrected file holds, the observer block removed: the slants are
+          gone, the vertical lines untouched, and the window scatter falls from
+          0.0740 to 0.0490. <strong>Panel 5</strong> is what nothing accounted
+          for, 0.0419, close to the photon noise. The bottom panel is five of
+          those rows back in flux, before and after.
         </figcaption>
       </figure>
     </section>
@@ -172,9 +175,9 @@
     <section class="card span-3">
       <h2>And where there is little to remove</h2>
       <figure>
-        <img src="figures/sequence_1669nm.svg" alt="The same three panels at 1669 nm, in the methane band." />
+        <img src="figures/sequence_1669nm.svg" alt="The same decomposition at 1669 nm, in the methane band." />
         <figcaption>
-          The same three panels at 1669&nbsp;nm, in the methane band. The
+          The same decomposition at 1669&nbsp;nm, in the methane band. The
           contamination is far weaker here, and the correction is
           correspondingly small: the window scatter goes from 0.0470 to 0.0455,
           a 3&nbsp;% improvement, against 34&nbsp;% in the water band above. The
@@ -199,8 +202,7 @@
     <section class="card span-3">
       <h2>The high pass, and why it is taken against a template</h2>
       <p>
-        Before any of this, the continuum and the blaze have to go. A
-        Savitzky-Golay filter does that &mdash; but a filter run over a whole
+        Before any of this, the continuum and the blaze have to go. A Savitzky-Golay filter does that, but a filter run over a whole
         spectrum is dragged downward by every deep line, so the smooth curve it
         returns is not the continuum, it is the continuum minus a fraction of
         the line.
@@ -221,15 +223,15 @@
           it. <strong>Top:</strong> the line and the mask at three positions.
           <strong>Bottom:</strong> one continuum pixel's high-passed value
           against where the mask sits. The ordinary filter wanders by a factor
-          of 6.1 more than the template-based one, for an input that never
+          of 7.6 more than the template-based one, for an input that never
           changed.
         </figcaption>
       </figure>
       <div class="stats-grid">
         <div class="stat"><div class="label">Telluric depth at the line core, BERV &minus;25 km/s</div><div class="value">3 %</div></div>
         <div class="stat"><div class="label">Same line, BERV &minus;5 km/s</div><div class="value">89 %</div></div>
-        <div class="stat"><div class="label">Scatter from the moving mask, ordinary filter</div><div class="value">0.00227</div></div>
-        <div class="stat"><div class="label">Same, filtered against a template</div><div class="value">0.00037</div></div>
+        <div class="stat"><div class="label">Scatter from the moving mask, ordinary filter</div><div class="value">0.00230</div></div>
+        <div class="stat"><div class="label">Same, filtered against a template</div><div class="value">0.00030</div></div>
       </div>
       <p class="hint">
         Measured on HD&nbsp;69830 at 688.85 nm, and on a synthetic line whose
@@ -248,8 +250,8 @@
     <section class="card span-3">
       <h2>What it is worth, measured</h2>
       <p>
-        On TOI-2120 &mdash; 321 SPIRou exposures, a 37.9&nbsp;km/s barycentric
-        span, deep water bands across the stellar lines &mdash; the velocity
+        On TOI-2120 (321 SPIRou exposures, a 37.9&nbsp;km/s barycentric
+        span, deep water bands across the stellar lines) the velocity
         scatter drops by a factor of 3.4 on the 80 epochs the two series share:
       </p>
       <div class="stats-grid">
@@ -350,7 +352,7 @@
         One trap worth stating: on HARPS the delivered wavelength grid is
         already barycentric, so the instrument's own BERV reads zero. Left
         alone, the two frames of the fit would collapse into one and the
-        correction would make things worse &mdash; it took the rms from 11.2 to
+        correction would make things worse: it took the rms from 11.2 to
         51.6 m/s before this was caught. <code>input.to_observer</code> undoes
         the barycentric correction on the way in so that the two frames stay
         distinct.
@@ -383,8 +385,7 @@ pip install -e .</div>
       --stages cube,fit,correct,figures,lbl</div>
       <p class="hint">
         <code>--n-star</code> and <code>--n-earth</code> are how many components
-        each block gets. Everything else &mdash; the domain, the windows, the
-        weights &mdash; comes from <code>config.yaml</code>, and the resolved
+        each block gets. Everything else (the domain, the windows, the weights) comes from <code>config.yaml</code>, and the resolved
         settings are written beside the outputs so a run can always be read back.
       </p>
     </section>
@@ -395,7 +396,7 @@ pip install -e .</div>
         A run leaves a folder named for the object and the component counts.
         Inside: the corrected spectra on their original grids, the fitted
         components, a CSV of every coefficient, and a PDF report of around
-        thirty pages &mdash; the river plots above, the coefficients in time,
+        thirty pages: the river plots above, the coefficients in time,
         the correlations, and, when LBL ran, the velocities and their
         periodograms.
       </p>

@@ -93,7 +93,7 @@
       </p>
       <div class="callout warn">
         <strong>The mechanism.</strong> LBL blanks any pixel where the telluric
-        transmission is below \(e^{-1}\) &mdash; those pixels carry no usable
+        transmission is below \(e^{-1}\); those pixels carry no usable
         information and are set to NaN. As the BERV sweeps through the year, a
         telluric line walks across a stellar line. The blanked pixels therefore
         <em>move</em> relative to the stellar line. The Savitzky-Golay filter
@@ -142,8 +142,8 @@
         \(s - \bar{S}\) is small and flat, so the filter applied to it is not
         dragged by anything, whatever the mask does. And
         \(\mathrm{SG}[\bar{S}]\) is computed once on a support that never
-        changes, so its bias is a fixed function of wavelength again &mdash;
-        back to the harmless case.
+        changes, so its bias is a fixed function of wavelength again, back
+        to the harmless case.
       </p>
     </section>
 
@@ -160,7 +160,7 @@
         \]
       </div>
       <p>
-        That identity is correct &mdash; <strong>and it only holds when both
+        That identity is correct, <strong>and it only holds when both
         filters see the same support.</strong> They do not. The residual
         \(s - \bar{S}\) inherits the exposure's mask, with its holes where the
         tellurics saturate; the template \(\bar{S}\) has no holes at all.
@@ -176,8 +176,8 @@
           move it. <strong>Top:</strong> the line and the mask at three
           positions. <strong>Bottom:</strong> the high-passed value of one
           continuum pixel as a function of where the mask sits. The ordinary
-          filter wanders by 0.00227 rms; filtered against a template it wanders
-          by 0.00037, a factor of 6.1 less, for an input that never changed.
+          filter wanders by 0.00230 rms; filtered against a template it wanders
+          by 0.00030, a factor of 7.6 less, for an input that never changed.
         </figcaption>
       </figure>
       <div class="callout">
@@ -191,7 +191,7 @@
     <section class="card span-3">
       <h2>What it bought, measured honestly</h2>
       <p>
-        The expectation was never a large drop in rms &mdash; the mechanism
+        The expectation was never a large drop in rms: the mechanism
         feeds a small, slow systematic, not a large scatter. What it should do
         is clean up the components, so the stellar block stops hooking onto
         something that follows the BERV.
@@ -230,8 +230,7 @@
         <code>correct</code> stage applies the identical second pass to the
         delivered spectra. The first version of this change forgot that: the
         corrected files were built from raw log flux (median +10.14 instead of
-        +0.017), their noise doubled, and the report's river plots stayed
-        perfectly clean &mdash; because the report was reading the cube, which
+        +0.017), their noise doubled, and the report's river plots stayed perfectly clean, because the report was reading the cube, which
         was right, while the files were not.
       </div>
     </section>
