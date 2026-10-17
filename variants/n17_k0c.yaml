@@ -1,0 +1,13 @@
+# n17_k0c (nuit du 2026-10-17, ajoutee a 00:30): aucune composante stellaire
+# ET les coupures du residu retirees, en un seul run. Pour Proxima, a la place
+# de n17_k0: un jeu de fichiers de 11 Go au lieu de deux.
+note: "aucune composante stellaire, coupures du residu retirees"
+twoframe:
+  n_star: 0
+lbl:
+  before: false
+correct:
+  nsig_cut: null
+  bias_nsig: null
+  column_frac: null
+  column_chi2: null

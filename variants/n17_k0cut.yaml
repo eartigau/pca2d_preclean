@@ -1,0 +1,13 @@
+# n17_k0cut (nuit du 2026-10-17, ajoutee a 00:30): le fit de n17_k0 (aucune
+# composante stellaire), corrige SANS les coupures du residu. Sur GJ 1, les
+# coupures expliquaient l'essentiel de la perte du nominal (intra-nuit 1.53
+# contre 1.35 sans elles); k0 se mesure donc sans elles.
+reuse_fit: n17_k0
+note: "aucune composante stellaire, coupures du residu retirees"
+lbl:
+  before: false
+correct:
+  nsig_cut: null
+  bias_nsig: null
+  column_frac: null
+  column_chi2: null

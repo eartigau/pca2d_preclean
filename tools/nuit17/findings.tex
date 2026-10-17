@@ -1,0 +1,117 @@
+\section*{The short answer}
+
+\textbf{On the current code, Proxima and GJ~1 no longer lose.} Proxima gains
+2\%{} (rms 2.86 to 2.80~m/s on the same 765 exposures, paired bootstrap
+1.005--1.042), and GJ~1 is at break-even (0.98, not significant; 1.03 with the
+best setting of the night). The losses quoted until yesterday (Proxima 2.86 to
+3.34, later 3.04) were measured on September code. Three fixes since then
+touch both stars: LBL measures the corrected spectra against its own template
+(\texttt{lbl.star\_template: false}, 2026-09-12), deep line cores are no
+longer clipped (\texttt{7b88be6}), and the high pass is taken against a
+template (\texttt{c61b652}). LBL also loads the HE profile for these HE data
+since \texttt{lbl-rapide 95bf4f4}. Everything below ran on one frozen
+version, pca2d \texttt{ba36dce}.
+
+What remains is the shape of the trade at high SNR: the correction removes a
+real systematic, but one of about the same size as the noise it adds. Error
+bars grow by 5--9\%{} on GJ~1 and 11--16\%{} on Proxima, and the intra-night
+scatter by 0.3 to 0.8~m/s in quadrature, depending on the star and the
+setting.
+
+\section*{What was learned}
+
+\begin{enumerate}
+\item \textbf{The template hypothesis (H1 of the plan) was already settled.}
+  The plan leaned on a September measurement where the fit's star template cost
+  Proxima 1~m/s. The configuration has not used that template since
+  2026-09-12. The ``template matrix'' run tonight therefore compared LBL's
+  template with itself and is identical to $10^{-4}$~m/s; it is reported as a
+  check, not as a result.
+
+\item \textbf{On a nightly-stacked cube, the residual cuts reach only the first
+  exposure of each night.} The cube's row for a night carries the name of its
+  first exposure, and the correct stage looks the cuts up by file name.
+  Measured in the headers: GJ~1 first exposures lose a median of 2658 samples
+  to the cuts, the others none (100\% at zero); Proxima 7790 against none
+  (99\%). This is a bug, and it only touches stacked cubes, which on this
+  project means NIRPS. TOI-2120 is not stacked and every exposure is cut.
+
+\item \textbf{What the cuts do depends on the star.} Removed on GJ~1 they help
+  everywhere (rms 2.71 to 2.61, intra-night 1.53 to 1.35); the cut first
+  exposures took 1.88~m/s of added velocity against 1.55 for the others, and
+  14\% more error against 6\%. Removed on Proxima they hurt the night-to-night
+  scatter (2.88 to 2.96) and enlarge the $V_{\rm tot}$ bias (4.6 to
+  6.8~$\sigma$) while helping the photon noise. The cuts therefore remove a
+  real systematic on Proxima and cost more than they remove on GJ~1. With the
+  bug in place the two cannot be told apart from a target dependence; fixing it
+  is the next experiment.
+
+\item \textbf{The no-weight mask is worth keeping.} With no NaN added at all,
+  GJ~1's error bars and intra-night scatter drop below the delivered ones (1.50
+  and 1.25 against 1.53 and 1.28) but the nightly scatter rises to 2.64: the
+  samples the fit could not weight carry night-to-night systematics.
+
+\item \textbf{The correction carries real information on a bright star.}
+  Correcting each GJ~1 night with the amplitudes of another night (the null
+  test) gives a gain of 0.94 (0.90--0.97) against 0.98 for the real
+  amplitudes, and a nightly scatter of 2.64 against 2.49.
+
+\item \textbf{The basis does not overfit.} GJ~1 cross-validated: the 70
+  odd-ranked nights were held out of the fit and corrected by a basis that
+  never saw them. On those nights the result matches the in-sample correction
+  (cuts off on both sides): rms 2.58 against 2.61, nightly 2.42 against 2.45,
+  error 1.58 against 1.57. The basis learns nothing from the noise of the
+  nights it corrects, so the cost does not come from estimating it.
+
+\item \textbf{The added intra-night noise is not the per-exposure amplitude
+  refit.} Regressing the intra-night added velocity on each exposure's own
+  amplitudes explains 4\% of its variance on GJ~1, 9\% on Proxima and 14\% on
+  TOI-2120. Something else in the per-exposure path adds it.
+
+\item \textbf{The faint control shows the same cost.} On TOI-2120 (run of
+  2026-10-16) the correction gains a factor of 2.9 overall, yet the
+  intra-night scatter rises from 7.76 to 10.63~m/s. The cost exists at every
+  SNR; it only decides the outcome where the systematic is small.
+
+\item \textbf{No stellar component helps GJ~1 a little.} With the cuts off,
+  0-3 gives the best GJ~1 result of the night (rms 2.58, nightly 2.40 against
+  2.50 delivered, gain 1.03, 0.996--1.065). Not measured on Proxima: the disk
+  did not allow it.
+
+\item \textbf{Not conclusive:} the telluric-support restriction at 0.995 keeps
+  93.5\% of the near-infrared columns and behaves like the nominal. A lower
+  threshold would be needed for a real test.
+\end{enumerate}
+
+\section*{What did not run, and why}
+
+Proxima's \texttt{k0c} (no stellar component, cuts off), its cross-validation
+and its no-NaN variant were skipped for lack of disk. The first Proxima cube
+build filled the internal disk, most likely through the system's swap (22~GB
+in use just after), and the run failed; the GJ~1 products of the night were then moved to irrisor,
+links left in place, and Proxima was run again for the nominal and the
+cuts-off variant only. The planet injection was dropped before the night for
+the same reason. A full corrected set of Proxima is 11.5~GB and its LBL
+products 3.5~GB per object.
+
+\noindent One more incident: the queue file's last line had no newline, and
+the runner's \texttt{read} loop skips such a line, so the LBL step of GJ~1's
+cross-validation (G09L) was run by hand after the queue ended. It took three
+hours instead of seven minutes: the runner's \texttt{caffeinate} ended with
+the runner, and the machine slept, advancing the job only in short wakes. The
+result is unaffected.
+
+\section*{Proposed next steps}
+
+\begin{enumerate}
+\item Fix the stacked-cube cuts so that every exposure of a night gets its
+  night's cuts, and measure GJ~1 and Proxima again (nominal and cuts off).
+\item Find the per-exposure source of the intra-night noise (neither the
+  amplitude refit nor the basis estimate): candidates are the per-exposure
+  no-weight mask, the high pass of each file, and the interpolation back onto
+  the native grid.
+\item Rerun TOI-1452 and GJ~328 on the frozen code, so that the
+  gain-versus-SNR figure of the talk rests on one version.
+\item Free disk space before any further Proxima night (cubes in
+  \texttt{cache/}, 37~GB; old corrected sets on irrisor).
+\end{enumerate}

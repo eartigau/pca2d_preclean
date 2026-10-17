@@ -1,0 +1,91 @@
+{
+ "delivered": {
+  "label": "delivered, LBL template",
+  "path": "/Users/eartigau/GitHubProjects/pca2d_preclean/outputs/lbl/lblrdb/lbl_PROXIMA_N17_PROXIMA_N17.rdb",
+  "n": 782,
+  "rms": 2.873045208136518,
+  "robust": 2.303278624243494,
+  "median_error": 0.9217034804346513,
+  "nightly_rms": 2.937525057256328,
+  "intra_night": 0.9539599514302751,
+  "intra_dof": 523,
+  "nightly_rms_minus_planets": 2.8417794574861737,
+  "planet_amplitudes": [
+   0.9756256025857022,
+   0.4438573013278919
+  ],
+  "vtot_bias": "peak -1.5 +0.3/-0.3 m/s, FWHM 2.4 km/s (5.2 sigma, \u0394BIC +14.4)",
+  "vtot_jitter": 2.461198670478293,
+  "vtot_significance": 5.2038741148520575
+ },
+ "nominal": {
+  "label": "pca2d 1-3",
+  "path": "/Users/eartigau/GitHubProjects/pca2d_preclean/outputs/lbl/lblrdb/lbl_PROXIMA_N17_PCA2D_1-3_PROXIMA_N17_PCA2D_1-3.rdb",
+  "n": 765,
+  "rms": 2.7990637852305467,
+  "robust": 2.2337917140089187,
+  "median_error": 1.0662747175967255,
+  "nightly_rms": 2.8833195811375485,
+  "intra_night": 1.0695434480014254,
+  "intra_dof": 514,
+  "nightly_rms_minus_planets": 2.8085835635338823,
+  "planet_amplitudes": [
+   0.888617403839142,
+   0.3761430300330841
+  ],
+  "ref": {
+   "rms": 2.8589730956915638,
+   "robust": 2.284881433716975,
+   "median_error": 0.9192481277468374,
+   "nightly_rms": 2.9527478690859286,
+   "intra_night": 0.9183593302749282,
+   "nightly_rms_minus_planets": 2.855826339782101
+  },
+  "gain": 1.0214033387796064,
+  "gain_16_84": [
+   1.0053566911661433,
+   1.0424789705945325
+  ],
+  "added_rms": 1.4324096382450733,
+  "added_vs_berv": -0.04580852969186527,
+  "added_vs_vtot": 0.04589188976206999,
+  "vtot_bias": "peak -1.8 +0.3/-0.4 m/s, FWHM 1.5 km/s (4.6 sigma, \u0394BIC +19.4)",
+  "vtot_jitter": 2.3426912239853155,
+  "vtot_significance": 4.632690806190143
+ },
+ "cutsoff": {
+  "label": "1-3, residual cuts off",
+  "path": "/Users/eartigau/GitHubProjects/pca2d_preclean/outputs/lbl/lblrdb/lbl_PROXIMA_N17_PCA2D_1-3_n17_cutsoff_PROXIMA_N17_PCA2D_1-3_n17_cutsoff.rdb",
+  "n": 765,
+  "rms": 2.8672668096956677,
+  "robust": 2.3837932872893783,
+  "median_error": 1.0228265121075306,
+  "nightly_rms": 2.962048683510579,
+  "intra_night": 0.9776546868247991,
+  "intra_dof": 514,
+  "nightly_rms_minus_planets": 2.881036605433426,
+  "planet_amplitudes": [
+   0.9282325970197632,
+   0.36998944106228066
+  ],
+  "ref": {
+   "rms": 2.8589730956915638,
+   "robust": 2.284881433716975,
+   "median_error": 0.9192481277468374,
+   "nightly_rms": 2.9527478690859286,
+   "intra_night": 0.9183593302749282,
+   "nightly_rms_minus_planets": 2.855826339782101
+  },
+  "gain": 0.9971074495139208,
+  "gain_16_84": [
+   0.9837957125643063,
+   1.0131634680731227
+  ],
+  "added_rms": 1.3526390360535852,
+  "added_vs_berv": -0.2132113649527997,
+  "added_vs_vtot": 0.2132446553731194,
+  "vtot_bias": "peak -2.5 +0.3/-0.4 m/s, FWHM 1.4 km/s (6.8 sigma, \u0394BIC +48.0)",
+  "vtot_jitter": 2.377134331316802,
+  "vtot_significance": 6.814933606764165
+ }
+}

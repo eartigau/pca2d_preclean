@@ -1,0 +1,287 @@
+{
+ "delivered": {
+  "label": "delivered, LBL template",
+  "path": "/Users/eartigau/GitHubProjects/pca2d_preclean/outputs/lbl/lblrdb/lbl_GJ1_N17_GJ1_N17.rdb",
+  "n": 292,
+  "rms": 2.6983728052168816,
+  "robust": 2.5951242027176598,
+  "median_error": 1.5462186804046012,
+  "nightly_rms": 2.505899346597317,
+  "intra_night": 1.4010562333525323,
+  "intra_dof": 146,
+  "vtot_bias": "none detected (1.9 sigma, \u0394BIC +8.7): |peak| < 17.7 m/s at 95%",
+  "vtot_jitter": 1.9678810185874698,
+  "vtot_significance": 1.9381224382106348
+ },
+ "delivered_ft": {
+  "label": "delivered, corrected files' template",
+  "path": "/Users/eartigau/GitHubProjects/pca2d_preclean/outputs/lbl/lblrdb/lbl_GJ1_N17_DFT_GJ1_N17_PCA2D_1-3.rdb",
+  "n": 292,
+  "rms": 2.7315212351855243,
+  "robust": 2.741312956230941,
+  "median_error": 1.608851322307062,
+  "nightly_rms": 2.5262952486633248,
+  "intra_night": 1.452320888279796,
+  "intra_dof": 146,
+  "ref": {
+   "rms": 2.6983728052168816,
+   "robust": 2.5951242027176598,
+   "median_error": 1.5462186804046012,
+   "nightly_rms": 2.505899346597317,
+   "intra_night": 1.4010562333525323
+  },
+  "gain": 0.9878644802238226,
+  "gain_16_84": [
+   0.9699785723330346,
+   1.0060037374857558
+  ],
+  "added_rms": 0.7987709018474753,
+  "added_vs_berv": 0.3450328307305085,
+  "added_vs_vtot": -0.34508295766250413,
+  "vtot_bias": "none detected (2.5 sigma, \u0394BIC +8.2): |peak| < 13.7 m/s at 95%",
+  "vtot_jitter": 1.9427724653121405,
+  "vtot_significance": 2.5058982556142446
+ },
+ "nominal": {
+  "label": "pca2d 1-3",
+  "path": "/Users/eartigau/GitHubProjects/pca2d_preclean/outputs/lbl/lblrdb/lbl_GJ1_N17_PCA2D_1-3_GJ1_N17_PCA2D_1-3.rdb",
+  "n": 280,
+  "rms": 2.7068211084518143,
+  "robust": 2.809100759880513,
+  "median_error": 1.6637891267674196,
+  "nightly_rms": 2.4921530645225882,
+  "intra_night": 1.5272437188864232,
+  "intra_dof": 140,
+  "ref": {
+   "rms": 2.657330606370036,
+   "robust": 2.6239041160602277,
+   "median_error": 1.5298221686574056,
+   "nightly_rms": 2.4999464332124317,
+   "intra_night": 1.2826434795944825
+  },
+  "gain": 0.9817163750026743,
+  "gain_16_84": [
+   0.9421512188012198,
+   1.024629455259526
+  ],
+  "added_rms": 1.7252475128953657,
+  "added_vs_berv": -0.035368526930919304,
+  "added_vs_vtot": 0.03564458730340948,
+  "vtot_bias": "none detected (0.0 sigma, \u0394BIC -8.4): |peak| < 3124.2 m/s at 95%",
+  "vtot_jitter": 1.9942174632072578,
+  "vtot_significance": 0.02183922079073154
+ },
+ "cutsoff": {
+  "label": "1-3, residual cuts off",
+  "path": "/Users/eartigau/GitHubProjects/pca2d_preclean/outputs/lbl/lblrdb/lbl_GJ1_N17_PCA2D_1-3_n17_cutsoff_GJ1_N17_PCA2D_1-3_n17_cutsoff.rdb",
+  "n": 280,
+  "rms": 2.6133714458066706,
+  "robust": 2.6648819249353166,
+  "median_error": 1.5965659175448077,
+  "nightly_rms": 2.4393013347133556,
+  "intra_night": 1.3450155453293176,
+  "intra_dof": 140,
+  "ref": {
+   "rms": 2.657330606370036,
+   "robust": 2.6239041160602277,
+   "median_error": 1.5298221686574056,
+   "nightly_rms": 2.4999464332124317,
+   "intra_night": 1.2826434795944825
+  },
+  "gain": 1.0168208620454244,
+  "gain_16_84": [
+   0.9834158410438153,
+   1.0522558378157958
+  ],
+  "added_rms": 1.4009666315314404,
+  "added_vs_berv": -0.08356702800509481,
+  "added_vs_vtot": 0.08355172168741219,
+  "vtot_bias": "none detected (0.0 sigma, \u0394BIC -6.9): |peak| < 3039.9 m/s at 95%",
+  "vtot_jitter": 1.932450749509861,
+  "vtot_significance": 0.006538678004988117
+ },
+ "nonan": {
+  "label": "1-3, no NaN added",
+  "path": "/Users/eartigau/GitHubProjects/pca2d_preclean/outputs/lbl/lblrdb/lbl_GJ1_N17_PCA2D_1-3_n17_nonan_GJ1_N17_PCA2D_1-3_n17_nonan.rdb",
+  "n": 280,
+  "rms": 2.7838626393311454,
+  "robust": 2.8212810992765194,
+  "median_error": 1.495214054256961,
+  "nightly_rms": 2.6427352589307724,
+  "intra_night": 1.2511862974375518,
+  "intra_dof": 140,
+  "ref": {
+   "rms": 2.657330606370036,
+   "robust": 2.6239041160602277,
+   "median_error": 1.5298221686574056,
+   "nightly_rms": 2.4999464332124317,
+   "intra_night": 1.2826434795944825
+  },
+  "gain": 0.9545480329476635,
+  "gain_16_84": [
+   0.9245834429134407,
+   0.986737286289622
+  ],
+  "added_rms": 1.5222358038953427,
+  "added_vs_berv": -0.5892451252111451,
+  "added_vs_vtot": 0.5891680469685291,
+  "vtot_bias": "none detected (0.2 sigma, \u0394BIC -8.4): |peak| < 3158.0 m/s at 95%",
+  "vtot_jitter": 2.314666986970345,
+  "vtot_significance": 0.16931522089638454
+ },
+ "k0": {
+  "label": "0-3, no star component",
+  "path": "/Users/eartigau/GitHubProjects/pca2d_preclean/outputs/lbl/lblrdb/lbl_GJ1_N17_PCA2D_0-3_n17_k0_GJ1_N17_PCA2D_0-3_n17_k0.rdb",
+  "n": 280,
+  "rms": 2.6899994622558863,
+  "robust": 2.6150387791439993,
+  "median_error": 1.6735052831478312,
+  "nightly_rms": 2.4664855510598898,
+  "intra_night": 1.5612423725942801,
+  "intra_dof": 140,
+  "ref": {
+   "rms": 2.657330606370036,
+   "robust": 2.6239041160602277,
+   "median_error": 1.5298221686574056,
+   "nightly_rms": 2.4999464332124317,
+   "intra_night": 1.2826434795944825
+  },
+  "gain": 0.9878554414808493,
+  "gain_16_84": [
+   0.9491322585755544,
+   1.0302573892188556
+  ],
+  "added_rms": 1.7390633775125348,
+  "added_vs_berv": -0.01688122844132487,
+  "added_vs_vtot": 0.01717204847729472,
+  "vtot_bias": "none detected (0.0 sigma, \u0394BIC -6.9): |peak| < 2899.8 m/s at 95%",
+  "vtot_jitter": 1.9585454274476248,
+  "vtot_significance": 0.004427064386426422
+ },
+ "k0cut": {
+  "label": "0-3, residual cuts off",
+  "path": "/Users/eartigau/GitHubProjects/pca2d_preclean/outputs/lbl/lblrdb/lbl_GJ1_N17_PCA2D_0-3_n17_k0cut_GJ1_N17_PCA2D_0-3_n17_k0cut.rdb",
+  "n": 280,
+  "rms": 2.5805224968582396,
+  "robust": 2.623213719925943,
+  "median_error": 1.5988176675440253,
+  "nightly_rms": 2.4014360019162684,
+  "intra_night": 1.3541574742684104,
+  "intra_dof": 140,
+  "ref": {
+   "rms": 2.657330606370036,
+   "robust": 2.6239041160602277,
+   "median_error": 1.5298221686574056,
+   "nightly_rms": 2.4999464332124317,
+   "intra_night": 1.2826434795944825
+  },
+  "gain": 1.0297645572186678,
+  "gain_16_84": [
+   0.9963809282909065,
+   1.0651538816687627
+  ],
+  "added_rms": 1.381806563791657,
+  "added_vs_berv": -0.06806282150100311,
+  "added_vs_vtot": 0.06804696852911754,
+  "vtot_bias": "none detected (0.0 sigma, \u0394BIC -6.7): |peak| < 2966.1 m/s at 95%",
+  "vtot_jitter": 1.895000094023251,
+  "vtot_significance": 0.004665001974013518
+ },
+ "permb": {
+  "label": "1-3, b of another night",
+  "path": "/Users/eartigau/GitHubProjects/pca2d_preclean/outputs/lbl/lblrdb/lbl_GJ1_N17_PCA2D_1-3_n17_permb_GJ1_N17_PCA2D_1-3_n17_permb.rdb",
+  "n": 280,
+  "rms": 2.8308941669268934,
+  "robust": 2.846041436785377,
+  "median_error": 1.686893684366722,
+  "nightly_rms": 2.637616812839048,
+  "intra_night": 1.5042541704579564,
+  "intra_dof": 140,
+  "ref": {
+   "rms": 2.657330606370036,
+   "robust": 2.6239041160602277,
+   "median_error": 1.5298221686574056,
+   "nightly_rms": 2.4999464332124317,
+   "intra_night": 1.2826434795944825
+  },
+  "gain": 0.9386894916155516,
+  "gain_16_84": [
+   0.9039367210141179,
+   0.9743880981834261
+  ],
+  "added_rms": 1.7313043505698567,
+  "added_vs_berv": 0.0164761576769383,
+  "added_vs_vtot": -0.01622087016416026,
+  "vtot_bias": "none detected (0.3 sigma, \u0394BIC -6.5): |peak| < 3306.7 m/s at 95%",
+  "vtot_jitter": 2.0798936224430604,
+  "vtot_significance": 0.2915249332391954
+ },
+ "qsupport": {
+  "label": "1-3, telluric support only",
+  "path": "/Users/eartigau/GitHubProjects/pca2d_preclean/outputs/lbl/lblrdb/lbl_GJ1_N17_PCA2D_1-3_n17_qsupport_GJ1_N17_PCA2D_1-3_n17_qsupport.rdb",
+  "n": 280,
+  "rms": 2.719676796096537,
+  "robust": 2.827040493719582,
+  "median_error": 1.6641330129483416,
+  "nightly_rms": 2.505332047804298,
+  "intra_night": 1.5315594966770458,
+  "intra_dof": 140,
+  "ref": {
+   "rms": 2.657330606370036,
+   "robust": 2.6239041160602277,
+   "median_error": 1.5298221686574056,
+   "nightly_rms": 2.4999464332124317,
+   "intra_night": 1.2826434795944825
+  },
+  "gain": 0.977075882760781,
+  "gain_16_84": [
+   0.9373441378471751,
+   1.0198835688313213
+  ],
+  "added_rms": 1.7503714447296086,
+  "added_vs_berv": -0.01280373474151456,
+  "added_vs_vtot": 0.01318857930039195,
+  "vtot_bias": "none detected (0.0 sigma, \u0394BIC -8.6): |peak| < 3067.8 m/s at 95%",
+  "vtot_jitter": 1.9962102723229993,
+  "vtot_significance": 0.02519873970663257
+ },
+ "cvodd": {
+  "label": "1-3 cuts off, odd nights held out",
+  "path": "/Users/eartigau/GitHubProjects/pca2d_preclean/outputs/lbl/lblrdb/lbl_GJ1_N17_PCA2D_1-3_n17_cvodd_GJ1_N17_PCA2D_1-3_n17_cvodd.rdb",
+  "n": 140,
+  "rms": 2.580934569778388,
+  "robust": 2.414782997219696,
+  "median_error": 1.5771918287354367,
+  "nightly_rms": 2.4174600635029653,
+  "intra_night": 1.2805457123577968,
+  "intra_dof": 70,
+  "ref": {
+   "rms": 2.667318516280853,
+   "robust": 2.745881589699161,
+   "median_error": 1.5026833135984057,
+   "nightly_rms": 2.49192024258102,
+   "intra_night": 1.3474710566796693
+  },
+  "gain": 1.0334700257472558,
+  "gain_16_84": [
+   0.9928730173185528,
+   1.0771296496594251
+  ],
+  "added_rms": 1.1867865114866765,
+  "added_vs_berv": -0.01960158317115305,
+  "added_vs_vtot": 0.019155496271675673,
+  "vtot_bias": "none detected (0.8 sigma, \u0394BIC -3.5): |peak| < 5065.1 m/s at 95%",
+  "vtot_jitter": 1.9768112591407019,
+  "vtot_significance": 0.7591880885600575
+ },
+ "cv_comparison": {
+  "held_nights": 70,
+  "n": 140,
+  "in_sample_rms": 2.613278742424247,
+  "held_out_rms": 2.580934569778388,
+  "in_sample_nightly": 2.450324937593866,
+  "held_out_nightly": 2.4174600635029653,
+  "in_sample_error": 1.5689534244484,
+  "held_out_error": 1.5771918287354367
+ }
+}

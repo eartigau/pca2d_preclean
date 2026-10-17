@@ -1,0 +1,44 @@
+# ID|Go irrisor|Go interne|commande. Relu avant chaque tache: on peut reordonner.
+# --- GJ 1 (292 poses, ~4.5 Go par jeu de fichiers corriges)
+G01|8|8|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object GJ1_N17 --n-star 1 --n-earth 3 --stages cube,fit,figures,correct,lbl --rebuild-cube --run-lbl
+G02|1|2|/opt/anaconda3/envs/lbl-rapide/bin/python tools/lbl_extra.py --run-script outputs/GJ1_N17/1-3/run_lbl.py --name GJ1_N17_DFT --files 'data/GJ1_N17/*t.fits' --template-of GJ1_N17_PCA2D_1-3
+G03|1|2|/opt/anaconda3/envs/lbl-rapide/bin/python tools/lbl_extra.py --run-script outputs/GJ1_N17/1-3/run_lbl.py --name GJ1_N17_C13_LO --files 'outputs/GJ1_N17/1-3/corrected/*.fits' --template-of own
+G04|8|3|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object GJ1_N17 --n-star 1 --n-earth 3 --variant n17_cutsoff --run-lbl --fits-dir /Volumes/irrisor/pca2d_preclean
+G04L|1|2|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object GJ1_N17 --n-star 1 --n-earth 3 --variant n17_cutsoff --run-lbl --stages lbl
+G05|8|3|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object GJ1_N17 --n-star 1 --n-earth 3 --variant n17_nonan --run-lbl --fits-dir /Volumes/irrisor/pca2d_preclean
+G05L|1|2|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object GJ1_N17 --n-star 1 --n-earth 3 --variant n17_nonan --run-lbl --stages lbl
+G06|8|3|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object GJ1_N17 --n-star 0 --n-earth 3 --variant n17_k0 --stages cube,fit,correct --run-lbl --fits-dir /Volumes/irrisor/pca2d_preclean
+G06L|1|2|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object GJ1_N17 --n-star 0 --n-earth 3 --variant n17_k0 --run-lbl --stages lbl
+G07|1|9|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object GJ1_N17 --n-star 1 --n-earth 3 --variant n17_permb --run-lbl --no-fits-dir
+G10|8|3|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object GJ1_N17 --n-star 0 --n-earth 3 --variant n17_k0cut --stages correct --fits-dir /Volumes/irrisor/pca2d_preclean
+G10L|1|2|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object GJ1_N17 --n-star 0 --n-earth 3 --variant n17_k0cut --run-lbl --stages lbl
+# --- Proxima (782 poses, ~11.5 Go par jeu)
+P01|16|6|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object PROXIMA_N17 --n-star 1 --n-earth 3 --stages cube,fit,figures,correct --rebuild-cube --run-lbl --fits-dir /Volumes/irrisor/pca2d_preclean
+P01L|6|3|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object PROXIMA_N17 --n-star 1 --n-earth 3 --run-lbl --stages lbl
+# RETIRE 23:45, le nominal mesure deja avec le template LBL (lbl.star_template false depuis le 12-09): P02|1|2|/opt/anaconda3/envs/lbl-rapide/bin/python tools/lbl_extra.py --run-script outputs/PROXIMA_N17/1-3/run_lbl.py --name PROXIMA_N17_DFT --files 'data/PROXIMA_N17/*t.fits' --template-of PROXIMA_N17_PCA2D_1-3
+# RETIRE 23:45, idem: P03|1|2|/opt/anaconda3/envs/lbl-rapide/bin/python tools/lbl_extra.py --run-script outputs/PROXIMA_N17/1-3/run_lbl.py --name PROXIMA_N17_C13_LO --files 'outputs/PROXIMA_N17/1-3/corrected/*.fits' --template-of own
+P04|15|3|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object PROXIMA_N17 --n-star 1 --n-earth 3 --variant n17_cutsoff --run-lbl --fits-dir /Volumes/irrisor/pca2d_preclean --stages correct
+P04L|4|2|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object PROXIMA_N17 --n-star 1 --n-earth 3 --variant n17_cutsoff --run-lbl --stages lbl
+P06|15|3|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object PROXIMA_N17 --n-star 0 --n-earth 3 --variant n17_k0c --stages cube,fit,correct --run-lbl --fits-dir /Volumes/irrisor/pca2d_preclean
+P06L|4|2|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object PROXIMA_N17 --n-star 0 --n-earth 3 --variant n17_k0c --run-lbl --stages lbl
+P07|15|3|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object PROXIMA_N17 --n-star 1 --n-earth 3 --variant n17_cvodd --stages cube,fit,correct --run-lbl --fits-dir /Volumes/irrisor/pca2d_preclean
+P07L|4|2|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object PROXIMA_N17 --n-star 1 --n-earth 3 --variant n17_cvodd --run-lbl --stages lbl
+
+# --- Proxima nonan en dernier: la garde de disque le saute s'il ne tient pas
+P05|15|3|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object PROXIMA_N17 --n-star 1 --n-earth 3 --variant n17_nonan --run-lbl --fits-dir /Volumes/irrisor/pca2d_preclean --stages correct
+P05L|4|2|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object PROXIMA_N17 --n-star 1 --n-earth 3 --variant n17_nonan --run-lbl --stages lbl
+# --- si la place le permet
+G08|8|3|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object GJ1_N17 --n-star 1 --n-earth 3 --variant n17_qsupport --run-lbl --fits-dir /Volumes/irrisor/pca2d_preclean --stages correct
+G08L|1|2|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object GJ1_N17 --n-star 1 --n-earth 3 --variant n17_qsupport --run-lbl --stages lbl
+# --- REPRISE de Proxima a 01:25: le disque interne s'etait rempli par l'echange pendant la construction du cube (P01); les produits GJ 1 de la nuit deplaces vers irrisor, liens laisses a leur place
+W01|0|0|for i in $(seq 120); do [ $(df -g / | awk 'NR==2{print $4}') -ge 18 ] && exit 0; sleep 30; done; exit 1
+P11|16|16|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object PROXIMA_N17 --n-star 1 --n-earth 3 --stages cube,fit,figures,correct --rebuild-cube --run-lbl --fits-dir /Volumes/irrisor/pca2d_preclean
+P11L|7|3|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object PROXIMA_N17 --n-star 1 --n-earth 3 --run-lbl --stages lbl
+P14|15|4|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object PROXIMA_N17 --n-star 1 --n-earth 3 --variant n17_cutsoff --run-lbl --fits-dir /Volumes/irrisor/pca2d_preclean --stages correct
+P14L|4|2|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object PROXIMA_N17 --n-star 1 --n-earth 3 --variant n17_cutsoff --run-lbl --stages lbl
+P16|18|5|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object PROXIMA_N17 --n-star 0 --n-earth 3 --variant n17_k0c --stages cube,fit,correct --run-lbl --fits-dir /Volumes/irrisor/pca2d_preclean
+P16L|4|2|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object PROXIMA_N17 --n-star 0 --n-earth 3 --variant n17_k0c --run-lbl --stages lbl
+P17|18|5|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object PROXIMA_N17 --n-star 1 --n-earth 3 --variant n17_cvodd --stages cube,fit,correct --run-lbl --fits-dir /Volumes/irrisor/pca2d_preclean
+P17L|4|2|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object PROXIMA_N17 --n-star 1 --n-earth 3 --variant n17_cvodd --run-lbl --stages lbl
+G09|8|5|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object GJ1_N17 --n-star 1 --n-earth 3 --variant n17_cvodd --stages cube,fit,correct --run-lbl --fits-dir /Volumes/irrisor/pca2d_preclean
+G09L|1|2|/opt/anaconda3/envs/pca2d-preclean/bin/python -m pca2d.cli --object GJ1_N17 --n-star 1 --n-earth 3 --variant n17_cvodd --run-lbl --stages lbl
