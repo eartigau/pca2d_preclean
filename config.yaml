@@ -1113,6 +1113,60 @@ objects:
       drs_modes: [HE]
     output:
       cache_directory: /Volumes/irrisor/pca2d_preclean/cache_weekend
+  # LES CIBLES FAIBLES (2026-10-17, demande de l'utilisateur): toutes les cibles
+  # NIRPS a plus de 50 nuits dans leur mode majoritaire et dont le SNR de la
+  # pipeline (EXTSN060, mediane des rdb de /Volumes/irrisor/rdbs_nirps) est sous
+  # 40. Huit, dont TOI-210 deja dans l'echantillon du week-end: les sept
+  # autres ici, sous le suffixe _F (outputs/reports/weekend/faint_sample.json).
+  GJ3693_F:
+    input:
+      object_header: GJ3693
+    quality:
+      drs_modes: [HE]
+    output:
+      cache_directory: /Volumes/irrisor/pca2d_preclean/cache_weekend
+  LP_938M71_F:
+    input:
+      object_header: LP_938M71
+    quality:
+      drs_modes: [HE]
+    output:
+      cache_directory: /Volumes/irrisor/pca2d_preclean/cache_weekend
+  TOI2407_F:
+    input:
+      object_header: TOI2407
+    quality:
+      drs_modes: [HE]
+    output:
+      cache_directory: /Volumes/irrisor/pca2d_preclean/cache_weekend
+  TOI756_F:
+    input:
+      object_header: TOI756
+    quality:
+      drs_modes: [HE]
+    output:
+      cache_directory: /Volumes/irrisor/pca2d_preclean/cache_weekend
+  SIPS_J1259M4336_F:
+    input:
+      object_header: SIPS_J1259M4336
+    quality:
+      drs_modes: [HE]
+    output:
+      cache_directory: /Volumes/irrisor/pca2d_preclean/cache_weekend
+  TOI206_F:
+    input:
+      object_header: TOI206
+    quality:
+      drs_modes: [HE]
+    output:
+      cache_directory: /Volumes/irrisor/pca2d_preclean/cache_weekend
+  TOI782_F:
+    input:
+      object_header: TOI782
+    quality:
+      drs_modes: [HE]
+    output:
+      cache_directory: /Volumes/irrisor/pca2d_preclean/cache_weekend
   GJ328:
     target:
       planets: [3771.0, 241.8]          # b, K = 42.6 m/s on a 10.3 yr orbit
