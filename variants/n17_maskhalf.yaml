@@ -1,0 +1,15 @@
+# n17_maskhalf (2026-10-17, ajoutee a 17:45): le masque commun des echantillons
+# sans poids decide A LA MAJORITE (mask_share 0.5) au lieu de l'unanimite.
+# Mesure sur les cibles NIRPS faibles: GJ 3693 passe de 30.5% de NaN livres a
+# 73.9% corriges, presque tout par ce masque (131924 echantillons par pose,
+# contre 981 pour les coupures), et LBL refuse alors de construire le template
+# (moins de 50% de donnees valides); SIPS J1259-4336 passe de 29.5% a 51.5%.
+# Sur une cible faible chaque pose a ses pixels sous le seuil de SNR, et leur
+# union devore le spectre. Le jeu de raies reste UN pour toute la campagne.
+reuse_fit: nominal
+note: "masque commun a la majorite, cibles faibles"
+lbl:
+  before: false
+correct:
+  mask: common
+  mask_share: 0.5
