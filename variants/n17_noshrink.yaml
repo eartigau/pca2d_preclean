@@ -1,0 +1,8 @@
+# n17_noshrink (nuit du 2026-10-17): la base divisee en entier, sans
+# retrecissement par significativite.
+reuse_fit: nominal
+note: "sans retrecissement"
+lbl:
+  before: false
+correct:
+  shrink: false

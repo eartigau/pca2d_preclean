@@ -1,0 +1,13 @@
+# n17_cutsoff (nuit du 2026-10-17): la correction nominale SANS les coupures
+# sur le residu (nsig_cut, bias_nsig, colonnes). Ces seuils sont en sigmas, et
+# un sigma retrecit quand le SNR monte: ils blanchissent davantage chez une
+# cible brillante. Proxima n'a jamais tourne avec (nominaux depuis le 26-09).
+reuse_fit: nominal
+note: "les coupures du residu desactivees"
+lbl:
+  before: false
+correct:
+  nsig_cut: null
+  bias_nsig: null
+  column_frac: null
+  column_chi2: null

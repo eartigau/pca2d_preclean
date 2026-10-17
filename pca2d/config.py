@@ -410,6 +410,9 @@ DEFAULTS = {
         # TOI-2120 4 m/s, at half an element 2 (2026-09-11). The observer
         # components are never smoothed here.
         "star_smooth": None,
+        # VALIDATION CROISEE (pca2d.diagnostics.holdout_rows): "even" ou "odd",
+        # les nuits tenues hors du fit. None, le nominal: toutes les nuits.
+        "holdout": None,
         # The older spelling of the two above: smooth to one resolution element
         # of this R. Still read, so the runs made with it reproduce.
         "star_resolution": None,
@@ -504,7 +507,13 @@ DEFAULTS = {
         # blanked are untouched, and so is the shrinkage below. Nominal since
         # 2026-09-15 (config.yaml carries the measurements).
         "weight": "velocity",
-        "velocity_floor": 0.05,      # what a sample with no velocity info keeps
+        "velocity_floor": 0.05,
+        # LES DIAGNOSTICS DE LA NUIT DU 2026-10-17 (pca2d.diagnostics), tous
+        # deux inactifs a None. q_support: ne diviser la base que la ou la
+        # transmission du cube descend sous ce seuil. permute_b: une graine,
+        # chaque nuit corrigee avec les amplitudes d'une autre (test nul).
+        "q_support": None,
+        "permute_b": None,      # what a sample with no velocity info keeps
         "shrink": True,              # each component only where it is significant
         "shrink_smooth": False,      # its significance averaged over an element
         "smooth_components": [],     # observer components smoothed before division

@@ -1016,6 +1016,28 @@ objects:
     target:
       planets: [11.18465, 5.12338]      # b and d; c at 5.2 yr is beyond a
                                         # campaign's baseline
+  # LA NUIT DU 2026-10-17: Proxima et GJ 1 refaits sur UNE version figee, sous
+  # des noms neufs pour ne rien ecraser des produits de septembre (profil LBL HA
+  # pour des donnees HE, fonds de raies coupes, passe-haut ordinaire). Memes
+  # fichiers: data/<NOM> est un lien vers le dossier de l'etoile. Toutes les
+  # poses des deux etoiles sont en mode HE (ESO INS MODE et DRSMODE, verifie
+  # le 2026-10-16 sur 782 et 292 fichiers): pas de melange de modes.
+  # Plan: outputs/reports/plan_nuit_proxima_gj1.md.
+  PROXIMA_N17:
+    input:
+      object_header: PROXIMA
+    target:
+      planets: [11.18465, 5.12338]
+  GJ1_N17:
+    input:
+      object_header: GJ1
+  # GJ 1 avec deux keplériennes INJECTEES (tools/inject_planet.py), 3 m/s a
+  # 37.3 j et 3 m/s a 365.25 j: ce que la chaine rend d'un signal connu
+  GJ1_INJ17:
+    input:
+      object_header: GJ1
+    target:
+      planets: [37.3, 365.25]
   GJ328:
     target:
       planets: [3771.0, 241.8]          # b, K = 42.6 m/s on a 10.3 yr orbit

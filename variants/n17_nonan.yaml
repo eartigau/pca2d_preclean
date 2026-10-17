@@ -1,0 +1,13 @@
+# n17_nonan (nuit du 2026-10-17): la division seule, AUCUN NaN ajoute: ni le
+# masque des echantillons sans poids, ni les coupures. Ce qui reste de la
+# perte une fois tout blanchiment retire.
+reuse_fit: nominal
+note: "division seule, aucun NaN ajoute"
+lbl:
+  before: false
+correct:
+  mask: none
+  nsig_cut: null
+  bias_nsig: null
+  column_frac: null
+  column_chi2: null

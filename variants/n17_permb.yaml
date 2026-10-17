@@ -1,0 +1,9 @@
+# n17_permb (nuit du 2026-10-17): TEST NUL. Chaque nuit corrigee avec les
+# amplitudes observateur d'une AUTRE nuit (graine 17). Meme base, meme
+# distribution d'amplitudes, aucun rapport avec la pose.
+reuse_fit: nominal
+note: "test nul: amplitudes d'une autre nuit"
+lbl:
+  before: false
+correct:
+  permute_b: 17

@@ -1,0 +1,9 @@
+# n17_k0 (nuit du 2026-10-17): aucune composante stellaire, l'etoile reduite a
+# son spectre moyen par parite. En septembre, 0-3 faisait mieux que 1-3 sur
+# Proxima ET sur GJ 1. Le template LBL change avec: la matrice dira si H3 se
+# reduit a H1. Run etiquete 0-3.
+note: "aucune composante stellaire"
+twoframe:
+  n_star: 0
+lbl:
+  before: false

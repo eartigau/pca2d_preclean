@@ -1,0 +1,10 @@
+# n17_earth0own (nuit du 2026-10-17): RIEN divise, le masque et les coupures
+# nominaux gardes, template de LBL. Contre le livre: le cout des NaN seuls.
+# Contre n17_lblown: ce qu'apporte la division, a template egal.
+reuse_fit: nominal
+note: "matrice des templates: masque seul, template LBL"
+lbl:
+  before: false
+  star_template: false
+correct:
+  n_earth: 0

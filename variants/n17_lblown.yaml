@@ -1,0 +1,9 @@
+# n17_lblown (nuit du 2026-10-17): la correction nominale, mesuree par LBL
+# contre SON PROPRE template au lieu de celui du fit. Avec le nominal (template
+# du fit), c'est la colonne "corrige" de la matrice 2 x 2 des templates.
+# Hypothese H1 du plan: le template de pca2d coute a haut SNR.
+reuse_fit: nominal
+note: "matrice des templates: corrige, template LBL"
+lbl:
+  before: false
+  star_template: false

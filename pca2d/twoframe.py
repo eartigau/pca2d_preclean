@@ -168,6 +168,12 @@ def parse_args(argv=None):
                         " refit; 0 disables the cut. 10 sigma = 14.83 MAD")
     p.add_argument("--max-mad-rounds", type=int, default=None,
                    help="how many times to reject and refit at most")
+    p.add_argument("--holdout", choices=("even", "odd"), default=None,
+                   help="VALIDATION CROISEE: tenir hors du fit les nuits de"
+                        " rang pair ou impair (pca2d.diagnostics). Elles"
+                        " gardent leur place, sans poids, et l'etape correct"
+                        " les corrige par le reajustement de leurs amplitudes"
+                        " contre une base qui ne les a jamais vues")
     p.add_argument("--replot", action="store_true",
                    help="regenerate the figures from <outdir>/fit.npz and exit,"
                         " without loading a cube or refitting")
@@ -182,7 +188,7 @@ CONFIGURABLE = ("n_star", "n_earth", "iters", "order", "tie_parities", "max_mad"
                 "kernel_halfwidth", "gap_guard", "leakage", "chunk", "dtype",
                 "velocity_term", "velocity_min_transmission", "mean",
                 "patience", "keep", "star_resolution", "star_basis",
-                "resolution", "star_smooth")
+                "resolution", "star_smooth", "holdout")
 
 
 def _resolve(args):
@@ -2869,6 +2875,22 @@ def main(argv=None):
     spill = spill_dir(rows, columns, args.dtype, args.cube, args.outdir)
     grid, data, w, meta = load_cube(args.cube, min_snr_frac=args.min_snr_frac,
                                     dtype=np.dtype(args.dtype), spill=spill)
+    # LA VALIDATION CROISEE, AVANT TOUTE MOYENNE. Les nuits tenues a l'ecart
+    # perdent leur poids ici, donc avant les moyennes par parite, l'etoile
+    # moyenne et le premier balayage: la base ne doit rien en apprendre, pas
+    # meme leur contribution au spectre moyen. Elles gardent leur place dans
+    # chaque tableau, comme une ligne rejetee par la coupure MAD, et sortent
+    # marquees `rejected` dans fit.npz.
+    held = None
+    if getattr(args, "holdout", None):
+        from .diagnostics import holdout_rows
+        held = holdout_rows(np.asarray(meta["bjd"], dtype=float), args.holdout)
+        w[held] = 0.0
+        data[held] = 0.0
+        log("HOLDOUT: %d of %d rows (the %s-ranked nights) held out of the fit;"
+            " the correct stage refits their amplitudes against a basis that"
+            " never saw them" % (int(held.sum()), held.size, args.holdout),
+            "warn")
     log("fit arrays in %s: %.1f GB for the data and the weights together"
           % (data.dtype.name, 2 * data.nbytes / 1e9))
     n_spectra, n_pixels = data.shape
@@ -3212,7 +3234,8 @@ def main(argv=None):
     # re-orthonormalisation after each M-step. Until the star update is made an
     # exact minimiser, keep the best iterate rather than the last one, and stop
     # once it has clearly turned over.
-    rejected = np.zeros(n_spectra, dtype=bool)
+    rejected = (held.copy() if held is not None
+                else np.zeros(n_spectra, dtype=bool))
     for mad_round in range(int(args.max_mad_rounds) + 1):
         best = None
         best_chi2 = best_at = None

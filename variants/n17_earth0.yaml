@@ -1,0 +1,9 @@
+# n17_earth0 (nuit du 2026-10-17): rien divise, masque garde, template du FIT.
+# Contre n17_earth0own: le cout du template de pca2d sur des spectres que la
+# correction n'a pas touches.
+reuse_fit: nominal
+note: "matrice des templates: masque seul, template du fit"
+lbl:
+  before: false
+correct:
+  n_earth: 0

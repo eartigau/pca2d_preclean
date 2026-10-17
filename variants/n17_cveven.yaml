@@ -1,0 +1,16 @@
+# n17_cveven (nuit du 2026-10-17): VALIDATION CROISEE. Les nuits de rang even
+# sont tenues hors du fit (twoframe.holdout), puis corrigees par le
+# reajustement de leurs amplitudes contre une base qui ne les a jamais vues.
+# Sans les coupures du residu, qui liraient comme aberrantes des lignes que le
+# fit n'a pas modelisees: la reference est donc n17_cutsoff, sur les memes
+# poses tenues a l'ecart.
+note: "validation croisee, nuits even tenues a l'ecart"
+twoframe:
+  holdout: even
+lbl:
+  before: false
+correct:
+  nsig_cut: null
+  bias_nsig: null
+  column_frac: null
+  column_chi2: null

@@ -1154,7 +1154,7 @@ def run_correct(plan):
             "--source-dir", target["directory"], "--cube", plan["cube"],
             "--corrected-dir", target["corrdir"], "--overwrite",
             "--star-group", str(target.get("star_group", 0)),
-            *clip_args(cfg), *shrink_args(cfg)])
+            *clip_args(cfg), *shrink_args(cfg), *diagnostic_args(cfg)])
 
 
 def nightly_stacked(cube):
@@ -1249,6 +1249,29 @@ def clip_args(cfg):
             " still above %.2f" % (100 * float(frac), float(chi2)), "info")
         out += ["--column-frac", str(float(frac)),
                 "--column-chi2", str(float(chi2))]
+    return out
+
+
+def diagnostic_args(cfg):
+    """Les tests de diagnostic de l'etape correct (pca2d.diagnostics): le
+    support tellurique et la permutation des amplitudes entre nuits.
+
+    A part de shrink_args, qui part aussi vers la figure de sequence: ces deux
+    options ne sont pas des corrections a dessiner mais des questions posees
+    aux fichiers, et la figure ne les connait pas."""
+    corr = cfg.get("correct") or {}
+    out = []
+    if corr.get("q_support"):
+        out += ["--q-support", str(float(corr["q_support"]))]
+        log("DIAGNOSTIC: the observer basis divided out only where the"
+            " telluric transmission falls below %.4f on some exposure; the"
+            " sequence figure does not show this" % float(corr["q_support"]),
+            "warn")
+    if corr.get("permute_b") is not None:
+        out += ["--permute-b", str(int(corr["permute_b"]))]
+        log("DIAGNOSTIC: each night corrected with the observer amplitudes of"
+            " ANOTHER night (seed %d); a null test, not a correction"
+            % int(corr["permute_b"]), "warn")
     return out
 
 

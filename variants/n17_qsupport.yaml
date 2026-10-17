@@ -1,0 +1,11 @@
+# n17_qsupport (nuit du 2026-10-17): la base observateur divisee SEULEMENT la
+# ou la transmission du cube descend sous 0.995 sur au moins une pose. Si le
+# bruit injecte vient des colonnes sans tellurique, il disparait ici. Sur TOI
+# 2120 la composante 1 etait significative hors telluriques: ce test peut
+# aussi perdre un vrai motif instrumental.
+reuse_fit: nominal
+note: "base divisee sur le support tellurique seulement"
+lbl:
+  before: false
+correct:
+  q_support: 0.995

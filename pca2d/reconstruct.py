@@ -216,6 +216,14 @@ def parse_args(argv=None):
                         " the default, is the strict intersection; below it the"
                         " line set is still ONE for the whole campaign, decided"
                         " by a majority rather than unanimously")
+    p.add_argument("--permute-b", type=int, default=None, metavar="SEED",
+                   help="TEST NUL (pca2d.diagnostics): chaque nuit recoit les"
+                        " amplitudes observateur d'une AUTRE nuit, tiree avec"
+                        " cette graine. Ce n'est pas une correction")
+    p.add_argument("--q-support", type=float, default=None, metavar="T",
+                   help="ne diviser la base observateur que la ou la"
+                        " transmission tellurique du cube descend sous T sur au"
+                        " moins une pose (pca2d.diagnostics). Demande --cube")
     p.add_argument("--overwrite", action="store_true")
     p.add_argument("--cube", default=None,
                    help="the cube the fit was made from. With it, every sample"
@@ -1449,6 +1457,31 @@ def correct_many(model, args):
                 % (j + 1, " (smoothed)" if j in smooth_which else "",
                    100 * np.mean(kept > 0.9), 100 * np.mean(kept == 0),
                    float(kept.mean())), "value")
+    # LE SUPPORT TELLURIQUE (diagnostic). Applique a la base que l'on DIVISE,
+    # pas a celle contre laquelle le reajustement resout: comme le
+    # retrecissement, il change ce qui sort des fichiers, pas la mesure des
+    # amplitudes.
+    q_support = getattr(args, "q_support", None)
+    if q_support:
+        if not getattr(args, "cube", None):
+            raise SystemExit("--q-support needs --cube: the transmission it"
+                             " reads is the cube's trans.npy")
+        from .diagnostics import support_columns
+        trans = np.load(os.path.join(args.cube, "trans.npy"), mmap_mode="r")
+        base = model.get("Q_correct")
+        base = np.asarray(model["Q"] if base is None else base, dtype=float)
+        if trans.shape[1] != base.shape[1]:
+            raise SystemExit("the cube's transmission has %d columns and the"
+                             " basis %d" % (trans.shape[1], base.shape[1]))
+        keep = support_columns(trans, float(q_support))
+        model["Q_correct"] = base * keep[None, :]
+        live = np.any(base != 0, axis=0)
+        log("  --q-support %.4f: the observer basis is divided out only where"
+            " the transmission falls below it on some exposure, %.1f%% of the"
+            " columns the basis covers" % (float(q_support),
+                                           100.0 * keep[live].mean()
+                                           if live.any() else 0.0), "value")
+        del trans
     # the derivative's width, one resolution element of this instrument on this
     # grid, exactly as every other Savitzky-Golay here is measured
     velocity_fwhm = None
@@ -1465,6 +1498,8 @@ def correct_many(model, args):
             % (velocity_fwhm, float(model["dv"]),
                float(getattr(args, "velocity_floor", VELOCITY_FLOOR))), "info")
     written = skipped = refitted = 0
+    permute = getattr(args, "permute_b", None)
+    prepared = []
     progress = _bar(pairs, desc="correcting", unit="file")
     for path, preset in progress:
         if not os.path.exists(path):
@@ -1495,6 +1530,11 @@ def correct_many(model, args):
             floored = floored_by_file.get(os.path.basename(path))
             if floored is not None:
                 clipped = floored if clipped is None else (clipped | floored)
+        if permute is not None:
+            # les amplitudes d'une autre nuit ne sont connues qu'une fois
+            # toutes les poses reajustees: on garde, on ecrit apres
+            prepared.append((path, row, alive, clipped))
+            continue
         new, touched, total = correct_file(
             model, row, path, args.corrected_dir, args.n_star, args.n_earth,
             args.kernel_halfwidth, args.overwrite, max_sky=args.max_sky_ratio,
@@ -1508,6 +1548,32 @@ def correct_many(model, args):
         if hasattr(progress, "set_postfix_str"):
             progress.set_postfix_str("%s  %.0f%% covered"
                                      % (os.path.basename(new), covered[-1]))
+    if permute is not None and prepared:
+        from .diagnostics import night_derangement
+        nights = [int(np.floor(float(r["bjd"]) - 0.5)) for _, r, _, _ in prepared]
+        source = night_derangement(nights, permute)
+        log("  --permute-b %d: every exposure gets the observer amplitudes of"
+            " an exposure from ANOTHER night, %d exposures over %d nights. A"
+            " null test, not a correction" % (permute, len(prepared),
+                                              len(set(nights))), "warn")
+        n_earth_fit = int(model["n_earth"])
+        # LES AMPLITUDES D'ORIGINE, FIGEES AVANT D'EN ECRIRE UNE SEULE: sinon
+        # une pose servie apres son donneur recevrait ce que le donneur a deja
+        # recu d'un troisieme
+        original = np.array([[float(r["b%d" % (j + 1)]) for j in range(n_earth_fit)]
+                             for _, r, _, _ in prepared])
+        for i, (path, row, alive, clipped) in enumerate(prepared):
+            for j in range(n_earth_fit):
+                row["b%d" % (j + 1)] = float(original[int(source[i]), j])
+            new, touched, total = correct_file(
+                model, row, path, args.corrected_dir, args.n_star, args.n_earth,
+                args.kernel_halfwidth, args.overwrite,
+                max_sky=args.max_sky_ratio, alive=alive, clipped=clipped,
+                clip_nsig=getattr(args, "nsig_cut", None),
+                refit=bool(args.refit), weight=getattr(args, "weight", "flux"),
+                clip_columns=column_cards, config=config)
+            written += 1
+            covered.append(100.0 * touched / max(total, 1))
     if covered:
         import numpy as _np
         log("  samples corrected per file: median %.1f%%, worst %.1f%%"
