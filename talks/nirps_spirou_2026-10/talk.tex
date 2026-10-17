@@ -1,0 +1,527 @@
+% Two-frame precleaning: a talk for the NIRPS and SPIRou teams.
+% Compile: pdflatex talk.tex (twice, for the frame numbers)
+\documentclass[aspectratio=169,11pt]{beamer}
+
+\usetheme{default}
+\usecolortheme{seahorse}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}[frame number]
+\setbeamercolor{frametitle}{fg=structure}
+\setbeamerfont{frametitle}{size=\large,series=\bfseries}
+\setbeamerfont{framesubtitle}{size=\small}
+\setbeamertemplate{itemize item}{\color{structure}$\bullet$}
+\setbeamertemplate{itemize subitem}{\color{structure}--}
+
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+
+\definecolor{good}{RGB}{20,120,70}
+\definecolor{bad}{RGB}{176,58,46}
+\definecolor{note}{RGB}{90,90,100}
+
+\newcommand{\vtot}{V_{\mathrm{tot}}}
+\newcommand{\berv}{\mathrm{BERV}}
+\newcommand{\figpath}[1]{figs/#1}
+\newcommand{\source}[1]{{\footnotesize\color{note}#1}}
+
+\title{\bfseries Two-frame precleaning}
+\subtitle{Separating what moves with the star from what stays with the sky,\\
+before the velocities are measured}
+\author{Étienne Artigau}
+\institute{\texttt{github.com/eartigau/pca2d\_preclean}}
+\date{\today}
+
+\begin{document}
+
+\begin{frame}[plain]
+  \titlepage
+  \begin{center}
+    \small\color{note}
+    NIRPS \& SPIRou teams
+  \end{center}
+\end{frame}
+
+% ------------------------------------------------------------------ 2
+\begin{frame}{The problem, in one sentence}
+  \framesubtitle{Two things in every spectrum do not move together}
+
+  \begin{columns}[T]
+    \begin{column}{0.56\textwidth}
+      \begin{itemize}
+        \item The \textbf{star} is Doppler-shifted by the barycentric motion:
+          tens of km/s over a year.
+        \item The \textbf{sky} and the \textbf{instrument} are not. Telluric
+          residuals, fringing, persistence: all fixed at the telescope.
+        \item Over a campaign the star therefore \emph{slides past} the
+          contamination.
+      \end{itemize}
+
+      \vspace{0.5em}
+      \begin{block}{The lever}
+        If a feature keeps its place on the detector while the star slides
+        past it, \textbf{the feature is not the star}. One block of
+        components anchored in each frame, and the two separate themselves.
+      \end{block}
+    \end{column}
+
+    \begin{column}{0.42\textwidth}
+      \centering
+      \includegraphics[width=\textwidth]{\figpath{highpass_template}}\\
+      \source{A deep line and a mask that walks across it as the BERV changes.}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ------------------------------------------------------------------ 3
+\begin{frame}{What it looks like in the data}
+  \framesubtitle{TOI-2120, SPIRou, 316 exposures around 1267\,nm, star rest frame}
+  \centering
+  \vspace{-0.5em}
+  \includegraphics[height=0.84\textheight]{\figpath{sequence_1267nm}}
+
+  \vspace{-0.2em}
+  \source{Each row is one exposure, ordered by BERV. Vertical structure
+  belongs to the star; anything slanted does not.}
+\end{frame}
+
+% ------------------------------------------------------------------ 4
+\begin{frame}{Reading that figure}
+  \framesubtitle{The same seven panels, in words}
+
+  \begin{columns}[T]
+    \begin{column}{0.52\textwidth}
+      \begin{enumerate}\small
+        \item \textbf{The high pass.} Continuum and blaze removed. The
+          \emph{slanted ridges} are the atmosphere walking across the stellar
+          lines as the BERV changes through the year.
+        \item \textbf{The reconstruction}: 1 star + 3 observer components,
+          plus the star's mean spectrum.
+        \item \textbf{Minus the observer block} -- this is what a corrected
+          file holds. Scatter $0.0740 \to 0.0490$, a \textcolor{good}{34\,\%
+          drop}.
+        \item[5.] \textbf{Minus everything}: $0.0419$, close to photon noise.
+      \end{enumerate}
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \begin{block}{\small The key visual}
+        \small
+        In panel 1 the diagonals are obvious. In panel 3 they are gone, and
+        \textbf{the vertical lines are untouched}. That is the whole claim of
+        the method, and it is visible without any statistics.
+      \end{block}
+
+      \vspace{0.5em}
+      \begin{alertblock}{\small Not a telluric model}
+        \small
+        $P$ and $Q$ are found by a weighted PCA \emph{on the cube itself}.
+        No line list, no model atmosphere. If the fit says something sits
+        still at the telescope, the campaign showed it sitting still.
+      \end{alertblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ------------------------------------------------------------------ 5
+\begin{frame}{The model}
+  \framesubtitle{Two blocks, one fitted amplitude each, solved per exposure}
+
+  Let $y(x,t)$ be the high-passed log flux on a grid uniform in $\ln\lambda$:
+
+  \begin{equation*}
+    y(x,t) =
+    \underbrace{\bar{S}(x-\delta x_t) + \sum_{i=1}^{n_\star} a_i(t)\,P_i(x-\delta x_t)}_{\textstyle\text{star frame}}
+    \;+\;
+    \underbrace{\sum_{j=1}^{n_\oplus} b_j(t)\,Q_j(x)}_{\textstyle\text{observer frame}}
+    \;+\;\varepsilon
+  \end{equation*}
+
+  \vspace{0.3em}
+  \begin{columns}[T]
+    \begin{column}{0.49\textwidth}\small
+      \begin{itemize}
+        \item $\bar{S}$: the star's mean spectrum. \textbf{Coefficient fixed
+          at exactly one} -- the fit can never scale the star away to explain
+          something else.
+        \item $P_i$: stellar variability. $Q_j$: the observer block.
+        \item $a_i, b_j$: the only free parameters.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.49\textwidth}\small
+      On a log grid a Doppler shift is a pure translation:
+      \begin{equation*}
+        \delta x_t = \frac{\operatorname{artanh}(v_t/c)}{\Delta},
+        \quad v_t = v_{\mathrm{sys}} - v_{\berv}(t)
+      \end{equation*}
+      \textbf{Always relativistic.} The first-order form is wrong by
+      $\tfrac12 (v/c)^2 = 1.5$\,m/s at 30\,km/s, which is the whole scale of
+      the measurement.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ------------------------------------------------------------------ 6
+\begin{frame}{How it is solved}
+  \framesubtitle{Alternating, each half-step linear and closed-form}
+
+  \begin{columns}[T]
+    \begin{column}{0.54\textwidth}
+      \begin{enumerate}\small
+        \item \textbf{Build the cube.} Every exposure resampled onto one
+          common grid with its variance and mask. Nothing co-added.
+        \item \textbf{Take the star's mean} in its rest frame (weighted
+          median down the time axis).
+        \item \textbf{Solve the amplitudes}: with the bases fixed, each
+          exposure is an independent weighted least-squares problem.
+        \item \textbf{Update the bases}: weighted PCA of the residual, each
+          block in its own frame.
+        \item \textbf{Repeat} until $\chi^2$ stops moving.
+      \end{enumerate}
+    \end{column}
+    \begin{column}{0.44\textwidth}\small
+      \begin{equation*}
+        \begin{pmatrix}\mathbf{a}\\\mathbf{b}\end{pmatrix}
+        = \left(\mathbf{M}_t^{\!\top}\mathbf{W}_t\mathbf{M}_t\right)^{-1}
+          \mathbf{M}_t^{\!\top}\mathbf{W}_t\left(\mathbf{y}_t - \bar{S}_t\right)
+      \end{equation*}
+
+      \vspace{0.4em}
+      $\mathbf{M}_t$ stacks the shifted $P_i$ and the unshifted $Q_j$;
+      $\mathbf{W}_t$ is the inverse variance.
+
+      \vspace{0.5em}
+      Writing $\bar{S}_t$ on the \emph{right-hand side} rather than as a
+      column of $\mathbf{M}_t$ is exactly what pins its coefficient at one.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ------------------------------------------------------------------ 7
+\begin{frame}{What the components turn out to be}
+  \framesubtitle{TOI-2120: rank correlations against everything in the headers}
+  \centering
+  \includegraphics[width=0.84\textwidth]{\figpath{correlations}}
+
+  \vspace{0.2em}
+  \begin{columns}[T]
+    \begin{column}{0.32\textwidth}\footnotesize
+      \textbf{Nothing follows airmass.}\\
+      Largest airmass correlation anywhere: 0.18, and it is on the
+      \emph{stellar} component.
+    \end{column}
+    \begin{column}{0.32\textwidth}\footnotesize
+      \textbf{$b_3$ follows the clock} at $+0.805$ and nothing else: a
+      monotonic drift over 452 days. Instrument, not weather.
+    \end{column}
+    \begin{column}{0.32\textwidth}\footnotesize
+      \textbf{$b_2$ follows the BERV} at $-0.737$, flat in airmass. Not a
+      water column: the residual of an imperfect frame separation.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ------------------------------------------------------------------ 8
+\begin{frame}{The high pass: a subtlety that costs m/s}
+  \framesubtitle{Why the continuum filter is taken against a template}
+
+  \begin{columns}[T]
+    \begin{column}{0.46\textwidth}\small
+      A Savitzky-Golay filter is a local polynomial. It does not know what a
+      line is, so a deep line \textbf{drags it down}.
+
+      \vspace{0.4em}
+      Harmless if it were the same every night. It is not: LBL blanks pixels
+      below $e^{-1}$ transmission, and as the BERV sweeps,
+      \textbf{the hole moves across the stellar line}.
+
+      \vspace{0.4em}
+      The filter is then dragged by a different amount each exposure, leaving
+      a residual that \textbf{tracks the BERV without being stellar} -- the
+      single most dangerous systematic in this business.
+
+      \vspace{0.5em}
+      \textbf{Fix:} filter the residual to a median template (which has no
+      holes), then add the template's own filtered version back.
+    \end{column}
+    \begin{column}{0.52\textwidth}
+      \centering
+      \includegraphics[width=\textwidth]{\figpath{highpass_template}}\\
+      \source{The spectrum is held \emph{exactly} fixed; only the ten-pixel
+      mask moves. Ordinary filter: 0.00230 rms. Against a template: 0.00030,
+      \textcolor{good}{7.6$\times$ less}.}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ------------------------------------------------------------------ 9
+\begin{frame}{A warning about linearity}
+  \framesubtitle{The identity that looks like it makes this pointless}
+
+  Savitzky-Golay is linear, so one is tempted to write
+  \begin{equation*}
+    (s-\bar{S}) - \mathrm{SG}[s-\bar{S}] + \bar{S} - \mathrm{SG}[\bar{S}]
+    \;=\; s - \mathrm{SG}[s]
+  \end{equation*}
+
+  \begin{alertblock}{That identity holds only on identical support}
+    The residual $s-\bar{S}$ inherits the exposure's mask, \emph{with holes
+    where the tellurics saturate}. The median template has \emph{no holes}:
+    a pixel blanked tonight was measured on fifty other nights.
+    \textbf{Linearity does not survive two different supports}, and the
+    difference between the two sides is exactly the BERV-dependent term.
+  \end{alertblock}
+
+  \vspace{0.3em}
+  \small
+  Measured with a \emph{fixed} mask, the two agree to machine precision --
+  which is how the identity misleads. It took holding the spectrum still and
+  moving \emph{only} the mask to see the effect at all.
+\end{frame}
+
+% ------------------------------------------------------------------ 10
+\begin{frame}{The headline result: a bias that follows the BERV}
+  \framesubtitle{TOI-2120, velocity residual against $\vtot = v_{\mathrm{rad}} - \berv$}
+  \centering
+  \includegraphics[width=\textwidth]{\figpath{berv_talk}}
+
+  \vspace{0.3em}
+  \source{Near $\vtot=0$ every stellar line sits on the telluric that
+  contaminates it, so anything peaking there is not stellar. Grey band:
+  $|\vtot| < 4$ km/s, where the two frames nearly coincide.}
+\end{frame}
+
+% ------------------------------------------------------------------ 11
+\begin{frame}{The same result, in numbers}
+  \framesubtitle{A 15.8\,$\sigma$ detection becomes a non-detection}
+
+  \centering
+  \begin{tabular}{lcc}
+    \toprule
+     & \textbf{As delivered} & \textbf{After precleaning} \\
+    \midrule
+    Bias peak at $\vtot=0$ & $144.8^{+9.2}_{-8.7}$ m/s & none detected \\
+    Width (FWHM)           & 4.3 km/s                  & --- \\
+    Significance           & \textcolor{bad}{15.8\,$\sigma$} & \textcolor{good}{1.4\,$\sigma$} \\
+    $\Delta\mathrm{BIC}$   & $+416.5$                  & $+63.5$ \\
+    95\,\% upper limit     & ---                       & $|{\rm peak}| < 216.6$ m/s \\
+    \midrule
+    Jitter                 & 23.5 m/s                  & \textcolor{good}{11.7 m/s} \\
+    \bottomrule
+  \end{tabular}
+
+  \vspace{1em}
+  \begin{columns}
+    \begin{column}{0.52\textwidth}\footnotesize
+      \textbf{Why 4.3\,km/s is the right width:} that is about a telluric
+      line convolved with the instrumental profile. If the atmosphere makes
+      it, that is the width it should have.
+    \end{column}
+    \begin{column}{0.44\textwidth}\footnotesize
+      \textbf{Caveat, stated:} amplitude and width are strongly
+      anticorrelated in the posterior ($r=-0.93$), so they are not
+      independently constrained.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ------------------------------------------------------------------ 12
+\begin{frame}{Velocities, before and after}
+  \framesubtitle{TOI-2120: the same exposures, measured twice by the same LBL stage}
+  \centering
+  \includegraphics[height=0.70\textheight]{\figpath{lbl_velocities}}
+
+  \vspace{0.2em}
+  \small
+  Nightly means, 80 shared epochs: $47.98 \to 14.20$ m/s,
+  \textcolor{good}{a factor $3.38$} (paired bootstrap $3.14$--$3.65$).
+  Reduced $\chi^2$: $158.7 \to 9.5$.
+\end{frame}
+
+% ------------------------------------------------------------------ 13
+\begin{frame}{Where it pays, and where it does not}
+  \framesubtitle{Five campaigns: the gain is ordered by SNR, not by spectral type}
+  \centering
+  \includegraphics[height=0.70\textheight]{\figpath{gain_vs_snr}}
+
+  \vspace{0.1em}
+  \small
+  Error bars are paired bootstraps over epochs (2000 draws). Perfect rank
+  ordering, but \textbf{five points}: a clear trend, not an established law.
+\end{frame}
+
+% ------------------------------------------------------------------ 14
+\begin{frame}{The same five campaigns, in numbers}
+
+  \centering
+  \begin{tabular}{llrrrrr}
+    \toprule
+    \textbf{Star} & \textbf{Inst.} & \textbf{SNR} & \textbf{Epochs}
+      & \textbf{rms in} & \textbf{rms out} & \textbf{Gain} \\
+    \midrule
+    TOI-2120 & SPIRou & 33  & 80  & 47.98  & 14.20 & \textcolor{good}{$3.38\times$} \\
+    TOI-1452 & NIRPS  & 38  & 51  & 101.43 & 69.37 & \textcolor{good}{$1.46\times$} \\
+    GJ 328   & NIRPS  & 181 & 46  & 9.34   & 9.03  & $1.03\times$ \\
+    GJ 1     & NIRPS  & 233 & 140 & 2.54   & 2.56  & $0.99\times$ \\
+    Proxima  & NIRPS  & 287 & 250 & 2.96   & 3.29  & \textcolor{bad}{$0.90\times$} \\
+    \bottomrule
+  \end{tabular}
+
+  \vspace{1em}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \begin{block}{\small The honest summary}
+        \small
+        \textbf{Faint targets gain; bright ones do not.} On a photon-starved
+        spectrum the contamination is comparable to the noise and worth
+        removing. On a bright one it is already below the noise, and fitting
+        it costs more than it returns.
+      \end{block}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \begin{alertblock}{\small Caveats}
+        \small
+        Proxima will be \textbf{redone} with the HARPS updates; treat that row
+        as provisional. All rows use the nominal \texttt{1-3} configuration and
+        one frozen code version.
+      \end{alertblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ------------------------------------------------------------------ 15
+\begin{frame}{When not to use it}
+  \framesubtitle{Failure modes found by measurement, not by argument}
+
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \begin{alertblock}{Narrow BERV span}
+        The whole separation rests on the star moving relative to the sky.
+        \begin{itemize}\small
+          \item Wide span: \textcolor{good}{2$\times$ better}
+          \item 0.7 km/s span: \textcolor{bad}{2.4$\times$ worse}
+        \end{itemize}
+        \small Two slices of the \emph{same} TOI-4552 campaign, identical
+        otherwise. A fit with no information still returns an answer.
+      \end{alertblock}
+
+      \begin{alertblock}{Two stellar components}
+        \small
+        On TOI-2120 with \texttt{--n-star 2} the second amplitude starts
+        following the sky, absorbs a 232 m/s shift, and the rms climbs to
+        67 m/s.
+      \end{alertblock}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \begin{alertblock}{Shared bases need shared \emph{nights}}
+        \small
+        Not merely similar SNR. Fitting GJ 1, Proxima and a third target on
+        one basis with only two nights in common made GJ 1 \emph{worse}
+        (3.04 vs 2.61 solo).
+      \end{alertblock}
+
+      \begin{block}{What it costs: samples}
+        \small
+        Every sample the fit could not weight is written as NaN rather than
+        guessed at, and \texttt{mask: common} fixes one line set for the whole
+        campaign. On TOI-2120 the files go from \textbf{27.2\,\% NaN as
+        delivered to 51.3\,\%}. Worth checking on an already photon-limited
+        star.
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ------------------------------------------------------------------ 16
+\begin{frame}{Practical notes for both teams}
+
+  \begin{columns}[T]
+    \begin{column}{0.49\textwidth}
+      \textbf{Running it}
+      \vspace{0.3em}
+      \footnotesize
+      \texttt{pca2d --object TOI2120 \textbackslash}\\
+      \texttt{\ \ --n-star 1 --n-earth 3 \textbackslash}\\
+      \texttt{\ \ --stages cube,fit,correct,figures,lbl}
+
+      \vspace{0.6em}
+      \normalsize
+      \begin{itemize}\small
+        \item Reader picked from \texttt{INSTRUME}, never by hand.
+        \item SPIRou, NIRPS, HARPS, HARPS-N, ESPRESSO.
+        \item Corrected spectra on their \emph{original} grids: any velocity
+          code can read them.
+        \item Every run writes its resolved config, the components, a
+          coefficient CSV and a $\sim$30-page report.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.49\textwidth}
+      \textbf{Two traps worth knowing}
+      \vspace{0.4em}
+      \begin{alertblock}{\small LBL NIRPS\_HE + CADC}
+        \small
+        A one-line table bug upstream loads the \textbf{HA} instrument
+        profile for HE data. Every NIRPS HE run before this was found used
+        the wrong profile.
+      \end{alertblock}
+      \begin{alertblock}{\small Telluric fits need a template}
+        \small
+        Absorption must be fitted on the spectrum \emph{divided by the
+        stellar template}, never raw. The tell-tale: exponents coming out
+        identical with and without a template.
+      \end{alertblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ------------------------------------------------------------------ 17
+\begin{frame}{Summary}
+
+  \begin{columns}[T]
+    \begin{column}{0.52\textwidth}
+      \textbf{What it does}
+      \begin{itemize}\small
+        \item Fits a star-frame block and an observer-frame block
+          \emph{simultaneously}, from the data alone.
+        \item Writes back corrected spectra on their original grids.
+        \item Removes a 144.8 m/s, 15.8\,$\sigma$ BERV-locked bias on
+          TOI-2120, leaving a 1.4\,$\sigma$ non-detection.
+      \end{itemize}
+
+      \vspace{0.5em}
+      \textbf{Where it pays}
+      \begin{itemize}\small
+        \item \textbf{Faint targets}: $3.4\times$ on TOI-2120,
+          $1.5\times$ on TOI-1452.
+        \item Bright targets: nothing, or slightly worse.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \textbf{What it needs}
+      \begin{itemize}\small
+        \item A wide BERV span (tens of km/s).
+        \item Enough epochs to build a clean median template.
+        \item One stellar component, three observer ones, as the nominal
+          starting point.
+      \end{itemize}
+
+      \vspace{0.8em}
+      \begin{block}{\small Open questions}
+        \small
+        Proxima to be redone with the HARPS updates; the SNR trend rests on
+        five campaigns and wants more; the NaN cost of \texttt{mask: common}
+        deserves a closer look on photon-limited stars.
+      \end{block}
+    \end{column}
+  \end{columns}
+
+  \vspace{0.6em}
+  \centering
+  \small\color{note}
+  \texttt{github.com/eartigau/pca2d\_preclean} \quad$\cdot$\quad
+  \texttt{eartigau.github.io/pca2d\_preclean}
+\end{frame}
+
+\end{document}

@@ -189,6 +189,48 @@
     </section>
 
     <section class="card span-3">
+      <h2>Where it pays: faint targets</h2>
+      <p>
+        Five campaigns across two spectrographs, each measured before and after
+        on the epochs the two series share. The gain is ordered by the SNR of
+        the individual exposures, and ordered perfectly:
+      </p>
+      <figure>
+        <img src="figures/gain_vs_snr.svg" alt="The gain in RV rms against the median SNR per exposure, for five campaigns." />
+        <figcaption>
+          Gain in RV rms against median SNR per exposure. Error bars are paired
+          bootstraps over epochs, 2000 draws. The dashed line is a power law
+          fitted to the five points, gain &prop; SNR<sup>&minus;0.45</sup>.
+        </figcaption>
+      </figure>
+      <table class="rvtable">
+        <thead>
+          <tr><th>Star</th><th>Instrument</th><th>SNR</th><th>Epochs</th><th>rms in</th><th>rms out</th><th>Gain</th></tr>
+        </thead>
+        <tbody>
+          <tr class="best"><td>TOI-2120</td><td>SPIRou</td><td>33</td><td>80</td><td>47.98</td><td>14.20</td><td>3.38&times;</td></tr>
+          <tr class="best"><td>TOI-1452</td><td>NIRPS</td><td>38</td><td>51</td><td>101.43</td><td>69.37</td><td>1.46&times;</td></tr>
+          <tr><td>GJ&nbsp;328</td><td>NIRPS</td><td>181</td><td>46</td><td>9.34</td><td>9.03</td><td>1.03&times;</td></tr>
+          <tr><td>GJ&nbsp;1</td><td>NIRPS</td><td>233</td><td>140</td><td>2.54</td><td>2.56</td><td>0.99&times;</td></tr>
+          <tr><td>Proxima</td><td>NIRPS</td><td>287</td><td>250</td><td>2.96</td><td>3.29</td><td>0.90&times;</td></tr>
+        </tbody>
+      </table>
+      <p>
+        <strong>Faint targets gain; bright ones do not.</strong> On a
+        photon-starved spectrum the contamination is comparable to the noise
+        and worth removing. On a bright one it is already below the noise, and
+        fitting it costs more than it returns: Proxima comes out 10&nbsp;%
+        worse.
+      </p>
+      <div class="callout warn">
+        <strong>Two caveats.</strong> The rank ordering is perfect, but it rests
+        on <em>five campaigns</em>: a clear trend, not an established law, and
+        the power-law index should not be read as a prediction. Proxima will be
+        redone with the HARPS updates, so treat that row as provisional.
+      </div>
+    </section>
+
+    <section class="card span-3">
       <h2>Three HARPS campaigns, three ways</h2>
       <p>
         TOI-2120 is the favourable case. The harder test is the optical, where

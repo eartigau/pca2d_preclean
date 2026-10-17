@@ -323,16 +323,44 @@
       </figure>
     </section>
 
-    <section class="card">
-      <h2>A bias that follows the BERV</h2>
+    <section class="card span-3">
+      <h2>A bias that follows the BERV, and what removing it looks like</h2>
+      <p>
+        This is the measurement the whole method exists for. Plot each
+        exposure's velocity residual against \(V_{\mathrm{tot}} =
+        v_{\mathrm{rad}} - \mathrm{BERV}\), the velocity at which the star
+        sits relative to the telluric rest frame. Near zero, every stellar line
+        is sitting on top of the atmospheric line that contaminates it; far
+        from zero, they have walked apart. Anything that peaks at
+        \(V_{\mathrm{tot}} = 0\) is therefore not stellar.
+      </p>
       <figure>
-        <img src="figures/berv_bias_smethells-20.svg" alt="Velocity residual against the total barycentric velocity." />
+        <img src="figures/berv_bias_toi2120.svg" alt="TOI-2120 velocity residual against the total barycentric velocity, before and after precleaning, with the fitted bias and its envelope." />
         <figcaption>
-          A residual plotted against the total barycentric velocity. Anything
-          with a slope here is not stellar: it comes from the atmosphere, the
-          wavelength solution, or a frame that was not undone properly.
+          TOI-2120. <strong>Top left, as delivered:</strong> a spike of
+          <strong>144.8 m/s</strong> at \(V_{\mathrm{tot}} = 0\), 4.3&nbsp;km/s
+          wide, detected at <strong>15.8&nbsp;&sigma;</strong>
+          (\(\Delta\mathrm{BIC} = +416\)). <strong>Top right, after
+          precleaning:</strong> nothing left to detect, 1.4&nbsp;&sigma;, with a
+          95&nbsp;% upper limit on any remaining peak. The jitter halves at the
+          same time, from 23.5 to 11.7&nbsp;m/s. <strong>Bottom:</strong> both
+          fits with their 1&sigma; envelopes, over the binned medians.
         </figcaption>
       </figure>
+      <div class="stats-grid">
+        <div class="stat"><div class="label">Bias at \(V_{\mathrm{tot}}=0\), delivered</div><div class="value">144.8 m/s</div></div>
+        <div class="stat"><div class="label">Significance, delivered</div><div class="value">15.8 &sigma;</div></div>
+        <div class="stat"><div class="label">After precleaning</div><div class="value">1.4 &sigma;</div></div>
+        <div class="stat"><div class="label">Jitter, before &rarr; after</div><div class="value">23.5 &rarr; 11.7</div></div>
+      </div>
+      <p class="hint">
+        A spike at \(V_{\mathrm{tot}} = 0\) that is 4.3&nbsp;km/s wide is about
+        the width of a telluric line convolved with the instrumental profile,
+        which is what it should be if the atmosphere is what makes it. The
+        bias amplitude and its width are strongly anticorrelated in the
+        posterior (\(r = -0.93\)), so the two are not independently
+        constrained: the figure beside it shows that posterior in full.
+      </p>
     </section>
 
     <section class="card span-3">
