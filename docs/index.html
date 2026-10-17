@@ -1,29 +1,22 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>pca2d-preclean</title>
-<meta name="description" content="Two-frame weighted PCA of echelle spectra and the front end of an LBL run: one basis in the star's rest frame, one in the observer's, fitted jointly, the observer's divided out, and LBL handed the corrected spectra with a template of the star from the same fit." />
+<meta name="description" content="Two-frame weighted PCA that separates what moves with the star from what stays with the Earth, before the velocities are measured." />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css" />
-<style>
-  /* figures on this page are the point, not decoration: give them the width */
-  figure.wide { margin: 0; }
-  figure.wide img { width: 100%; border-radius: 8px; background: #fff; }
-  figure.wide figcaption { margin-top: .6rem; color: var(--muted); font-size: .92rem; }
-  .runbox { font-family: "IBM Plex Mono", monospace; }
-  .numbers { overflow-x: auto; margin: 1rem 0; }
-  .numbers table { border-collapse: collapse; font-size: .92rem; min-width: 34rem; }
-  .numbers th, .numbers td { padding: .35rem .7rem; text-align: right; white-space: nowrap;
-                             border-bottom: 1px solid rgba(255, 255, 255, .12); }
-  .numbers th:first-child, .numbers td:first-child,
-  .numbers th:nth-child(2), .numbers td:nth-child(2) { text-align: left; }
-  .numbers th { color: var(--muted); font-weight: 500; }
-  ul.terms li { margin-bottom: .45rem; }
-</style>
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [['\\(', '\\)']], displayMath: [['\\[', '\\]']] },
+    svg: { fontCache: 'global' },
+    options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] }
+  };
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js"></script>
 </head>
 <body>
   <div class="bg-orb orb-a"></div>
@@ -33,878 +26,386 @@
     <div class="site-banner-inner">
       <div class="site-banner-text">
         <h2>pca2d-preclean</h2>
-        <p>Two-frame weighted PCA &middot; the front end of LBL &middot; SPIRou, NIRPS, and whatever you add next</p>
+        <p>Two frames, one fit &middot; SPIRou, NIRPS, HARPS, HARPS-N, ESPRESSO</p>
       </div>
       <a href="https://eartigau.github.io/" class="home-link">&larr; Home</a>
     </div>
   </div>
 
   <header class="hero">
-    <p class="eyebrow">Spectroscopy &middot; telluric and airglow precleaning &middot; LBL radial velocities</p>
-    <h1>Two frames, one fit</h1>
+    <p class="eyebrow">RADIAL VELOCITY PRECLEANING</p>
+    <h1>Two frames,<br/>one fit</h1>
     <p class="subtitle">
-      A spectrum holds two things that move differently. The star's lines shift
-      with the barycentric velocity; the sky's do not. Give the decomposition
-      one basis that travels and one that stands still, fit them together,
-      divide out only the one that stands still, and hand what is left to LBL
-      with a template of the star taken from the same fit.
+      A spectrum holds two things that do not move together: the star, which
+      shifts with the barycentric velocity, and the sky above the telescope,
+      which does not. pca2d-preclean fits both at once and writes back spectra
+      with the Earth's share removed, before LBL or any other code measures a
+      velocity.
     </p>
   </header>
+
+  <nav class="pagenav">
+    <a href="index.html" class="here">Overview</a>
+    <a href="method.html">The model</a>
+    <a href="highpass.html">The high pass</a>
+    <a href="tellurics.html">Tellurics</a>
+    <a href="results.html">Results</a>
+  </nav>
 
   <main class="layout">
 
     <section class="card span-3">
-      <h2>The idea, in three panels</h2>
+      <h2>What it is, and how the pieces fit</h2>
       <p>
-        This is the whole method, seen at once. A campaign is drawn as a river:
-        1592.60 to 1594.60&nbsp;nm of TOI-2120, one row per exposure, 316 of
-        them, stacked in order of barycentric velocity and drawn <strong>in the
-        star's rest frame</strong>. That frame is the trick of the picture:
-        <strong>vertical structure belongs to the star; anything slanted does
-        not.</strong> The eye separates them before any arithmetic does.
+        One command reads a campaign of spectra, builds a cube, fits it, and
+        writes corrected files that any velocity code can read. The whole
+        chain is five stages &mdash; <code>cube</code>, <code>fit</code>,
+        <code>correct</code>, <code>figures</code>, <code>lbl</code> &mdash;
+        and each one can be run alone.
       </p>
-      <figure class="wide">
-        <img src="figures/sequence_1593nm.svg" alt="The three steps from the delivered flux to a corrected spectrum, 1592.6 to 1594.6 nm of TOI-2120, 316 exposures in the star's rest frame" />
+      <p>
+        The idea is simple enough to state in one line: over a campaign, the
+        same wavelength sample is seen at many different barycentric
+        velocities. Anything that keeps its place in the observer's frame
+        while the star slides past it is not the star. Give the fit one block
+        of components that sits still in the star's frame and another that
+        sits still in the Earth's, and the two separate themselves.
+      </p>
+      <p class="hint">
+        The demonstration target throughout this page is <strong>TOI-2120</strong>,
+        an M dwarf observed with SPIRou: 321 exposures, a wide BERV span, and
+        deep water bands crossing the stellar lines.
+      </p>
+    </section>
+
+    <section class="card span-2">
+      <h2>The idea, in three panels</h2>
+      <figure>
+        <img src="figures/sequence_1267nm.svg" alt="Three panels: the spectra as delivered, the Earth block the fit found, and what is left once it is removed." />
         <figcaption>
-          Underneath the three, five of those exposures in flux, spread over the
-          whole barycentric range the campaign covers, before in blue and after
-          in orange: the telluric lines that walk through the river are the
-          features that shrink. Every run draws this page for each of its
-          windows, with two more panels that are diagnostics rather than method:
-          the same river with the star taken out instead, and with everything
-          taken out, which is what is left unexplained.
+          Every exposure of TOI-2120 around 1267 nm, in the star's rest frame,
+          top to bottom in time. <strong>Left:</strong> as delivered &mdash;
+          the stellar lines stand still, and the diagonal streaks are the
+          atmosphere sliding across them as the BERV changes through the year.
+          <strong>Middle:</strong> what the observer block alone accounts for.
+          <strong>Right:</strong> what is left in the corrected files. The
+          diagonals are gone; the stellar lines are untouched.
         </figcaption>
       </figure>
-      <ul class="terms">
-        <li><strong>1. What arrives.</strong> The log of the delivered flux,
-          less a Savitzky-Golay of it, which takes the continuum off and leaves
-          the lines. The star's lines are the vertical ones. The bright diagonal
-          crossing them is OH airglow, sky emission that sits at a fixed place
-          on the detector and therefore sweeps across the star as the Earth's
-          velocity changes over the year.</li>
-        <li><strong>2. What the model says is there.</strong> One basis fitted
-          in the star's frame and one in the observer's, solved together for
-          every exposure at once. The reconstruction has the star's vertical
-          lines and the sky's diagonal ones, each where it belongs, because the
-          model was told which of the two travels.</li>
-        <li><strong>3. What a corrected file holds.</strong> Panel 1 with the
-          observer block divided out of it. The diagonal is gone and the
-          vertical lines are untouched: the star was never in the block that was
-          removed. That panel is not an illustration of the correction, it IS
-          the correction, sample for sample, and a test keeps the two
-          together.</li>
-      </ul>
+    </section>
+
+    <section class="card">
+      <h2>What a corrected file holds</h2>
+      <figure>
+        <img src="figures/corrected_file_1267nm.svg" alt="The corrected spectrum compared with panel three of the report." />
+        <figcaption>
+          A corrected file holds exactly what the third panel shows, sample for
+          sample. Nothing is smoothed, masked or interpolated on the way out:
+          the file is the delivered spectrum with the Earth block divided out,
+          on its own original wavelength grid.
+        </figcaption>
+      </figure>
     </section>
 
     <section class="card span-3">
       <h2>The model behind it</h2>
       <p>
-        That is what the picture above is: over a year of observing, the
-        barycentric velocity sweeps by tens of kilometres per second, which is
-        enough to separate the star from the atmosphere, but only if the model
-        is told which of the two travels. In one line,
-        Each exposure is the log of its flux less a Savitzky-Golay of it (a
-        100&nbsp;km/s high pass, 201 samples of 0.5&nbsp;km/s; runs made before
-        2026-09-11 used 151 of them, 75&nbsp;km/s), on one log-uniform grid in
-        the observer's frame, as two rows, its even orders and its odd ones:
+        Let \(y(\lambda, t)\) be the high-passed log flux of the exposure taken
+        at time \(t\), sampled on a common log-wavelength grid. The model writes
+        it as the sum of two blocks, one anchored in each frame:
       </p>
-      <pre><code>y_n  =  S_n P a_n  +  v_n d(S_n P a_n)/dv  +  Q b_n  +  m_p</code></pre>
-      <ul class="terms">
-        <li><code>S_n</code> carries the star basis <code>P</code> into exposure
-          <code>n</code> by its barycentric velocity. On a log grid a Doppler
-          shift is a translation of atanh(v/c)/(dv/c) samples, relativistic,
-          and <code>S_n</code> is an exact Lanczos operator for it rather than
-          an interpolation that would smear what it touched.</li>
-        <li><code>P a_n</code> is the star; <code>Q b_n</code> is what stands
-          still on the detector: telluric absorption, OH emission, the
-          instrument.</li>
-        <li><code>v_n</code> is one velocity per exposure, times the
-          derivative of the star as reconstructed. Without it the observer
-          block learns the star's own motion and the correction divides it out
-          of the flux. With it the motion is fitted, and stays in.</li>
-        <li><code>m_p</code> is one offset per order parity, in the observer's
-          frame. Consecutive orders overlap, and at a given wavelength one
-          parity samples near an order's centre and the other near its edge,
-          where the resolution differs. It is taken out before the fit and put
-          back into the correction.</li>
+      <div class="mathblock">
+        \[
+          y(\lambda, t)\;=\;\underbrace{\bar{S}(\lambda\,\mathcal{D}_t)
+            \;+\;\sum_{i=1}^{n_\star} a_i(t)\,P_i(\lambda\,\mathcal{D}_t)}_{\textstyle\text{the star's frame}}
+          \;+\;\underbrace{\sum_{j=1}^{n_\oplus} b_j(t)\,Q_j(\lambda)}_{\textstyle\text{the Earth's frame}}
+          \;+\;\varepsilon(\lambda, t)
+        \]
+      </div>
+      <ul class="legend">
+        <li>\(\bar{S}\) is the star's mean spectrum. <strong>It carries no free
+          amplitude</strong>: it enters with a coefficient of exactly one, so the
+          fit can never scale the star away to explain something else.</li>
+        <li>\(P_i\) are the stellar variability components, \(Q_j\) the Earth
+          components. Both are found by a weighted PCA on the cube itself, not
+          assumed from a model atmosphere.</li>
+        <li>\(a_i(t)\) and \(b_j(t)\) are the only free parameters, solved one
+          exposure at a time.</li>
+        <li>\(\mathcal{D}_t\) is the Doppler factor that carries the star's
+          frame into the observer's for that exposure.</li>
       </ul>
       <p>
-        The coefficients of both blocks are solved together for each exposure,
-        under weights taken from the noise you can <em>measure</em> rather than
-        the noise a photon model claims. The two disagree by a factor of fifty
-        at the red end of a SPIRou spectrum: past about 2200&nbsp;nm the thermal
-        background dominates, the pipeline subtracts its <em>mean</em> and not
-        its variance, and a photon model computed from what is left reports the
-        noisiest part of the detector as the quietest.
+        The Doppler factor is always the relativistic one, never the first-order
+        approximation:
       </p>
-    </section>
-
-    <section class="card span-3">
-      <h2>What a corrected file holds</h2>
+      <div class="mathblock">
+        \[
+          \mathcal{D}_t \;=\; \sqrt{\frac{1 + v_t/c}{1 - v_t/c}},
+          \qquad v_t \;=\; v_{\mathrm{sys}} - v_{\mathrm{berv}}(t)
+        \]
+      </div>
       <p>
-        Panel 3, sample for sample. A corrected file is the delivered flux
-        times <code>exp(&minus;(Q b_n + m_p))</code> on its own pixels, and
-        NaN wherever the fit gave a sample no weight, so LBL is never handed
-        data the model never saw. The star block and the velocity term stay
-        in: they are what LBL is about to measure. Everything else in the
-        t.fits, wavelength solution and blaze included, is copied through.
+        On a log-wavelength grid this is a pure translation by
+        \(\operatorname{artanh}(v_t/c)\) divided by the grid step, which is why
+        the grid is logarithmic in the first place. At a 30&nbsp;km/s BERV the
+        first-order form is off by \(\tfrac{1}{2}(v/c)^2 \approx\) 1.5&nbsp;m/s,
+        which is the whole scale of the measurement.
       </p>
-      <figure class="wide">
-        <img src="figures/corrected_file_1267nm.svg" alt="Panel 3 of the report, the corrected files, and the files written before the parity offset was put in the correction" />
-        <figcaption>
-          1266 to 1268&nbsp;nm. Top, panel 3 of the report; middle, the
-          corrected files read back through the same high pass, 0.0127 rms
-          from it, the round trip through the file's own pixels; bottom, the
-          files as written until 2026-09-10, when the parity offset was left in
-          them: 0.0275 rms, and the telluric residuals are plain to see.
-        </figcaption>
-      </figure>
-    </section>
-
-    <section class="card span-3" id="install">
-      <h2>Install it</h2>
-      <p>
-        One conda environment, described by the repository itself, and five
-        lines. It holds <strong>both codes</strong>, this one and
-        <a href="https://github.com/njcuk9999/lbl" target="_blank">LBL</a>,
-        because having to deactivate one to run the other is how a t.fits gets
-        measured by the wrong version of something.
+      <p class="hint">
+        <a href="method.html">The full derivation, the weights, and how the two
+        bases are built &rarr;</a>
       </p>
-      <pre><code>git clone https://github.com/eartigau/pca2d_preclean.git
-cd pca2d_preclean
-conda env create -f environment.yml
-conda activate pca2d-preclean
-./check.sh</code></pre>
-      <p>
-        The velocities themselves are measured, by default, by LBL's
-        <a href="https://github.com/njcuk9999/lbl/tree/test-speed-260918-110104"
-        target="_blank">speed branch</a>, in an environment of its own made
-        once, from any folder. The run finds it by name and starts it itself;
-        without it, <code>--lbl-env current</code> has the LBL above measure,
-        as every run did before 18 September 2026.
-      </p>
-      <pre><code>git clone -b test-speed-260918-110104 https://github.com/njcuk9999/lbl.git lbl-rapide
-conda create -n lbl-rapide python=3.12
-conda activate lbl-rapide
-pip install -e ./lbl-rapide</code></pre>
-      <p>
-        One alias, written once, so that a new terminal is one word from being
-        ready:
-      </p>
-      <pre><code>echo "alias pca2d='source $PWD/pca2d.sh'" &gt;&gt; ~/.zshrc</code></pre>
-      <p>
-        <code>pca2d</code> then leaves whatever conda environments are active,
-        however many deep, enters this one, and prints what there is to run.
-        Leaving rather than activating on top is the point: the environments
-        that matter here hold versions of LBL, and the wrong one on the path is
-        how a t.fits gets measured by the wrong version of something.
-      </p>
-      <p>
-        <code>./check.sh</code> is the check that it worked: some 660 tests,
-        about twenty-five seconds, and not one spectrum or network call among
-        them. Then put the spectra of a target in
-        <code>data/&lt;object&gt;/</code> under the input root, which is never
-        written to, and either
-      </p>
-      <pre><code>pca2d-preclean --object TOI-2120     # the whole thing, t.fits to velocities
-pca2d-gui                            # the same, in a window</code></pre>
-      <p>
-        <strong>The report is LaTeX.</strong> A run writes its report with
-        <code>pdflatex</code>, which comes from a TeX installation rather than
-        from conda: <a href="https://www.tug.org/mactex/" target="_blank">MacTeX</a>,
-        or its small sibling BasicTeX, on a Mac. Every package the report uses
-        past the LaTeX base is optional, so BasicTeX is enough; without any TeX
-        at all a run still leaves its figures bound in one PDF, and says why.
-        The first section of a report asks <a
-        href="https://simbad.cds.unistra.fr/simbad/" target="_blank">SIMBAD</a>
-        about the star, which is the only network call a run makes; each answer
-        is kept a month, and a report is written again without a network.
-      </p>
-      <p>
-        The environment pins rather than floors its versions, because LBL pins
-        its own exactly: <code>numpy==2.3.3</code>, <code>astropy==7.2.0</code>,
-        <code>scipy==1.17.0</code> and the rest, python 3.12.
-        <code>environment.yml</code> repeats those pins so that conda installs
-        them and pip finds them already satisfied. The repository itself is
-        <strong>private for the moment</strong>: the clone needs access, which
-        is <a href="#access">a message away</a>. And if
-        <code>conda env create</code> ends in <code>Pip failed</code>, the
-        reason is almost always <a href="#trouble">the one at the foot of this
-        page</a>, which has nothing to do with this package.
-      </p>
-    </section>
-
-    <section class="card span-3" id="window">
-      <h2>The window</h2>
-      <pre><code>pca2d-gui</code></pre>
-      <p>
-        For anyone who should not have to read a command line before their
-        first run. It does nothing the command line cannot: every setting is
-        one key of <code>config.yaml</code> or one flag of
-        <code>pca2d-preclean</code>, and <strong>the command it is about to run
-        is written out in full</strong>, so it can be read before anything
-        happens and copied into a terminal afterwards. It runs that command as
-        a subprocess, shows its output as it comes, and can stop it. It came
-        with the package you just installed, so that one word is the whole of
-        starting it.
-      </p>
-      <figure class="wide">
-        <img src="figures/gui_window.png" alt="The pca2d-preclean window: data roots, the target list, the settings, the barycentric coverage, the campaign timeline, the command and the log" />
-        <figcaption>
-          Five SPIRou campaigns ticked and the settings at the nominal. The
-          coverage panel says this selection covers 60&nbsp;km/s of barycentric
-          velocity, spanning 59 of the 59 its ecliptic latitude allows, which is
-          the case the method is built for. A date window is kept on part of the
-          baseline, so the marks outside it are greyed and the command at the
-          bottom carries <code>--min-rjd</code> and <code>--max-rjd</code>: that
-          is how a campaign is cut into seasons.
-        </figcaption>
-      </figure>
-
-      <h3>Three pages</h3>
-      <p>
-        Everything at once was a wall. The window is four pages, and each has
-        room to be read: <strong>targets</strong>, what is being reduced;
-        <strong>settings</strong>, how; <strong>LBL</strong>, what the step that
-        produces velocities is asked; and <strong>analysis</strong>, the
-        command, the buttons that start and end it, and everything it says. The
-        banner and the language button stay above them.
-      </p>
-
-      <h3>Two roots, and one file written in the first</h3>
-      <p>
-        A data root, shown in full, since <code>data</code> means different
-        folders from different working directories and a campaign usually lives
-        behind a link onto a shared disk. The only thing ever written there is
-        one <code>pca2d_index.csv</code> per campaign folder, the log of what
-        has been read of that campaign; the spectra are never touched, and a
-        folder that refuses the file stays exactly as it was. An output root, proposed as
-        <code>corrected</code> beside the data root when the field is left
-        empty: the corrected spectra are a copy of the campaign, tens of
-        gigabytes, and belong on the disk the campaign is already on. A
-        <strong>reduction name</strong>, which names the folder the run writes
-        into. It is proposed rather than left empty, as the targets followed by
-        six characters of a hash of everything that makes this reduction a
-        different result: the component counts, the velocity term, the sweeps,
-        the shrinkage, the high pass, the grid step, the coadding and the date
-        window. The same parameters give the same six, one number different
-        gives another six, and the window says when a reduction of that name
-        already exists rather than letting it be found out afterwards.
-      </p>
-      <p>
-        A window opened for the first time has <strong>both roots empty</strong>
-        and its configuration set to the <code>config.yaml</code> that came with
-        the installation, found beside the package rather than resolved against
-        whatever folder the window was started from. Where the spectra are and
-        where their copies go are choices about somebody's disks, and a field
-        that opens with a plausible path in it invites a run against a folder
-        nobody picked. The status line says <em>pick a data root</em> for as
-        long as there is none, the log says what such a folder holds, and the
-        command box says <em>tick a target</em> rather than showing a command
-        with no <code>--object</code> in it.
-      </p>
-
-      <h3>The targets, and what is known about them</h3>
-      <p>
-        The list is one row per campaign folder: the number of spectra, the
-        median signal-to-noise, the median exposure time, the magnitude with
-        the band it is in, and the instrument. Rows are grouped and tinted by
-        instrument, a column heading sorts by that column and again to reverse
-        it, the object heading a third time for the default order, and what is
-        not known sorts last, never first. A campaign still being read carries a disc
-        beside its tick box, filling clockwise as its files come in and gone
-        once they all are, so a finished list is not a column of symbols. A tick box per row, with
-        <code>all</code>, <code>none</code>, a double-click or the space bar,
-        and a count of what is ticked against what is listed. The boxes under
-        the list show or hide one instrument's targets.
-      </p>
-      <p>
-        Those numbers come from the headers, so the first visit to a data root
-        reads one header per spectrum: the per-order extraction signal-to-noise
-        APERO wrote (<code>EXTSNxxx</code>), the exposure time, the barycentric
-        velocity, the coordinates, the magnitude under whichever keyword that
-        instrument writes, and <code>INSTRUME</code>, which is read from the
-        FILE and never from a configuration. The answers go into one index per
-        root under <code>~/.pca2d/scans/</code>, named after the root with a
-        digest of its full path, so two roots whose last folder is called
-        <code>science</code> cannot share one index.
-      </p>
-      <p>
-        The same answers are written <strong>beside the data</strong>, as a
-        <code>pca2d_index.csv</code> inside each campaign's own folder: one line
-        per spectrum with the keywords read from it, appended every ten files
-        and rewritten when that campaign is finished. Inside the folder rather
-        than at the top of the root because campaigns are copied one at a time,
-        and a log that stays behind is a campaign read again at the other end.
-        That is what a second window reads, on this machine or another one
-        mounting the same disk, so a campaign is read once by whoever gets there
-        first. The header row is the schema, so a log
-        written by a version with other columns is ignored rather than half
-        believed, and every line is still checked against its file's size and
-        modification time before it is used.
-      </p>
-      <p>
-        Every later visit draws the list at once from that index, then checks
-        the root: a file is taken as it was if its size and modification time
-        are unchanged, and only what was added or replaced is read, which is
-        what <strong>Rescan</strong> does after copying new spectra in. The
-        window also does it for itself, every ten seconds: one folder listing
-        per campaign, nothing opened, so a campaign copied in while it sits open
-        turns up on its own rather than the next time somebody thinks to press
-        Rescan. The
-        names and the file counts appear before a single header is read, since
-        they cost one folder listing. A campaign's first numbers arrive from ten
-        spectra <em>spread across it</em> rather than the first ten, and carry a
-        tilde until the rest are in: file names sort by date, and the first ten
-        of a campaign are one night's weather. On GJ 1 they give 134 against the
-        campaign's 163. A field added to the index re-reads the files that lack
-        it and only those, a file that cannot be read is recorded as unreadable
-        rather than retried at every visit, and deleting an index costs the few
-        seconds of one scan and nothing else.
-      </p>
-
-      <h3>One target, or several against one observer basis</h3>
-      <p>
-        Tick one box for a solo run. <strong>Tick several and they are fitted
-        together against a single observer basis</strong>, each star keeping its
-        own spectrum per order parity. The atmosphere and the instrument belong
-        to the night rather than to the target, and no basis can follow one star
-        when several, with different barycentric coverage and systemic
-        velocities, constrain it. They must come from one instrument: two ticked
-        instruments refuse to run, because a run is one domain, one grid and one
-        set of extensions, all read from the instrument. The window reports how
-        many nights the ticked campaigns share, as information and not as a
-        requirement: the observer components are a parasite that is always
-        present, what a fit measures is their pattern, and nights no other star
-        of the group saw widen the range of conditions that pattern is measured
-        over.
-      </p>
-
-      <h3>What the sky allows, before anything is run</h3>
-      <p>
-        Under the list, the barycentric coverage of whatever is ticked, as a
-        histogram in bins of 3&nbsp;km/s stacked by star, with three numbers:
-        what the campaign covers, its span, and <strong>what the target's
-        ecliptic latitude ALLOWS</strong>. That last one is fixed by the solar
-        system, |BERV|&nbsp;&le;&nbsp;29.78&nbsp;cos(&beta;), and it decides
-        whether the method can work on that target at all: TOI-1452, at +80.5
-        degrees, can never span more than 9.8&nbsp;km/s. A coverage short of the
-        span means gaps, which more nights fill; a span short of what is
-        possible means a young campaign; a small possible means the wrong
-        target. It is the most useful thing on the window to look at before
-        starting a twenty-minute run, because the correction is worth about a
-        factor of two where the span is wide and costs about as much where it is
-        not.
-      </p>
-      <p>
-        Under it, the <strong>signal-to-noise against that same velocity</strong>,
-        one dot per spectrum in its star's colour. The histogram says which
-        velocities a campaign covers; this says what it covers them with, and
-        the fit weighs a spectrum by 1/sigma&sup2;: a range whose far end is
-        covered by a campaign's worst nights is not the range the fit really
-        sees.
-      </p>
-      <p>
-        Beside it, when the ticked campaigns were observed: one mark per exposure
-        in its star's colour against a calendar axis, and two sliders that keep a
-        date window, with a line underneath saying what is kept and how many
-        exposures of how many that is. What falls outside is neither fitted nor
-        corrected, which is how a campaign is cut into seasons and how the two
-        ends of a baseline are compared. <strong>all of it</strong> puts the
-        window back to the whole campaign, which is the nominal path.
-      </p>
-
-      <h3>The settings that change a result, and only those</h3>
-      <p>
-        How many components in each frame, whether a velocity is fitted per
-        exposure, how many sweeps at most, whether only the significant part of
-        the correction is divided out, the high pass, the grid step and nightly
-        coadding. Resting the pointer on one
-        writes what it means at the bottom of the window, and after a moment in
-        a box: the explanations are the ones in the documentation, not a
-        restatement of the label. Nothing cosmetic is on this panel, on purpose,
-        and neither is anything settled: the star is one cubic B-spline, the
-        static part is one star spectrum per order parity, and a sample lost by
-        one exposure comes back as NaN in all of them so that the campaign
-        carries one set of lines. All three are fixed in the code, so the window
-        does not ask. The older modes are still read from a
-        config or a variant file, for redoing the runs that were measured on
-        them. Whether LBL is <em>run</em>, which is hours of work, is in the LBL
-        window: the stages already say whether the lbl step happens at all.
-      </p>
-      <p>
-        The <strong>stages</strong> are drawn as the chain they are,
-        <code>cube&nbsp;&rarr;&nbsp;fit&nbsp;&rarr;&nbsp;correct&nbsp;&rarr;&nbsp;lbl</code>,
-        because that is the order they happen in and the order they depend on
-        each other in: unticking one unticks everything after it, and ticking
-        <code>lbl</code> ticks the <code>correct</code> it measures. Ticking does
-        not pull the chain the other way, so a fit can still be reused and only
-        the correction redone. <code>figures</code> sits apart on the same line
-        with no arrow to it: it draws what the fit left, and nothing waits for a
-        drawing. There is no variant picker: the parameters
-        converged, and a second set of settings offered beside the settings is a
-        window that contradicting itself. A variant is still a file and still
-        runs, from the command line.
-      </p>
-      <p>
-        The <strong>LBL page</strong> holds the <code>lbl:</code> block: what
-        is measured (the delivered spectra, the corrected ones, or both), what
-        the corrected object is called next to the delivered one, which template
-        it is measured against, where LBL's tree is, which of its steps run,
-        whether LBL is actually run, whether the spectra get there as
-        symlinks or as copies, and <strong>which LBL</strong> measures: its
-        speed branch, <code>lbl-rapide</code>, by default, or the one installed
-        beside this program (<code>current</code>). That is the equivalent of
-        the wrapper script, and it is the step that produces velocities.
-      </p>
-
-      <h3>What it writes, and what it remembers</h3>
-      <ul class="terms">
-        <li><strong>Dry run</strong> resolves everything, says what it would do,
-          and touches nothing.</li>
-        <li><strong>Export YAML</strong> saves the settings that differ from the
-          configuration as a variant file, which is how one run is made
-          reproducible. A variant that repeats the nominal says nothing, and the
-          window refuses to write one.</li>
-        <li><strong>Save as defaults</strong> writes those same settings into
-          <code>config.yaml</code>. It edits the lines it has to and nothing
-          else, so the comments that say which measurement chose each value
-          survive, where a <code>yaml.safe_dump</code> of the parsed document
-          would have deleted all of them. It asks first, and shows exactly which
-          keys it is about to change.</li>
-        <li><strong>Save log</strong> writes what the window has shown. The run
-          prints there as it goes, in the colours it uses in a terminal, green
-          for progress, blue for a number, orange for something skipped, red for
-          what stops a run, and the window's own lines take the same form,
-          <code>YYMMDD HH:MM:SS.SS | message</code>.</li>
-        <li><strong>Open outputs</strong> opens the folder the run is writing
-          into.</li>
-        <li><strong>Quit</strong>, in the banner beside the language button so
-          that every page can reach it, closes the window. The settings are written at every change, so nothing is
-          lost by leaving; a run is a subprocess of the window and is stopped by
-          leaving, so it asks first, and so does the window's own close box.</li>
-      </ul>
-      <p>
-        <strong>English, French, Spanish or Portuguese</strong>, a flag for each
-        other language at the top, everything included: the labels, the
-        explanations and the log lines. The window holds no state of
-        its own beyond the last settings and what was ticked, in
-        <code>~/.pca2d_gui.json</code>, and the per-root index under
-        <code>~/.pca2d/</code>. It does not resolve the configuration itself,
-        never touches the data, and every choice it offers exists on the command
-        line, which is what the box at the bottom is there to prove.
-      </p>
-    </section>
-
-    <section class="card span-3">
-      <h2>LBL, built in</h2>
-      <p>
-        The corrected spectra exist to be measured, and the only honest way to
-        know whether the correction helped is to measure both. The
-        <code>lbl</code> stage puts <strong>two objects</strong> side by side in
-        one LBL tree: <code>TOI-2120</code>, symlinked to the spectra as
-        delivered and measured against the template LBL builds from them, and
-        <code>TOI-2120_PCA2D_1-3v</code>, symlinked to what the run corrected.
-        The name carries the run's tag, because LBL takes a whole science
-        folder and two corrections in one would be measured as a single series
-        without a word.
-      </p>
-      <p>
-        That tree is <code>lbl</code> under the output root, shared by every
-        run under it, since the delivered object's LBL is the same for all of
-        them and hours to make; the window shows it as <em>LBL output
-        folder</em> and <code>--lbl-dir</code> names another. The spectra go
-        into it as symbolic links, or as copies with <code>--lbl-link
-        copy</code>. Whether a disk can hold a link is asked of the disk, by
-        making one: a disk that cannot gets copies, and the run says so before
-        its first stage rather than after the fit.
-      </p>
-      <p>
-        <strong>The corrected object's template is the fit's star.</strong>
-        The first star component at its mean amplitude is a high-passed template
-        of the star, fitted to every exposure at once with the atmosphere
-        already described by the other block. Each order parity gets its own,
-        the star block plus that parity's weighted mean of what the fit left,
-        since LBL measures an order against the template of its parity. The
-        stage writes it in LBL's
-        template format, by LBL's own writer, and puts it where LBL looks for
-        that object's template, so LBL's template step finds it and has nothing
-        to do. A template LBL built itself is never replaced. Through the
-        75&nbsp;km/s high pass of the day it was measured, it agrees with LBL's
-        own template for the same spectra at a correlation of 0.93 and a slope
-        of 0.94, and 0.99 and 0.99 in H.
-      </p>
-      <p>
-        <strong>The star components past the first are variability
-        indicators</strong>, and LBL already knows what to do with those: it
-        projects every line's residual on RESPROJ tables, its DTEMP temperature
-        gradients. With two or more star components the stage writes the
-        others as the same tables, <code>STRPCA2</code> to
-        <code>STRPCAn</code>, measured on the star itself rather than taken
-        from a model, and the rdb gets each exposure's amplitude along them and
-        its error. LBL reads those tables in the star's rest frame, which its
-        mask step measures, so the corrected object's mask is made first, then
-        the tables, then the velocities.
-      </p>
-      <figure class="wide">
-        <img src="figures/strpca_2-3v.svg" alt="LBL's STRPCA2 amplitude against the fit's own second star coefficient, exposure by exposure" />
-        <figcaption>
-          TOI-2120 fitted with two star components: LBL's STRPCA2, every line
-          projected on the second star component, against the fit's own a2.
-          Correlation 0.969, slope 0.81.
-        </figcaption>
-      </figure>
-      <p>
-        That same fit is also the warning that goes with it. Its a2 follows the
-        barycentric velocity (&minus;0.55), the seeing (&minus;0.58) and the
-        sun's elevation (&minus;0.49): a star component modelling the sky. Its
-        velocity term absorbed shifts of 232&nbsp;m/s rms that follow the
-        barycentric velocity, the correction left that in the flux, and LBL's
-        velocities on those spectra scatter by 67&nbsp;m/s, against 27 with
-        one star component. A second star component is a variability
-        indicator once the correlation table says it belongs to the star.
-      </p>
-      <p>
-        What the stage leaves is meant to be read and rerun by hand:
-        <code>lbl_config.yaml</code> in LBL's own keys, and
-        <code>run_lbl.py</code>, an ordinary LBL wrap script with one runparams
-        dict per object. <code>lbl.run: true</code> or <code>--run-lbl</code>
-        has the stage run it, by the python of the environment
-        <code>lbl.environment</code> names, which is also the script's first
-        line.
-      </p>
-    </section>
-
-    <section class="card span-3">
-      <h2>What the coefficients do in time</h2>
-      <p>
-        One component in the star's rest frame, three in the observer's, one
-        point per exposure over 452 days.
-      </p>
-      <figure class="wide">
-        <img src="figures/coefficients_vs_time.svg" alt="Coefficients of every component against time" />
-        <figcaption>
-          The observer coefficients move on the timescale the atmosphere moves
-          on, night to night and within a night. The star coefficient does not
-          have to, and mostly does not.
-        </figcaption>
-      </figure>
-    </section>
-
-    <section class="card span-3">
-      <h2>And what they follow</h2>
-      <p>
-        A component carries no label. That one varies is a result; what it
-        varies <em>with</em> says what it is describing. Every run writes this
-        matrix without being asked, because it is the diagnostic that catches a
-        "stellar" component quietly modelling the sky.
-      </p>
-      <figure class="wide">
-        <img src="figures/correlations.svg" alt="Spearman rank correlation of every coefficient against ancillary quantities" />
-        <figcaption>
-          Spearman rank correlation, |rho| printed above 0.30. The first
-          observer component follows the median flux (+0.60) and the seeing
-          (&minus;0.59); the second, the barycentric velocity (&minus;0.63) and
-          time (+0.56), which over this baseline are both the season; the
-          third, the sun's elevation (+0.46). The star coefficient follows only
-          time, at +0.33.
-        </figcaption>
-      </figure>
     </section>
 
     <section class="card span-2">
-      <h2>Running it</h2>
-      <p>
-        Spectra go in <code>data/&lt;object&gt;/</code> under the input root and
-        everything a run writes goes under the output root, so the archive it
-        reads is never the folder it writes to. Then:
-      </p>
-      <pre><code>pca2d-preclean --object TOI-2120</code></pre>
-      <p>
-        That is the whole interface. The instrument is read from the
-        <code>INSTRUME</code> keyword of the files, never chosen on a command
-        line, because reading the wrong extension raises no error: it returns
-        different photons. Five stages, <code>cube</code>, <code>fit</code>,
-        <code>figures</code>, <code>correct</code> and <code>lbl</code>, each
-        announcing how long it took. On 316 SPIRou exposures the fit, the
-        report and the correction take twenty to thirty minutes, and LBL about
-        half an hour per object.
-      </p>
-      <p>
-        <code>output.fits_directory</code> keeps a run's products on another
-        disk: the run folder, and every LBL folder but the one made of
-        symlinks, become links to it before anything is written, and a run
-        stops rather than write locally when that disk is not there.
-      </p>
-    </section>
-
-    <section class="card">
-      <h2>Adding a spectrograph</h2>
-      <p>A block in <code>config.yaml</code>, not a line of code:</p>
-      <pre><code>instruments:
-  YOURS:
-    extensions:
-      flux: FluxAB
-      wave: WaveAB
-      blaze: BlazeAB
-      recon: Recon
-      sky: OHLine
-    domain:
-      wave_min: 955.0
-      wave_max: 2500.0
-      wave0: 955.0
-    lbl:
-      instrument: SPIROU
-      data_source: CADC</code></pre>
-      <p>
-        The wavelength solution comes from the extension, never from header
-        polynomials, and the blaze from the blaze extension of the same file.
-        LBL's name for the spectrograph goes with it: LBL calls NIRPS
-        <code>NIRPS_HA</code> or <code>NIRPS_HE</code> by the mode it was
-        observed in, and the wrong one raises no error.
-      </p>
+      <h2>What the coefficients do in time</h2>
+      <figure>
+        <img src="figures/coefficients_vs_time.svg" alt="The fitted amplitudes of each component against time." />
+        <figcaption>
+          The fitted amplitude of every component, exposure by exposure. The
+          Earth components rise and fall on the timescale of the weather and
+          the airmass; the star components do not.
+        </figcaption>
+      </figure>
     </section>
 
     <section class="card span-3">
-      <h2>What comes out</h2>
-      <ul class="runbox">
-        <li><strong>outputs/&lt;object&gt;/&lt;tag&gt;/&lt;object&gt;_&lt;tag&gt;.pdf</strong>:
-            the run's report, a LaTeX document with contents and a list of
-            figures. <em>The star</em>, as SIMBAD describes it beside what
-            APERO worked with (its <code>PP_</code> keys and its name for the
-            object); <em>Summary</em>, every number delivered against
-            corrected, each row saying which way it went, with the gains and
-            losses in words; <em>Velocities</em>, the time series as points,
-            the <a href="#berv">bias that follows BERV</a>, d2v as an activity
-            indicator, LBL's temperature projection (DTEMP, from the model
-            nearest the star's Teff) over time and against the total velocity,
-            what the correction moved, and the periodograms with each curve's
-            highest peak, the false-alarm levels and the year, its harmonics
-            and the month marked; a table of what the headers say (SNR, BERV,
-            dates, and the dates the star's lines sit on the tellurics) comes
-            first, and the title page gives the time the PDF was written;
-            <em>The run</em>, every setting and the command; <em>The
-            correction</em>, the figures of the fit, each with a caption; and
-            the resolved parameters in an appendix. Written at the figures
-            stage and again once LBL has measured, from
-            <strong>report/</strong>, which keeps the figures and the
-            <code>.tex</code>; <code>python -m pca2d.texreport --run
-            &lt;folder&gt;</code> writes it again, for a run from before the
-            report too.</li>
-        <li><strong>fit.npz</strong>, <strong>twoframe_components.fits</strong>,
-            the coefficients as CSV, and <strong>resolved_config.yaml</strong>:
-            exactly what ran, next to what it produced.</li>
-        <li><strong>corrected/</strong>: the corrected spectra, one per input
-            file, each saying in its header what was divided out of it and
-            carrying every amplitude the fit has.</li>
-        <li><strong>star_template.fits</strong>, <strong>lbl_config.yaml</strong>
-            and <strong>run_lbl.py</strong>: LBL set up on both sets of
-            spectra, the corrected ones against the fit's own star.</li>
-      </ul>
+      <h2>And where there is little to remove</h2>
+      <figure>
+        <img src="figures/sequence_1669nm.svg" alt="The same three panels at 1669 nm, in the methane band." />
+        <figcaption>
+          The same three panels at 1669&nbsp;nm, in the methane band. The
+          contamination is far weaker here, and the correction is
+          correspondingly small: the window scatter goes from 0.0470 to 0.0455,
+          a 3&nbsp;% improvement, against 34&nbsp;% in the water band above. The
+          fit does not invent a correction where there is nothing to correct,
+          which matters as much as removing one where there is.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section class="card">
+      <h2>And what they follow</h2>
+      <figure>
+        <img src="figures/correlations.svg" alt="Rank correlation of each coefficient against the ancillary quantities." />
+        <figcaption>
+          Rank correlation of each coefficient against airmass, seeing, water
+          column, SNR and the rest. An Earth component that follows the airmass
+          is doing its job; a star component that follows it is a warning.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section class="card span-3">
+      <h2>The high pass, and why it is taken against a template</h2>
       <p>
-        The tag is the number of star and observer components, and
-        <code>v</code> when the velocity term was fitted: <code>1-3v</code>
-        above.
+        Before any of this, the continuum and the blaze have to go. A
+        Savitzky-Golay filter does that &mdash; but a filter run over a whole
+        spectrum is dragged downward by every deep line, so the smooth curve it
+        returns is not the continuum, it is the continuum minus a fraction of
+        the line.
+      </p>
+      <p>
+        That bias would be harmless if it were the same every night. It is not.
+        When a telluric line sweeps across the core of a stellar line with the
+        BERV, the pixels it saturates are blanked, and <strong>the hole
+        moves</strong>. The filter then decrouches differently from one exposure
+        to the next, and leaves behind a residual that tracks the BERV without
+        being stellar.
+      </p>
+      <figure>
+        <img src="figures/highpass_template.svg" alt="A synthetic deep line with a moving mask, filtered both ways." />
+        <figcaption>
+          A controlled experiment: the spectrum is held exactly fixed and only
+          the ten-pixel mask moves across the line core, as the BERV would move
+          it. <strong>Top:</strong> the line and the mask at three positions.
+          <strong>Bottom:</strong> one continuum pixel's high-passed value
+          against where the mask sits. The ordinary filter wanders by a factor
+          of 6.1 more than the template-based one, for an input that never
+          changed.
+        </figcaption>
+      </figure>
+      <div class="stats-grid">
+        <div class="stat"><div class="label">Telluric depth at the line core, BERV &minus;25 km/s</div><div class="value">3 %</div></div>
+        <div class="stat"><div class="label">Same line, BERV &minus;5 km/s</div><div class="value">89 %</div></div>
+        <div class="stat"><div class="label">Scatter from the moving mask, ordinary filter</div><div class="value">0.00227</div></div>
+        <div class="stat"><div class="label">Same, filtered against a template</div><div class="value">0.00037</div></div>
+      </div>
+      <p class="hint">
+        Measured on HD&nbsp;69830 at 688.85 nm, and on a synthetic line whose
+        spectrum is held fixed while only the ten-pixel mask moves. Since
+        2026-10-16 the high pass is therefore taken on the <em>residual to a
+        median template</em>, built in the star's frame and brought back to each
+        exposure's own frame. No line is masked, and nothing enters or leaves
+        the mask as the BERV changes.
+      </p>
+      <p class="hint">
+        <a href="highpass.html">Why the two forms are not algebraically the
+        same, and what the change bought &rarr;</a>
       </p>
     </section>
 
     <section class="card span-3">
       <h2>What it is worth, measured</h2>
       <p>
-        Everything above is a method; this is what it does to the numbers that
-        matter. TOI-2120, 316 SPIRou exposures over 452 days, corrected with one
-        star and three observer components, then measured by LBL on the same
-        exposures before and after:
+        On TOI-2120 &mdash; 321 SPIRou exposures, a 37.9&nbsp;km/s barycentric
+        span, deep water bands across the stellar lines &mdash; the velocity
+        scatter drops by a factor of 3.4 on the 80 epochs the two series share:
       </p>
-      <div class="numbers">
-        <table>
-          <thead>
-            <tr><th>spectra</th><th>template</th><th>rms</th><th>robust sigma</th>
-                <th>nightly rms</th><th>median error</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>as delivered</td><td>LBL's own</td><td>47.7 m/s</td><td>35.0 m/s</td>
-                <td>46.7 m/s</td><td>7.29 m/s</td></tr>
-            <tr><td>corrected, 1-3v</td><td>LBL's own</td><td>27.3 m/s</td><td>20.6 m/s</td>
-                <td>25.5 m/s</td><td>7.00 m/s</td></tr>
-            <tr><td>corrected, 1-3v</td><td>the fit's star</td><td>26.3 m/s</td><td>17.8 m/s</td>
-                <td>24.6 m/s</td><td>8.35 m/s</td></tr>
-          </tbody>
-        </table>
+      <div class="stats-grid">
+        <div class="stat"><div class="label">LBL on the delivered spectra</div><div class="value">47.98 m/s</div></div>
+        <div class="stat"><div class="label">After precleaning</div><div class="value">14.20 m/s</div></div>
+        <div class="stat"><div class="label">Paired gain, bootstrap 16&ndash;84 %</div><div class="value">3.14&ndash;3.65&times;</div></div>
+        <div class="stat"><div class="label">Reduced &chi;&sup2;, 158.7 &rarr; 9.5</div><div class="value">16.6&times;</div></div>
       </div>
-      <figure class="wide">
-        <img src="figures/lbl_velocities.svg" alt="LBL velocities of the same exposures, delivered and corrected" />
+      <p>
+        That is the favourable case. The harder test is the optical, where the
+        tellurics have already been cleaned once: three HARPS campaigns, each
+        measured three ways on the same exposures and in a single instrument
+        mode. <code>rms</code> is the plain dispersion, <code>MAD</code> the
+        robust one; they differ when a correction straightens the tails while
+        leaving the core alone.
+      </p>
+      <table class="rvtable">
+        <thead>
+          <tr><th>Star</th><th>Pipeline</th><th>rms (m/s)</th><th>MAD (m/s)</th><th>Error bar</th></tr>
+        </thead>
+        <tbody>
+          <tr><td rowspan="3">HD&nbsp;10700<br/><span class="hint">G8V, 86 epochs</span></td>
+              <td>ESO DRS, CCF</td><td>2.16</td><td>1.69</td><td>0.34</td></tr>
+          <tr><td>LBL, telluric-cleaned</td><td>2.19</td><td>1.75</td><td>0.38</td></tr>
+          <tr class="best"><td>+ pca2d-preclean</td><td>2.07</td><td>1.57</td><td>0.49</td></tr>
+
+          <tr><td rowspan="3">HD&nbsp;69830<br/><span class="hint">K0V, 150 epochs</span></td>
+              <td>ESO DRS, CCF</td><td>3.71</td><td>3.57</td><td>0.34</td></tr>
+          <tr><td>LBL, telluric-cleaned</td><td>3.73</td><td>3.49</td><td>0.36</td></tr>
+          <tr class="best"><td>+ pca2d-preclean</td><td>3.50</td><td>3.29</td><td>0.50</td></tr>
+
+          <tr><td rowspan="3">GJ&nbsp;581<br/><span class="hint">M3V, 116 epochs</span></td>
+              <td>ESO DRS, CCF</td><td>9.83</td><td>11.68</td><td>1.37</td></tr>
+          <tr><td>LBL, telluric-cleaned</td><td>9.62</td><td>12.06</td><td>0.84</td></tr>
+          <tr class="best"><td>+ pca2d-preclean</td><td>9.06</td><td>10.76</td><td>0.91</td></tr>
+        </tbody>
+      </table>
+      <p class="hint">
+        GJ&nbsp;581's CCF row excludes three exposures where the DRS fails
+        outright, returning &minus;591 to &minus;655 m/s where LBL finds
+        &minus;3 to +12; with them the CCF rms is 97.8 m/s. pca2d-preclean is
+        the only one of the three to beat the CCF on all three stars, and the
+        gain is in the tails: it straightens the worst exposures more than it
+        improves the median one.
+      </p>
+      <p class="hint">
+        <a href="results.html">The full results, the component diagnostics, and
+        the cases where it makes things worse &rarr;</a>
+      </p>
+    </section>
+
+    <section class="card span-2">
+      <h2>Velocities, before and after</h2>
+      <figure>
+        <img src="figures/lbl_velocities.svg" alt="LBL velocities from the delivered spectra and from the corrected ones." />
         <figcaption>
-          One panel per LBL object, on the exposures they all have, each about
-          its median. The robust sigma is 1.4826 times the MAD; the nightly rms
-          is that of the weighted nightly means, over 81 nights. The median
-          error barely moves: what the correction removes is not photon noise
-          but structure that LBL used to read as velocity. Against the fit's
-          own star template the same spectra scatter a little less and their
-          formal errors are 19% larger, line by line on the same lines; why is
-          not pinned down yet.
+          The same exposures measured twice: once from the delivered spectra,
+          once from the corrected ones. Both series come from the run's own LBL
+          stage, so nothing here is a reprocessing of someone else's numbers.
         </figcaption>
       </figure>
     </section>
 
-    <section class="card span-3" id="berv">
-      <h2>A bias that follows BERV, fitted</h2>
+    <section class="card">
+      <h2>A bias that follows the BERV</h2>
+      <figure>
+        <img src="figures/berv_bias_smethells-20.svg" alt="Velocity residual against the total barycentric velocity." />
+        <figcaption>
+          A residual plotted against the total barycentric velocity. Anything
+          with a slope here is not stellar: it comes from the atmosphere, the
+          wavelength solution, or a frame that was not undone properly.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section class="card span-3">
+      <h2>Five spectrographs, one pipeline</h2>
       <p>
-        A telluric line blended with a stellar line pulls the velocity measured
-        on it, by an amount set by how far apart the two are. That is the
-        star's velocity in the telluric frame, the systemic velocity less the
-        BERV, <em>V</em><sub>tot</sub>&nbsp;=&nbsp;vrad/1000&nbsp;&minus;&nbsp;BERV
-        (composed relativistically), and not the BERV alone: a star at
-        &plusmn;30&nbsp;km/s may never bring its lines onto the tellurics.
-        Superposed, the blend is symmetric and nothing moves; far apart,
-        nothing is blended; in between, the pull is the derivative of a
-        Gaussian:
+        The reader is picked from <code>INSTRUME</code> in the files
+        themselves, never chosen by hand, and each spectrograph's settings live
+        in one block of <code>config.yaml</code>.
       </p>
-      <pre><code>v(V) = c + a &middot; V &middot; exp(&minus;V&sup2; / 2&sigma;&sup2;)      V = V<sub>tot</sub>,  peak: a&sigma;e<sup>&minus;1/2</sup> at V = &plusmn;&sigma;</code></pre>
-      <p>
-        The report fits it to the delivered and to the corrected velocities by
-        MCMC (Goodman and Weare's stretch move, in a few lines of numpy):
-        <em>a</em> and <em>&sigma;</em>, with the velocities' offset
-        <em>c</em> and a jitter beside LBL's error bars marginalised. <em>a</em>
-        is signed and has a flat prior, the same on both sides, within
-        &plusmn;10<sup>4</sup>&nbsp;(m/s)/(km/s), and half the walkers start on
-        each sign; <em>&sigma;</em> is log-uniform from
-        1&nbsp;km/s, narrower than any blend can be at a resolution of 75&nbsp;000,
-        to 60&nbsp;km/s, beyond which the Gaussian is a straight line over
-        the &plusmn;30&nbsp;km/s any BERV spans. Below 3&sigma; from zero only an upper limit
-        is quoted, since the width is then the prior's. A straight line
-        against BERV, which the report used to draw, has none of this shape and
-        is gone.
-      </p>
-      <p>
-        <strong>SMETHELLS 20</strong> (Smethells&nbsp;20, M1Ve, 50.7&nbsp;pc),
-        127 NIRPS exposures over 125 nights, corrected with three observer
-        components. Its systemic velocity is +2.6&nbsp;km/s, which is enough
-        to matter: against the BERV alone the delivered bias was
-        &minus;70.9&nbsp;m/s at 7.2&sigma;, against <em>V</em><sub>tot</sub> it
-        is found at 9.1&sigma; (the sign turns with the axis, since
-        <em>V</em><sub>tot</sub> runs opposite to the BERV).
-        <em>V</em><sub>tot</sub> comes within 4&nbsp;km/s of zero from 17&nbsp;June
-        to 2&nbsp;July, every year alike: 16 of the 127 exposures (12.6%) fall
-        on those dates, 15 of them within 4&nbsp;km/s:
-      </p>
-      <div class="numbers">
-        <table>
-          <thead>
-            <tr><th>velocities</th><th>bias at its peak</th><th>width &sigma;</th>
-                <th>a&ndash;ln&nbsp;&sigma; correlation</th><th>P(a&nbsp;&gt;&nbsp;0)</th><th>jitter</th><th>rms</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>as delivered</td><td>+80.2 &plusmn; 8.9 m/s (9.1&sigma;)</td>
-                <td>6.0 &plusmn; 0.5 km/s</td><td>&minus;0.76</td><td>1.00</td><td>43.9 m/s</td><td>61.7 m/s</td></tr>
-            <tr><td>corrected, 0-3</td><td>none detected (1.7&sigma;), &lt; 33.4 m/s</td>
-                <td>unconstrained</td><td>&minus;0.31</td><td>0.94</td><td>40.9 m/s</td><td>44.1 m/s</td></tr>
-          </tbody>
-        </table>
+      <div class="stats-grid">
+        <div class="stat"><div class="label">Near-infrared</div><div class="value">SPIRou &middot; NIRPS</div></div>
+        <div class="stat"><div class="label">Optical</div><div class="value">HARPS &middot; HARPS-N &middot; ESPRESSO</div></div>
       </div>
-      <figure class="wide">
-        <img src="figures/berv_bias_smethells-20.svg" alt="SMETHELLS 20 velocities against the total velocity, delivered and corrected, with the fitted bias and its 1 sigma envelope" />
-        <figcaption>
-          Above, each series less its fitted offset against
-          <em>V</em><sub>tot</sub>, with the posterior median of the bias and
-          its 1&sigma; envelope (the band alone where no bias is detected);
-          squares are medians in 2&nbsp;km/s bins, and the grey band is
-          |<em>V</em><sub>tot</sub>|&nbsp;&lt;&nbsp;4&nbsp;km/s. Below, both
-          envelopes on one axis. The delivered velocities swing by
-          &minus;80&nbsp;m/s near &minus;6&nbsp;km/s and +80&nbsp;m/s near
-          +6&nbsp;km/s; the corrected ones do not.
-        </figcaption>
-      </figure>
-      <figure class="wide">
-        <img src="figures/berv_bias_smethells-20_posterior.svg" alt="Joint posterior of the bias amplitude and width, delivered and corrected, on the same axes" />
-        <figcaption>
-          The joint posterior of <em>a</em> and <em>&sigma;</em>, on the same
-          axes for both, the amplitude's symmetric about zero, with its 1 and
-          2&sigma; contours and both marginals.
-          Delivered, a compact ellipse: the two trade against each other, a
-          narrower bias needing a larger amplitude to reach the same points.
-          Corrected, <em>a</em> sits near zero and <em>&sigma;</em> is not
-          pinned down: a weak mode near 6&nbsp;km/s, where the delivered bias
-          was, and a tail toward the narrowest widths, where a flat prior lets
-          a large amplitude fall between the points. That tail is what sets
-          the upper limit. The same
-          run's rms falls from 61.7 to 44.1&nbsp;m/s; what is left is largely
-          the star, whose strongest velocity period, 5.38&nbsp;d, is also its
-          d2v's.
-        </figcaption>
-      </figure>
+      <p>
+        The optical spectrographs need one step the infrared ones do not: their
+        spectra arrive with the tellurics still in them, so LBL's telluric
+        cleaning runs first and pca2d fits the residuals of that cleaning. In
+        the infrared, APERO has already done it.
+      </p>
+      <p class="hint">
+        <a href="tellurics.html">How that cleaning is done, and the two things
+        that had to change in it &rarr;</a>
+      </p>
+      <p class="hint">
+        One trap worth stating: on HARPS the delivered wavelength grid is
+        already barycentric, so the instrument's own BERV reads zero. Left
+        alone, the two frames of the fit would collapse into one and the
+        correction would make things worse &mdash; it took the rms from 11.2 to
+        51.6 m/s before this was caught. <code>input.to_observer</code> undoes
+        the barycentric correction on the way in so that the two frames stay
+        distinct.
+      </p>
     </section>
 
-    <section class="card span-3" id="trouble">
-      <h2>When the install fails</h2>
+    <section class="card span-2">
+      <h2>Install it</h2>
       <p>
-        One failure is common enough to name, because nothing in its message
-        points at its cause. <code>conda env create</code> ends with
-        <code>CondaEnvException: Pip failed</code>, and above it:
+        A virtual environment keeps this separate from whatever Python the rest
+        of your work uses, which matters because the fit pins fairly specific
+        numpy and scipy versions.
       </p>
-      <pre><code>× git version did not run successfully.
-  xcrun: error: unable to load libxcrun
-  (/Library/Developer/CommandLineTools/usr/lib/libxcrun.dylib:
-   fat file, but missing compatible architecture (have 'arm64,arm64e', need 'x86_64'))
-ERROR: Failed to build 'git+https://github.com/njcuk9999/lbl@main'</code></pre>
-      <p>
-        It is not LBL, and it is not pip. <strong>The environment is x86_64,
-        running under Rosetta on an Apple Silicon Mac.</strong>
-        <code>environment.yml</code> asks pip for LBL from git, pip runs
-        <code>git</code>, Apple's <code>/usr/bin/git</code> is a stub that calls
-        <code>xcrun</code>, and <code>xcrun</code> loads
-        <code>libxcrun.dylib</code>, which on recent Command Line Tools ships
-        arm64 slices only. An x86_64 process cannot load an arm64 library, so
-        <code>git version</code> fails and conda reports the only thing it saw,
-        which is that pip failed. Nothing here is specific to this package: any
-        environment that pip-installs from a git URL hits it.
+      <div class="codeblock">git clone https://github.com/eartigau/pca2d_preclean.git
+cd pca2d_preclean
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .</div>
+      <p class="hint">
+        LBL is optional. Without it everything up to the corrected files still
+        runs; with it, <code>--stages lbl</code> measures the velocities of both
+        the delivered and the corrected spectra and writes the report.
       </p>
-
-      <h3>Three lines that say whether that is what happened</h3>
-      <pre><code>uname -m                                   # the shell:      arm64 on Apple Silicon
-conda activate &lt;env&gt;
-python -c "import platform; print(platform.machine())"   # the environment
-conda config --show subdir                 # osx-arm64, or osx-64 under Rosetta</code></pre>
-      <p>
-        Three answers that agree on <code>arm64</code> and
-        <code>osx-arm64</code> mean this is not your problem. Any
-        <code>x86_64</code> or <code>osx-64</code> among them is the cause.
-      </p>
-
-      <h3>The fix worth doing</h3>
-      <p>
-        Rebuild the environment natively. It is not only the way out of this
-        error: LBL is hours of arithmetic, and hours of arithmetic under
-        emulation are longer hours.
-      </p>
-      <pre><code>CONDA_SUBDIR=osx-arm64 conda env create -f environment.yml -n pca2d-preclean
-conda activate pca2d-preclean
-conda config --env --set subdir osx-arm64   # so later installs stay native</code></pre>
-      <p>
-        And check the terminal itself, since an environment inherits the
-        architecture of the shell that made it: Finder, Applications, Terminal,
-        Get Info, and <em>Open using Rosetta</em> must be unticked. If
-        <code>uname -m</code> says <code>x86_64</code>, look there first.
-      </p>
-
-      <h3>Two ways round it, if the environment has to stay x86_64</h3>
-      <ul class="terms">
-        <li>Give the environment its own git, of its own architecture, so pip
-          stops reaching for Apple's stub:
-          <code>conda install -n &lt;env&gt; -c conda-forge git</code>.</li>
-        <li>Or take git out of the install: clone LBL by hand and point pip at
-          the folder, <code>git clone https://github.com/njcuk9999/lbl</code>
-          then <code>pip install -e ./lbl</code>.</li>
-      </ul>
     </section>
 
-    <section class="card span-3" id="access">
-      <h2>Access</h2>
+    <section class="card">
+      <h2>Run it</h2>
+      <div class="codeblock">pca2d --object TOI2120 \
+      --n-star 1 --n-earth 3 \
+      --stages cube,fit,correct,figures,lbl</div>
+      <p class="hint">
+        <code>--n-star</code> and <code>--n-earth</code> are how many components
+        each block gets. Everything else &mdash; the domain, the windows, the
+        weights &mdash; comes from <code>config.yaml</code>, and the resolved
+        settings are written beside the outputs so a run can always be read back.
+      </p>
+    </section>
+
+    <section class="card span-3">
+      <h2>What comes out</h2>
       <p>
-        The repository is <strong>private</strong> for the moment. If you would
-        like access, or would like to try it on a dataset of your own, contact
-        <strong>Étienne Artigau</strong> (Université de Montréal). This page
-        stays public so the method and its figures can be pointed at.
+        A run leaves a folder named for the object and the component counts.
+        Inside: the corrected spectra on their original grids, the fitted
+        components, a CSV of every coefficient, and a PDF report of around
+        thirty pages &mdash; the river plots above, the coefficients in time,
+        the correlations, and, when LBL ran, the velocities and their
+        periodograms.
+      </p>
+      <p>
+        LBL itself now writes a second report per run, in
+        <code>&lt;DATA_DIR&gt;/reports</code>: a summary table with the code
+        version it used, the velocity series, the velocities coloured by BERV,
+        the periodogram beside the spectral window, the false inclusion
+        probability both plain and outlier-aware, and the telluric correction on
+        the best, median and worst exposure of the campaign.
       </p>
     </section>
 
@@ -912,7 +413,8 @@ conda config --env --set subdir osx-arm64   # so later installs stay native</cod
 
   <footer class="footer">
     <p>
-      Étienne Artigau &middot;
+      <a href="https://github.com/eartigau/pca2d_preclean" target="_blank">Source on GitHub</a>
+      &middot;
       <a href="https://eartigau.github.io/" target="_blank">More tools</a>
     </p>
   </footer>

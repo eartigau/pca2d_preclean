@@ -60,7 +60,7 @@ def parse_args(argv=None):
     p.add_argument("--out", default=os.path.join(HERE, "figures"))
     p.add_argument("--only", nargs="+", default=None,
                    choices=("sequence", "corrected", "coefficients", "lbl", "strpca",
-                            "berv"),
+                            "berv", "highpass"),
                    help="draw only these figures")
     p.add_argument("--format", default="svg", choices=("svg", "pdf", "png"),
                    help="svg for the site; pdf or png to look at them elsewhere")
@@ -104,8 +104,12 @@ def corrected_file_figure(ctx, run, source, centre=1267.0, width=2.0):
     first = os.path.join(source, os.path.basename(corrected[0]).split("t_")[0] + "t.fits")
     w_all = fits.getdata(first, "WaveAB")
     order = int(np.argmin(np.abs(w_all[:, w_all.shape[1] // 2] - centre)))
+    # LE MEME TRI DE LIGNES QUE draw_window: le fit peut avoir ecarte des
+    # poses que le cube garde, et sans `select` le modele stellaire recoit
+    # plus de lignes qu'il n'a de coefficients (2026-10-16).
     arr = window_arrays(ctx["cube"], ctx["fit"], ctx["means"], ctx["group"], ctx["grid"],
-                        ctx["dv"], ctx["delta"], centre, width, templates=ctx["templates"])
+                        ctx["dv"], ctx["delta"], centre, width, templates=ctx["templates"],
+                        select=ctx.get("select"))
     g = arr["grid"]
     win = (g >= lo) & (g <= hi)
     gw = g[win]
@@ -314,11 +318,86 @@ def berv_figures(run, lbl_dir, out):
                    side.get("bias_amp_fwhm_r", float("nan"))), "value")
 
 
+
+def highpass_figure(out, fmt=None):
+    """Why the high pass is taken against a template, in two panels.
+
+    The figure is drawn from a SYNTHETIC line on purpose: the point is a
+    mechanism, not a measurement, and on a real spectrum the effect hides
+    under the noise of everything else. A deep stellar line, a ten-pixel mask
+    standing for the core a saturated telluric has eaten, and the mask moved
+    across the line the way the BERV moves it over a year.
+    """
+    import numpy as np
+    from pca2d import preprocess as prep
+
+    n, window, poly = 4000, 501, 2
+    x = np.arange(n)
+    star = -1.2 * np.exp(-0.5 * ((x - 2000) / 8.0) ** 2)
+    noise = 0.01 * np.random.default_rng(3).normal(size=n)
+    spec = star + noise
+    shifts = np.arange(-40, 41, 2)
+
+    ordinary, against = [], []
+    for shift in shifts:
+        good = np.ones(n, dtype=bool)
+        good[2000 + shift - 5:2000 + shift + 5] = False
+        a, _ = prep.highpass(np.exp(np.where(good, spec, np.nan)),
+                             window, poly, "log_sub")
+        b, _ = prep.highpass_against_template(spec, good, star, window, poly,
+                                              already_log=True)
+        ordinary.append(a[1900])
+        against.append(b[1900])
+    ordinary = np.array(ordinary)
+    against = np.array(against)
+
+    fig, axes = plt.subplots(2, 1, figsize=(7.2, 6.2),
+                             gridspec_kw=dict(height_ratios=[1, 1.15]))
+
+    ax = axes[0]
+    ax.plot(x, star, lw=1.2, color="0.35", label="the stellar line")
+    for shift, colour in ((-30, "#26a1ff"), (0, "#e0564a"), (30, "#6ce2ad")):
+        lo, hi = 2000 + shift - 5, 2000 + shift + 5
+        ax.axvspan(lo, hi, color=colour, alpha=0.35,
+                   label="mask at BERV %+d" % shift if shift else "mask on the core")
+    ax.set_xlim(1850, 2150)
+    ax.set_xlabel("pixel")
+    ax.set_ylabel("ln(flux), continuum removed")
+    ax.set_title("A telluric eats the core, and the hole moves with the BERV",
+                 fontsize=10)
+    ax.legend(fontsize=7.5, loc="lower right")
+    ax.grid(alpha=0.25)
+
+    ax = axes[1]
+    ax.plot(shifts, ordinary, "o-", ms=3.5, lw=1.1, color="#e0564a",
+            label="filtered on the spectrum (scatter %.5f)" % np.std(ordinary))
+    ax.plot(shifts, against, "o-", ms=3.5, lw=1.1, color="#26a1ff",
+            label="filtered on the residual to a template (%.5f)"
+                  % np.std(against))
+    ax.set_xlabel("where the mask sits, in pixels from the line core")
+    ax.set_ylabel("high-passed value, one pixel of the nearby continuum")
+    ax.set_title("The spectrum never changes; only the mask moves",
+                 fontsize=10)
+    ax.legend(fontsize=7.5)
+    ax.grid(alpha=0.25)
+
+    fig.tight_layout()
+    save(fig, out, "highpass_template")
+
+
 def main(argv=None):
     global FORMAT
     args = parse_args(argv)
     FORMAT = args.format
     os.makedirs(args.out, exist_ok=True)
+    # LA FIGURE DU PASSE-HAUT NE DEMANDE PAS DE RUN: elle illustre un
+    # mecanisme sur une raie synthetique, donc elle se dessine avant que la
+    # configuration d'un run soit lue, et un --only highpass seul n'a pas
+    # besoin de --run.
+    if args.only is None or "highpass" in args.only:
+        highpass_figure(args.out, args.format)
+    if args.only == ["highpass"]:
+        return None
     if args.only == ["berv"]:
         berv_figures(args.run, args.lbl_dir, args.out)
         return None

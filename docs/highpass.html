@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>The high pass &middot; pca2d-preclean</title>
+<meta name="description" content="Why the continuum filter is taken against a median template: a moving telluric mask makes an ordinary Savitzky-Golay filter leave a BERV-dependent residual." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [['\\(', '\\)']], displayMath: [['\\[', '\\]']] },
+    svg: { fontCache: 'global' },
+    options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] }
+  };
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js"></script>
+</head>
+<body>
+  <div class="bg-orb orb-a"></div>
+  <div class="bg-orb orb-b"></div>
+
+  <div class="site-banner">
+    <div class="site-banner-inner">
+      <div class="site-banner-text">
+        <h2>pca2d-preclean</h2>
+        <p>Two frames, one fit &middot; SPIRou, NIRPS, HARPS, HARPS-N, ESPRESSO</p>
+      </div>
+      <a href="https://eartigau.github.io/" class="home-link">&larr; Home</a>
+    </div>
+  </div>
+
+  <header class="hero">
+    <p class="eyebrow">METHOD &middot; PREPROCESSING</p>
+    <h1>The high pass,<br/>and a moving hole</h1>
+    <p class="subtitle">A Savitzky-Golay filter is dragged down by every deep line it crosses. That would be harmless if the holes in the data stayed put. They do not: a telluric line walks across the stellar core as the BERV changes, and the bias walks with it.</p>
+  </header>
+
+  <nav class="pagenav">
+    <a href="index.html">Overview</a>
+    <a href="method.html">The model</a>
+    <a href="highpass.html" class="here">The high pass</a>
+    <a href="tellurics.html">Tellurics</a>
+    <a href="results.html">Results</a>
+  </nav>
+
+  <main class="layout">
+
+    <section class="card span-3">
+      <h2>Why there is a high pass at all</h2>
+      <p>
+        The fit works on <em>line shapes</em>, not on the continuum. The
+        continuum carries the blaze, the flat-field response, the atmospheric
+        extinction and the exposure's throughput, and none of that is the
+        quantity of interest. Worse, it varies by tens of percent between
+        exposures while the lines move by parts per thousand, so a PCA run on
+        the raw spectra would spend all its components describing the lamp.
+      </p>
+      <p>
+        So each exposure is high-passed before it enters the cube: a
+        Savitzky-Golay filter estimates the smooth part, and the smooth part is
+        subtracted in log flux. The filter runs <strong>per order segment</strong>,
+        never across the gaps between orders, since a polynomial fitted across a
+        gap is a polynomial fitted to nothing.
+      </p>
+      <div class="mathblock">
+        \[
+          y(x) \;=\; s(x) \;-\; \mathrm{SG}_{W,p}\!\left[s\right](x),
+          \qquad s(x) \equiv \ln f(x)
+        \]
+      </div>
+      <p>
+        with \(W\) the window, set in velocity units so that it means the same
+        thing at every wavelength, and \(p\) the polynomial order.
+      </p>
+    </section>
+
+    <section class="card span-3">
+      <h2>The problem: a filter is dragged by the lines it crosses</h2>
+      <p>
+        A Savitzky-Golay filter is a local least-squares polynomial. It does not
+        know what a line is. When the window straddles a deep absorption line,
+        the fitted polynomial is pulled downward, and the &ldquo;continuum&rdquo;
+        it returns is the continuum <em>minus some fraction of the line</em>.
+      </p>
+      <p>
+        On its own that bias is harmless: it is a fixed function of wavelength,
+        the same in every exposure, so the PCA sees it as part of the mean and
+        it never reaches the velocities. The trouble starts when the bias stops
+        being fixed.
+      </p>
+      <div class="callout warn">
+        <strong>The mechanism.</strong> LBL blanks any pixel where the telluric
+        transmission is below \(e^{-1}\) &mdash; those pixels carry no usable
+        information and are set to NaN. As the BERV sweeps through the year, a
+        telluric line walks across a stellar line. The blanked pixels therefore
+        <em>move</em> relative to the stellar line. The Savitzky-Golay filter
+        sees a different support on each exposure, so it is dragged by a
+        different amount, and it leaves behind a residual that changes with the
+        BERV while being entirely non-stellar.
+      </div>
+      <p>
+        A residual that tracks the BERV is the single most dangerous systematic
+        in this business: it is periodic at one year, it is coherent across all
+        the lines of a star, and it looks exactly like a planet.
+      </p>
+      <div class="stats-grid">
+        <div class="stat"><div class="label">HD 69830, line at 688.85 nm</div><div class="value">&nbsp;</div></div>
+        <div class="stat"><div class="label">Telluric depth at the core, BERV &minus;25 km/s</div><div class="value">3 %</div></div>
+        <div class="stat"><div class="label">Same line, BERV &minus;5 km/s</div><div class="value">89 %</div></div>
+      </div>
+      <p class="hint">
+        Between those two epochs the mask over the stellar core goes from
+        essentially absent to essentially total. The filter cannot not notice.
+      </p>
+    </section>
+
+    <section class="card span-3">
+      <h2>The fix: filter the residual to a template</h2>
+      <p>
+        Instead of filtering the spectrum, filter what the spectrum has that the
+        template does not, then add the template's own filtered version back:
+      </p>
+      <div class="mathblock">
+        \[
+          y \;=\; \underbrace{\big[(s - \bar{S}) - \mathrm{SG}[s - \bar{S}]\big]}_{\textstyle\text{the residual, high-passed}}
+          \;+\;\underbrace{\big[\bar{S} - \mathrm{SG}[\bar{S}]\big]}_{\textstyle\text{the template, high-passed}}
+        \]
+      </div>
+      <p>
+        \(\bar{S}\) is the median of the whole campaign taken in the star's rest
+        frame and carried back into each exposure's own frame. The crucial
+        property is that <strong>the template has no holes</strong>: a pixel
+        blanked in one exposure is perfectly well measured in the fifty other
+        exposures where the telluric line sat somewhere else, so the median is
+        defined everywhere.
+      </p>
+      <p>
+        The deep line now lives almost entirely in \(\bar{S}\). What is left in
+        \(s - \bar{S}\) is small and flat, so the filter applied to it is not
+        dragged by anything, whatever the mask does. And
+        \(\mathrm{SG}[\bar{S}]\) is computed once on a support that never
+        changes, so its bias is a fixed function of wavelength again &mdash;
+        back to the harmless case.
+      </p>
+    </section>
+
+    <section class="card span-3">
+      <h2>Why the two forms are not algebraically the same</h2>
+      <p>
+        There is a tempting argument that this changes nothing. Savitzky-Golay
+        is linear, so
+      </p>
+      <div class="mathblock">
+        \[
+          (s - \bar{S}) - \mathrm{SG}[s - \bar{S}] + \bar{S} - \mathrm{SG}[\bar{S}]
+          \;=\; s - \mathrm{SG}[s].
+        \]
+      </div>
+      <p>
+        That identity is correct &mdash; <strong>and it only holds when both
+        filters see the same support.</strong> They do not. The residual
+        \(s - \bar{S}\) inherits the exposure's mask, with its holes where the
+        tellurics saturate; the template \(\bar{S}\) has no holes at all.
+        Linearity does not survive two different supports, and the difference
+        between the two sides is precisely the BERV-dependent term we are trying
+        to remove.
+      </p>
+      <figure>
+        <img src="figures/highpass_template.svg" alt="A synthetic deep line with a moving mask, filtered both ways." />
+        <figcaption>
+          A controlled experiment. The spectrum is held <em>exactly</em> fixed;
+          only the ten-pixel mask moves across the line core, as the BERV would
+          move it. <strong>Top:</strong> the line and the mask at three
+          positions. <strong>Bottom:</strong> the high-passed value of one
+          continuum pixel as a function of where the mask sits. The ordinary
+          filter wanders by 0.00227 rms; filtered against a template it wanders
+          by 0.00037, a factor of 6.1 less, for an input that never changed.
+        </figcaption>
+      </figure>
+      <div class="callout">
+        <strong>The test that matters is the one with a <em>moving</em> mask.</strong>
+        With a fixed mask the two forms agree to machine precision, which is how
+        the identity above misleads. It took holding the spectrum still and
+        moving only the mask to see the effect at all.
+      </div>
+    </section>
+
+    <section class="card span-3">
+      <h2>What it bought, measured honestly</h2>
+      <p>
+        The expectation was never a large drop in rms &mdash; the mechanism
+        feeds a small, slow systematic, not a large scatter. What it should do
+        is clean up the components, so the stellar block stops hooking onto
+        something that follows the BERV.
+      </p>
+      <table class="rvtable">
+        <thead>
+          <tr><th>Star</th><th>High pass</th><th>rms (m/s)</th><th>MAD (m/s)</th><th>Component 2 vs BERV</th></tr>
+        </thead>
+        <tbody>
+          <tr><td rowspan="2">HD&nbsp;69830</td>
+              <td>ordinary</td><td>3.51</td><td>3.36</td><td>0.106</td></tr>
+          <tr class="best"><td>against a template</td><td>3.50</td><td>3.29</td><td>0.040</td></tr>
+          <tr><td rowspan="2">GJ&nbsp;581</td>
+              <td>ordinary</td><td>9.03</td><td>10.88</td><td>0.325</td></tr>
+          <tr><td>against a template</td><td>9.06</td><td>10.76</td><td>0.507</td></tr>
+        </tbody>
+      </table>
+      <p class="hint">
+        The rms is unchanged to within the error bars, as expected. On
+        HD&nbsp;69830 the second component's correlation with the BERV drops
+        from 0.106 to 0.040, which is the effect the change was made to produce.
+        On GJ&nbsp;581 it goes the other way, from 0.325 to 0.507, and that is
+        reported here rather than left out: an M dwarf's spectrum is dense enough
+        that the median template is itself harder to build, and the diagnosis is
+        not finished.
+      </p>
+      <p>
+        The template high pass is nevertheless the nominal path since
+        2026-10-16, on the conceptual argument rather than on the rms: a filter
+        whose bias depends on which pixels happen to be masked tonight is not
+        something to keep because its scatter happens to come out the same.
+      </p>
+      <div class="callout">
+        <strong>The template travels with the cube.</strong> It is written
+        beside the cube as <code>hp_template.npy</code>, so the
+        <code>correct</code> stage applies the identical second pass to the
+        delivered spectra. The first version of this change forgot that: the
+        corrected files were built from raw log flux (median +10.14 instead of
+        +0.017), their noise doubled, and the report's river plots stayed
+        perfectly clean &mdash; because the report was reading the cube, which
+        was right, while the files were not.
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <p>
+      pca2d-preclean &middot;
+      <a href="https://github.com/eartigau/pca2d_preclean">github.com/eartigau/pca2d_preclean</a>
+      &middot; <a href="https://eartigau.github.io/">other tools</a>
+    </p>
+  </footer>
+
+  <div class="lightbox" hidden>
+    <figure class="lightbox-figure">
+      <img src="" alt="" />
+      <figcaption></figcaption>
+    </figure>
+    <button class="lightbox-close" aria-label="Close">&times;</button>
+  </div>
+  <script src="lightbox.js"></script>
+</body>
+</html>

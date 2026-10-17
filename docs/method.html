@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>The model &middot; pca2d-preclean</title>
+<meta name="description" content="The two-frame model behind pca2d-preclean: the log-wavelength grid, the relativistic Doppler shift, the weighted alternating fit, and what is written back to the files." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [['\\(', '\\)']], displayMath: [['\\[', '\\]']] },
+    svg: { fontCache: 'global' },
+    options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] }
+  };
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js"></script>
+</head>
+<body>
+  <div class="bg-orb orb-a"></div>
+  <div class="bg-orb orb-b"></div>
+
+  <div class="site-banner">
+    <div class="site-banner-inner">
+      <div class="site-banner-text">
+        <h2>pca2d-preclean</h2>
+        <p>Two frames, one fit &middot; SPIRou, NIRPS, HARPS, HARPS-N, ESPRESSO</p>
+      </div>
+      <a href="https://eartigau.github.io/" class="home-link">&larr; Home</a>
+    </div>
+  </div>
+
+  <header class="hero">
+    <p class="eyebrow">METHOD</p>
+    <h1>The model,<br/>written out</h1>
+    <p class="subtitle">Two blocks of components, one anchored in the star's rest frame and one at the telescope, solved together with photon weights. This page is the derivation, the conventions, and the places where a shortcut would cost metres per second.</p>
+  </header>
+
+  <nav class="pagenav">
+    <a href="index.html">Overview</a>
+    <a href="method.html" class="here">The model</a>
+    <a href="highpass.html">The high pass</a>
+    <a href="tellurics.html">Tellurics</a>
+    <a href="results.html">Results</a>
+  </nav>
+
+  <main class="layout">
+
+    <section class="card span-3">
+      <h2>Why two frames separate at all</h2>
+      <p>
+        A spectrum recorded at the telescope is a product of things that live in
+        different reference frames. The star's photospheric lines arrive
+        Doppler-shifted by the motion of the observatory around the barycentre
+        of the Solar System; the absorption imprinted by the Earth's atmosphere,
+        the detector's fringing, and every instrumental artefact do not move
+        with that velocity at all. Over a campaign, the barycentric velocity
+        \(v_{\mathrm{berv}}(t)\) sweeps through a range of tens of km/s, so the
+        same stellar line lands on a different set of detector pixels in
+        February than it does in August.
+      </p>
+      <p>
+        That sweep is the whole lever. If a feature keeps its place on the
+        detector while the star slides past it, the feature is not stellar. The
+        model below is nothing more than that statement written down with enough
+        care to be solvable.
+      </p>
+      <div class="callout">
+        <strong>What makes or breaks it: the BERV span.</strong> With a wide span
+        the two frames are well separated and the fit gains a factor of two; with
+        a span of 0.7&nbsp;km/s the blocks become nearly collinear, the fit cannot
+        tell them apart, and the correction <em>loses</em> a factor of 2.4.
+        Measured on two slices of the same TOI-4552 campaign, identical in every
+        other respect.
+      </div>
+    </section>
+
+    <section class="card span-3">
+      <h2>The sampling grid</h2>
+      <p>
+        Everything is resampled onto one common grid, uniform in
+        \(\ln\lambda\). This is not a convenience: on such a grid a Doppler
+        shift is a <em>translation</em>, identical at every wavelength, so
+        carrying a spectrum from one frame to another is one interpolation with
+        one offset rather than a wavelength-dependent stretch.
+      </p>
+      <div class="mathblock">
+        \[
+          x \;=\; \frac{\ln\lambda - \ln\lambda_0}{\Delta},
+          \qquad
+          \Delta \;=\; \ln\!\left(1 + \frac{\delta v}{c}\right)
+        \]
+      </div>
+      <p>
+        with \(\delta v\) the step in velocity units, typically a fraction of a
+        resolution element. A source moving at velocity \(v\) then shifts by
+      </p>
+      <div class="mathblock">
+        \[
+          \delta x(v) \;=\; \frac{\operatorname{artanh}(v/c)}{\Delta}
+          \qquad\text{pixels.}
+        \]
+      </div>
+      <p>
+        The inverse, used whenever a velocity is read back out of a fitted
+        shift, is \(v = c\tanh(\Delta\,\delta x)\). The interpolation itself is
+        a windowed Lanczos kernel (\(a = 8\)), which preserves the line shapes
+        far better than a cubic spline at the sub-pixel shifts that matter here.
+      </p>
+      <div class="callout warn">
+        <strong>Always relativistic.</strong> The first-order form
+        \(1 + v/c\) is wrong by \(\tfrac{1}{2}(v/c)^2\), which is
+        1.5&nbsp;m/s at a 30&nbsp;km/s BERV. Since the whole point of the
+        exercise is to chase systematics at the m/s level, the approximation is
+        never used, anywhere in the code.
+      </div>
+    </section>
+
+    <section class="card span-3">
+      <h2>The model, term by term</h2>
+      <p>
+        Let \(y(x, t)\) be the high-passed log flux of exposure \(t\) on the
+        common grid. The model is
+      </p>
+      <div class="mathblock">
+        \[
+          y(x, t)\;=\;\underbrace{\bar{S}\!\left(x - \delta x_t\right)
+            \;+\;\sum_{i=1}^{n_\star} a_i(t)\,P_i\!\left(x - \delta x_t\right)}_{\textstyle\text{star frame}}
+          \;+\;\underbrace{\sum_{j=1}^{n_\oplus} b_j(t)\,Q_j(x)}_{\textstyle\text{observer frame}}
+          \;+\;\varepsilon(x, t)
+        \]
+      </div>
+      <ul class="legend">
+        <li>\(\bar{S}\) &mdash; the star's mean spectrum, in its own rest frame.
+          <strong>It has no free amplitude.</strong> It enters with a coefficient
+          of exactly one, so the fit cannot scale the star down to let an Earth
+          component explain a stellar line. This was measured, not assumed: the
+          first stellar component \(P_1\) comes out orthogonal to the mean, which
+          is what one wants if the mean is genuinely carrying the star.</li>
+        <li>\(P_i\) &mdash; stellar variability: what changes in the star's own
+          frame from one exposure to the next. Activity, line-shape changes, and
+          whatever the template does not capture.</li>
+        <li>\(Q_j\) &mdash; the observer block: telluric residuals, fringing,
+          detector persistence, anything fixed in wavelength at the telescope.</li>
+        <li>\(\delta x_t\) &mdash; the shift, in grid pixels, that carries the
+          star's frame into the observer's for exposure \(t\). It is built from
+          \(v_{\mathrm{sys}} - v_{\mathrm{berv}}(t)\) through the relativistic
+          relation above.</li>
+        <li>\(\varepsilon\) &mdash; what is left, which is what we hope is
+          photon noise.</li>
+      </ul>
+      <p>
+        Both \(P\) and \(Q\) are <em>found from the data</em> by a weighted PCA
+        on the cube itself. Nothing here comes from a model atmosphere or a
+        telluric line list: if the fit says a component sits still at the
+        telescope, it is because the campaign showed it sitting still.
+      </p>
+    </section>
+
+    <section class="card span-3">
+      <h2>How it is solved</h2>
+      <p>
+        The two bases and the amplitudes are not known at the same time, so the
+        fit alternates. Each half-step is linear and closed-form; only the
+        alternation is iterative.
+      </p>
+      <ol class="steps">
+        <li><strong>Build the cube.</strong> Every exposure is resampled onto the
+          common grid with its variance, its telluric transmission and its mask.
+          Nothing is co-added: the cube is \(N_{\mathrm{exp}} \times
+          N_{\mathrm{pix}}\).</li>
+        <li><strong>Take the star's mean.</strong> Carry every exposure into the
+          star's rest frame and take a weighted median down the time axis. This
+          is \(\bar{S}\), and it is also what the high pass is taken against
+          (<a href="highpass.html">why that matters</a>).</li>
+        <li><strong>Solve for the amplitudes.</strong> With the bases held fixed,
+          each exposure gives an independent linear least-squares problem in
+          \((a_i, b_j)\), weighted by the inverse variance of each pixel.</li>
+        <li><strong>Update the bases.</strong> With the amplitudes held fixed, a
+          weighted PCA of the residual in each frame &mdash; the star's residual
+          carried into the star's frame, the observer's left where it is &mdash;
+          gives the next \(P\) and \(Q\).</li>
+        <li><strong>Repeat</strong> until the \(\chi^2\) stops moving.</li>
+      </ol>
+      <p>
+        The weighted least-squares step, per exposure, is the normal equation
+      </p>
+      <div class="mathblock">
+        \[
+          \begin{pmatrix} \mathbf{a} \\ \mathbf{b}\end{pmatrix}
+          \;=\;
+          \left(\mathbf{M}_t^{\!\top} \mathbf{W}_t\, \mathbf{M}_t\right)^{-1}
+          \mathbf{M}_t^{\!\top} \mathbf{W}_t
+          \left(\mathbf{y}_t - \bar{S}_t\right)
+        \]
+      </div>
+      <p>
+        where \(\mathbf{M}_t\) stacks the shifted \(P_i\) and the unshifted
+        \(Q_j\) as columns, \(\mathbf{W}_t\) is diagonal with the inverse
+        variances, and \(\bar{S}_t\) is the mean carried to that exposure's
+        frame. Writing the mean on the right-hand side rather than as a column of
+        \(\mathbf{M}_t\) is exactly what fixes its coefficient at one.
+      </p>
+    </section>
+
+    <section class="card span-2">
+      <h2>What the amplitudes do in time</h2>
+      <figure>
+        <img src="figures/coefficients_vs_time.svg" alt="Fitted amplitudes of each component against time." />
+        <figcaption>
+          TOI-2120, 316 exposures. Every panel is one component's amplitude
+          through the campaign. The Earth components move on the timescale of
+          the weather and the airmass; the star components do not.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section class="card">
+      <h2>The sanity check</h2>
+      <figure>
+        <img src="figures/correlations.svg" alt="Rank correlation of every coefficient against the ancillary quantities." />
+        <figcaption>
+          Rank correlation of each amplitude against airmass, seeing, water
+          column, SNR and BERV. An Earth component tracking the airmass is
+          doing its job. A <em>star</em> component tracking the airmass is the
+          warning sign that the two blocks have started to mix.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section class="card span-3">
+      <h2>What is written back</h2>
+      <p>
+        The correction applied to the files is the observer block alone,
+        evaluated on each exposure's own original wavelength grid and divided
+        out of the delivered flux:
+      </p>
+      <div class="mathblock">
+        \[
+          f^{\mathrm{corr}}(\lambda, t) \;=\;
+          f(\lambda, t) \,\Big/\, \exp\!\Big(\sum_j b_j(t)\,Q_j(\lambda)\Big)
+        \]
+      </div>
+      <p>
+        Nothing stellar is removed, nothing is smoothed, nothing is masked on
+        the way out, and the grid is never changed. A corrected file holds
+        exactly what the report's third panel shows, sample for sample &mdash;
+        which is a property the test suite checks rather than a claim.
+      </p>
+      <figure>
+        <img src="figures/corrected_file_1267nm.svg" alt="The corrected spectrum compared with panel three of the report." />
+        <figcaption>
+          The corrected files laid over panel 3 of the run's own report, around
+          1267&nbsp;nm. The two agree to an rms of 0.0225 in the high-passed log
+          flux, which is the interpolation back onto the original grid and
+          nothing else.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section class="card span-3">
+      <h2>Choosing the component counts</h2>
+      <p>
+        <code>--n-star</code> and <code>--n-earth</code> are the only two numbers
+        the user has to pick, and they trade the same way every regularised fit
+        does: too few and the correction is incomplete, too many and the star
+        starts to be absorbed into the Earth block.
+      </p>
+      <div class="stats-grid">
+        <div class="stat"><div class="label">TOI-2120, nominal</div><div class="value">1&ndash;3</div></div>
+        <div class="stat"><div class="label">rms, delivered &rarr; corrected</div><div class="value">47.5 &rarr; 14.2</div></div>
+        <div class="stat"><div class="label">Paired gain, 80 common epochs</div><div class="value">3.38&times;</div></div>
+        <div class="stat"><div class="label">Bootstrap, 16&ndash;84 %</div><div class="value">3.14&ndash;3.65</div></div>
+      </div>
+      <div class="callout warn">
+        <strong>Two stellar components go degenerate.</strong> On TOI-2120 with
+        <code>--n-star 2</code>, the second stellar amplitude starts following
+        the sky: the fit absorbs a 232&nbsp;m/s shift into it and the LBL rms
+        climbs to 67&nbsp;m/s. One stellar component is the nominal choice for a
+        reason, and the degeneracy is the reason.
+      </div>
+      <p class="hint">
+        <a href="results.html">The full table of what this is worth, star by star &rarr;</a>
+      </p>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <p>
+      pca2d-preclean &middot;
+      <a href="https://github.com/eartigau/pca2d_preclean">github.com/eartigau/pca2d_preclean</a>
+      &middot; <a href="https://eartigau.github.io/">other tools</a>
+    </p>
+  </footer>
+
+  <div class="lightbox" hidden>
+    <figure class="lightbox-figure">
+      <img src="" alt="" />
+      <figcaption></figcaption>
+    </figure>
+    <button class="lightbox-close" aria-label="Close">&times;</button>
+  </div>
+  <script src="lightbox.js"></script>
+</body>
+</html>

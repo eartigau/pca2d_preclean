@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Results &middot; pca2d-preclean</title>
+<meta name="description" content="What two-frame precleaning is worth, measured: a factor of 3.4 on TOI-2120 with SPIRou, a few percent on three HARPS campaigns, and the cases where it makes things worse." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [['\\(', '\\)']], displayMath: [['\\[', '\\]']] },
+    svg: { fontCache: 'global' },
+    options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] }
+  };
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js"></script>
+</head>
+<body>
+  <div class="bg-orb orb-a"></div>
+  <div class="bg-orb orb-b"></div>
+
+  <div class="site-banner">
+    <div class="site-banner-inner">
+      <div class="site-banner-text">
+        <h2>pca2d-preclean</h2>
+        <p>Two frames, one fit &middot; SPIRou, NIRPS, HARPS, HARPS-N, ESPRESSO</p>
+      </div>
+      <a href="https://eartigau.github.io/" class="home-link">&larr; Home</a>
+    </div>
+  </div>
+
+  <header class="hero">
+    <p class="eyebrow">MEASURED</p>
+    <h1>What it is worth,<br/>measured</h1>
+    <p class="subtitle">A factor of 3.4 where the contamination is large and the barycentric span is wide; a few percent in the optical where the tellurics have already been cleaned once; and a loss where the star never moves relative to the sky. All three are reported.</p>
+  </header>
+
+  <nav class="pagenav">
+    <a href="index.html">Overview</a>
+    <a href="method.html">The model</a>
+    <a href="highpass.html">The high pass</a>
+    <a href="tellurics.html">Tellurics</a>
+    <a href="results.html" class="here">Results</a>
+  </nav>
+
+  <main class="layout">
+
+    <section class="card span-3">
+      <h2>TOI-2120, the demonstration case</h2>
+      <p>
+        An M dwarf observed with SPIRou: 321 exposures over 452 days, a
+        barycentric velocity sweeping 37.9&nbsp;km/s, and deep water bands
+        crossing the stellar lines. It is the case the method was built for, and
+        it shows what the method can do when the geometry is favourable.
+      </p>
+      <table class="rvtable">
+        <thead>
+          <tr><th>Series</th><th>rms (m/s)</th><th>MAD (m/s)</th><th>Median error</th><th>Reduced \(\chi^2\)</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>LBL on the delivered spectra</td><td>47.98</td><td>34.76</td><td>3.70</td><td>158.7</td></tr>
+          <tr class="best"><td>LBL after pca2d-preclean, 1&ndash;3</td><td>14.20</td><td>11.55</td><td>4.42</td><td>9.5</td></tr>
+        </tbody>
+      </table>
+      <div class="stats-grid">
+        <div class="stat"><div class="label">Paired gain in rms</div><div class="value">3.38&times;</div></div>
+        <div class="stat"><div class="label">Bootstrap, 16&ndash;84 %</div><div class="value">3.14&ndash;3.65</div></div>
+        <div class="stat"><div class="label">Epochs compared</div><div class="value">80</div></div>
+        <div class="stat"><div class="label">Reduced \(\chi^2\)</div><div class="value">16.6&times; lower</div></div>
+      </div>
+      <p class="hint">
+        Both series come from the same LBL stage of the same run, on the same
+        80 common epochs, so nothing here is one pipeline's numbers compared
+        against another's. The bootstrap is paired over epochs, 2000 draws.
+      </p>
+    </section>
+
+    <section class="card span-2">
+      <h2>The velocities themselves</h2>
+      <figure>
+        <img src="figures/lbl_velocities.svg" alt="LBL velocities from the delivered spectra and from the corrected ones." />
+        <figcaption>
+          TOI-2120 measured twice from the same exposures: once from the
+          spectra as delivered, once after precleaning. The scatter that
+          collapses is the part that was never stellar.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section class="card">
+      <h2>Where it comes from</h2>
+      <figure>
+        <img src="figures/sequence_1267nm.svg" alt="River plot around 1267 nm, before, model and after." />
+        <figcaption>
+          The water band near 1267&nbsp;nm. The diagonal streaks are the
+          atmosphere sliding across the stellar lines over the year; the right
+          panel is what remains. The window scatter drops 34&nbsp;% here.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section class="card span-3">
+      <h2>A second window, to show it is not one lucky band</h2>
+      <figure>
+        <img src="figures/sequence_1669nm.svg" alt="River plot around 1669 nm." />
+        <figcaption>
+          The same three panels at 1669&nbsp;nm, in the methane band. Weaker
+          contamination here, and correspondingly less to remove: the window
+          scatter goes from 0.0470 to 0.0455, a 3&nbsp;% improvement. The fit
+          does not invent a correction where there is nothing to correct, which
+          is as important as removing one where there is.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section class="card span-3">
+      <h2>What the components turned out to be</h2>
+      <p>
+        With one stellar and three Earth components on TOI-2120, the rank
+        correlations against the ancillary quantities are:
+      </p>
+      <table class="rvtable">
+        <thead>
+          <tr><th>Component</th><th>Block</th><th>&rho; vs airmass</th><th>&rho; vs BERV</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>\(a_1\)</td><td>star</td><td>&minus;0.183</td><td>&minus;0.389</td></tr>
+          <tr><td>\(b_1\)</td><td>Earth</td><td>+0.099</td><td>&minus;0.093</td></tr>
+          <tr><td>\(b_2\)</td><td>Earth</td><td>+0.005</td><td>&minus;0.737</td></tr>
+          <tr><td>\(b_3\)</td><td>Earth</td><td>&minus;0.032</td><td>&minus;0.248</td></tr>
+        </tbody>
+      </table>
+      <p class="hint">
+        \(b_2\) follows the BERV strongly and the airmass not at all. That is
+        not the signature of a water column, it is the signature of something
+        whose <em>apparent</em> amplitude depends on how far the stellar
+        spectrum has slid past it &mdash; the residual of an imperfect
+        separation between the two frames, which the fit is absorbing into the
+        observer block. It is doing useful work there, and it is also a
+        reminder that a component is named by what it correlates with, not by
+        what one hoped it would be.
+      </p>
+    </section>
+
+    <section class="card span-3">
+      <h2>Three HARPS campaigns, three ways</h2>
+      <p>
+        TOI-2120 is the favourable case. The harder test is the optical, where
+        the tellurics have already been cleaned once and what is left is a
+        residual of a residual. Each star below is measured three ways on the
+        same exposures, in a single instrument mode, with the same frozen
+        version of the code.
+      </p>
+      <table class="rvtable">
+        <thead>
+          <tr><th>Star</th><th>Pipeline</th><th>rms (m/s)</th><th>MAD (m/s)</th><th>Error bar</th></tr>
+        </thead>
+        <tbody>
+          <tr><td rowspan="3">HD&nbsp;10700<br/><span class="hint">G8V, 86 epochs</span></td>
+              <td>ESO DRS, CCF</td><td>2.16</td><td>1.69</td><td>0.34</td></tr>
+          <tr><td>LBL, telluric-cleaned</td><td>2.19</td><td>1.75</td><td>0.38</td></tr>
+          <tr class="best"><td>+ pca2d-preclean</td><td>2.07</td><td>1.57</td><td>0.49</td></tr>
+
+          <tr><td rowspan="3">HD&nbsp;69830<br/><span class="hint">K0V, 150 epochs</span></td>
+              <td>ESO DRS, CCF</td><td>3.71</td><td>3.57</td><td>0.34</td></tr>
+          <tr><td>LBL, telluric-cleaned</td><td>3.73</td><td>3.49</td><td>0.36</td></tr>
+          <tr class="best"><td>+ pca2d-preclean</td><td>3.50</td><td>3.29</td><td>0.50</td></tr>
+
+          <tr><td rowspan="3">GJ&nbsp;581<br/><span class="hint">M3V, 116 epochs</span></td>
+              <td>ESO DRS, CCF</td><td>9.83</td><td>11.68</td><td>1.37</td></tr>
+          <tr><td>LBL, telluric-cleaned</td><td>9.62</td><td>12.06</td><td>0.84</td></tr>
+          <tr class="best"><td>+ pca2d-preclean</td><td>9.06</td><td>10.76</td><td>0.91</td></tr>
+        </tbody>
+      </table>
+      <p class="hint">
+        GJ&nbsp;581's CCF row excludes three exposures where the DRS fails
+        outright, returning &minus;591 to &minus;655&nbsp;m/s where LBL finds
+        &minus;3 to +12; with those three the CCF rms is 97.8&nbsp;m/s.
+        pca2d-preclean is the only one of the three pipelines to beat the CCF on
+        all three stars, and the gain is concentrated in the tails: it
+        straightens the worst exposures more than it improves the median one,
+        which is why the MAD moves less than the rms.
+      </p>
+      <div class="callout">
+        <strong>The gains in the optical are small, and that is the honest
+        reading.</strong> A few percent on a 2&nbsp;m/s star is not a
+        breakthrough; it is a consistent improvement that holds across spectral
+        type. The factor of three on TOI-2120 is what the method does when the
+        contamination is large and the BERV span is wide. Both numbers are the
+        method.
+      </div>
+    </section>
+
+    <section class="card span-3">
+      <h2>When it does not help</h2>
+      <p>
+        The separation of the two blocks rests entirely on the star moving
+        relative to the sky. Take that away and the fit has no information to
+        work with, and a fit with no information still returns an answer.
+      </p>
+      <div class="stats-grid">
+        <div class="stat"><div class="label">TOI-4552, wide BERV span</div><div class="value">2&times; better</div></div>
+        <div class="stat"><div class="label">Same star, 0.7 km/s span</div><div class="value">2.4&times; worse</div></div>
+      </div>
+      <p class="hint">
+        Two slices of the same campaign, identical in every other respect. A
+        campaign observed over a narrow range of barycentric velocity should not
+        be precleaned this way, and the run's own report plots the BERV coverage
+        on its first pages so that the question is asked before the answer is
+        believed.
+      </p>
+      <div class="callout warn">
+        <strong>Other failure modes found by measurement.</strong> Two stellar
+        components go degenerate on TOI-2120: the second amplitude starts
+        tracking the sky, absorbs a 232&nbsp;m/s shift, and the rms climbs to
+        67&nbsp;m/s. A shared basis across several objects needs <em>shared
+        nights</em>, not merely similar SNR: fitting GJ&nbsp;1, Proxima and a
+        third target together with only two nights in common made GJ&nbsp;1
+        worse (3.04 against 2.61 solo).
+      </div>
+    </section>
+
+    <section class="card span-3">
+      <h2>How these numbers were produced</h2>
+      <ol class="steps">
+        <li><strong>One code version per comparison.</strong> Every star in a
+          comparison runs on the same commit, frozen before the first run and
+          recorded in the output. If a fix lands mid-campaign, everything is
+          redone &mdash; even when the fix is provably cosmetic, because
+          traceability is the point, not numerical equivalence.</li>
+        <li><strong>One instrument mode per star.</strong> The mode with the most
+          epochs, never a mixture.</li>
+        <li><strong>Paired comparisons only.</strong> The same exposures on both
+          sides, matched by timestamp; an epoch missing from either series is
+          dropped from both.</li>
+        <li><strong>Robust statistics beside the plain ones.</strong> rms and
+          MAD = 1.4826 &times; median absolute deviation, always both, because a
+          correction that fixes the tails and a correction that fixes the core
+          are different things.</li>
+      </ol>
+      <p class="hint">
+        Every run writes its resolved configuration, its component counts, its
+        LBL version and a PDF report of around thirty pages beside its outputs,
+        so any number on this page can be traced back to the run that produced
+        it.
+      </p>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <p>
+      pca2d-preclean &middot;
+      <a href="https://github.com/eartigau/pca2d_preclean">github.com/eartigau/pca2d_preclean</a>
+      &middot; <a href="https://eartigau.github.io/">other tools</a>
+    </p>
+  </footer>
+
+  <div class="lightbox" hidden>
+    <figure class="lightbox-figure">
+      <img src="" alt="" />
+      <figcaption></figcaption>
+    </figure>
+    <button class="lightbox-close" aria-label="Close">&times;</button>
+  </div>
+  <script src="lightbox.js"></script>
+</body>
+</html>

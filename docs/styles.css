@@ -463,3 +463,193 @@ img {
     display: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Results table (pca2d-preclean)
+
+   The design system says to prefer stat tiles over a table, and that holds
+   for a handful of numbers. This one is a three-way comparison across three
+   stars: eighteen numbers whose whole point is to be read down a column, so
+   tiles would scatter exactly the comparison the reader came for.
+   --------------------------------------------------------------------------- */
+.rvtable {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 14px 0 6px;
+  font-size: 0.92rem;
+}
+.rvtable th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.rvtable td {
+  padding: 7px 10px;
+  border-bottom: 1px solid rgba(200, 220, 255, 0.07);
+  vertical-align: top;
+}
+/* the numbers are data: monospace, like every other number on the site */
+.rvtable td:nth-child(n + 3) {
+  font-family: "IBM Plex Mono", monospace;
+  text-align: right;
+  white-space: nowrap;
+}
+.rvtable td[rowspan] {
+  border-bottom: 1px solid var(--line);
+  padding-right: 18px;
+}
+.rvtable tbody tr.best td {
+  color: var(--accent);
+}
+.rvtable .hint {
+  display: block;
+  margin-top: 2px;
+}
+@media (max-width: 720px) {
+  .rvtable { font-size: 0.84rem; }
+  .rvtable th, .rvtable td { padding: 5px 6px; }
+}
+
+/* ------------------------------------------------------------------ */
+/* Les pages de methode: equations, legendes d'equation, sous-nav      */
+/* ------------------------------------------------------------------ */
+
+.mathblock {
+  margin: 1.4rem 0;
+  padding: 1.1rem 1.3rem;
+  overflow-x: auto;
+  background: rgba(8, 17, 31, 0.55);
+  border: 1px solid rgba(98, 194, 255, 0.16);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+}
+
+.mathblock mjx-container {
+  margin: 0 !important;
+}
+
+ul.legend {
+  margin: 1rem 0 1.2rem;
+  padding-left: 1.1rem;
+  list-style: none;
+}
+
+ul.legend li {
+  position: relative;
+  margin-bottom: 0.6rem;
+  padding-left: 1rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+ul.legend li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.65em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+ul.legend li strong {
+  color: var(--text);
+}
+
+.pagenav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  margin: 0 auto 2rem;
+  padding: 0 1rem;
+  max-width: 1180px;
+}
+
+.pagenav a {
+  padding: 0.45rem 0.95rem;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  text-decoration: none;
+  border: 1px solid rgba(98, 194, 255, 0.18);
+  border-radius: 999px;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.pagenav a:hover {
+  color: var(--text);
+  border-color: rgba(98, 194, 255, 0.5);
+  background: rgba(98, 194, 255, 0.08);
+}
+
+.pagenav a.here {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.steps {
+  counter-reset: step;
+  margin: 1.2rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.steps > li {
+  counter-increment: step;
+  position: relative;
+  margin-bottom: 1.1rem;
+  padding-left: 2.6rem;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.steps > li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: -0.1em;
+  display: grid;
+  place-items: center;
+  width: 1.8rem;
+  height: 1.8rem;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--accent);
+  border: 1px solid rgba(98, 194, 255, 0.35);
+  border-radius: 50%;
+  background: rgba(98, 194, 255, 0.07);
+}
+
+.steps > li strong {
+  display: block;
+  margin-bottom: 0.2rem;
+  color: var(--text);
+}
+
+.callout {
+  margin: 1.3rem 0;
+  padding: 1rem 1.2rem;
+  border-radius: 10px;
+  background: rgba(98, 194, 255, 0.06);
+  border: 1px solid rgba(98, 194, 255, 0.18);
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.callout strong {
+  color: var(--text);
+}
+
+.callout.warn {
+  background: rgba(255, 170, 90, 0.07);
+  border-color: rgba(255, 170, 90, 0.26);
+}

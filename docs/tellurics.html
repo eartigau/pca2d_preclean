@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tellurics &middot; pca2d-preclean</title>
+<meta name="description" content="How the atmospheric absorption is measured before pca2d sees an optical spectrum: a derivative criterion, the stellar template it must be measured against, and what happens when there is nothing to measure." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [['\\(', '\\)']], displayMath: [['\\[', '\\]']] },
+    svg: { fontCache: 'global' },
+    options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] }
+  };
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js"></script>
+</head>
+<body>
+  <div class="bg-orb orb-a"></div>
+  <div class="bg-orb orb-b"></div>
+
+  <div class="site-banner">
+    <div class="site-banner-inner">
+      <div class="site-banner-text">
+        <h2>pca2d-preclean</h2>
+        <p>Two frames, one fit &middot; SPIRou, NIRPS, HARPS, HARPS-N, ESPRESSO</p>
+      </div>
+      <a href="https://eartigau.github.io/" class="home-link">&larr; Home</a>
+    </div>
+  </div>
+
+  <header class="hero">
+    <p class="eyebrow">METHOD &middot; ATMOSPHERE</p>
+    <h1>The atmosphere,<br/>measured first</h1>
+    <p class="subtitle">In the optical the spectra arrive with the sky still in them. How well that is removed sets the floor for everything downstream, so the measurement is worth doing carefully: a derivative criterion instead of a cross-correlation, and always against a stellar template.</p>
+  </header>
+
+  <nav class="pagenav">
+    <a href="index.html">Overview</a>
+    <a href="method.html">The model</a>
+    <a href="highpass.html">The high pass</a>
+    <a href="tellurics.html" class="here">Tellurics</a>
+    <a href="results.html">Results</a>
+  </nav>
+
+  <main class="layout">
+
+    <section class="card span-3">
+      <h2>Where this fits</h2>
+      <p>
+        In the near infrared, APERO has already removed the tellurics before
+        pca2d ever sees the data, and the fit works on what APERO left behind.
+        In the optical &mdash; HARPS, HARPS-N, ESPRESSO &mdash; the spectra
+        arrive with the atmosphere still in them, so LBL's telluric cleaning
+        runs first and pca2d fits the residuals of that cleaning.
+      </p>
+      <p>
+        That makes the quality of the telluric step part of this pipeline's
+        business, and two things about it were changed in the course of this
+        work: <em>how</em> the absorption is measured, and <em>what it is
+        measured against</em>.
+      </p>
+    </section>
+
+    <section class="card span-3">
+      <h2>The absorption model</h2>
+      <p>
+        An atmospheric transmission spectrum, to first order, scales as a power
+        of a reference transmission &mdash; Beer-Lambert with the column as the
+        exponent. Two components suffice for a radial-velocity pipeline:
+      </p>
+      <div class="mathblock">
+        \[
+          T(\lambda)\;=\;T_{\mathrm{H_2O}}(\lambda)^{\,\alpha}\;\cdot\;
+                        T_{\mathrm{dry}}(\lambda)^{\,\beta}
+        \]
+      </div>
+      <p>
+        \(\alpha\) tracks the precipitable water vapour, which changes on the
+        timescale of minutes; \(\beta\) tracks everything that scales with the
+        dry airmass (O\(_2\), CO\(_2\), CH\(_4\)), which is smooth and
+        predictable. Both are fitted per exposure, \(\beta\) free rather than
+        pinned to the airmass, because at a given airmass the dry column still
+        depends on the pressure at the summit.
+      </p>
+    </section>
+
+    <section class="card span-3">
+      <h2>Measuring the exponents from the derivative</h2>
+      <p>
+        The classical way to find \(\alpha\) is a cross-correlation against a
+        telluric template. It works, but it has a weakness: a CCF is sensitive
+        to anything that looks like a shifted copy of the template, including
+        the stellar lines, and it degrades when the water lines are shallow.
+      </p>
+      <p>
+        The alternative used here asks a sharper question. A correctly removed
+        absorption line leaves a <em>smooth</em> spectrum behind; an incorrectly
+        removed one leaves a kink. So minimise the scatter of the derivative of
+        the corrected spectrum:
+      </p>
+      <div class="mathblock">
+        \[
+          \hat{\alpha} \;=\; \arg\min_{\alpha}\;
+          \operatorname{Var}_w\!\left[
+            \frac{\partial}{\partial x}
+            \left(\frac{s(x)}{T_{\mathrm{H_2O}}(x)^{\alpha}\,T_{\mathrm{dry}}(x)^{\beta}}\right)
+          \right]
+        \]
+      </div>
+      <p>
+        where the variance is taken over the telluric-bearing pixels only, with
+        photon weights. The criterion is scanned over
+        \(\alpha \in [0.002,\,2.5]\) before a simplex refines it, because the
+        cost surface has a shallow floor and a simplex started in the wrong
+        place walks into it.
+      </p>
+      <table class="rvtable">
+        <thead>
+          <tr><th>Method</th><th>Scatter of the gradient</th><th>Change</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Uncorrected</td><td>344.8</td><td>&mdash;</td></tr>
+          <tr><td>LBL's CCF loop</td><td>359.6</td><td>+4.3 % (worse)</td></tr>
+          <tr class="best"><td>Derivative criterion</td><td>304.1</td><td>&minus;11.8 %</td></tr>
+        </tbody>
+      </table>
+      <p class="hint">
+        The CCF loop making things actively worse on this star is not a typo:
+        on a line-dense spectrum, without a template to divide by, the
+        correlation locks onto stellar structure.
+      </p>
+      <figure>
+        <img src="figures/sequence_1267nm.svg" alt="River plot of a water band through a campaign." />
+        <figcaption>
+          What the atmosphere looks like when it has <em>not</em> been removed
+          well: a water band through a whole campaign, in the star's rest
+          frame. The stellar lines stand still and the atmospheric residual
+          walks diagonally across them as the barycentric velocity changes
+          through the year. The middle panel is the part pca2d attributes to
+          the observer's frame, the right panel what survives.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section class="card span-3">
+      <h2>What it is measured against: the template is not optional</h2>
+      <p>
+        This is the part that is easy to get wrong, and this project got it
+        wrong before getting it right. The fit must be performed on the spectrum
+        <strong>divided by the stellar template</strong>, never on the raw
+        spectrum.
+      </p>
+      <p>
+        Without the division, the criterion sees the entire stellar spectrum. On
+        a star dense in lines, the derivative scatter is dominated by the
+        photosphere, and the shallow telluric signal it is supposed to measure
+        contributes almost nothing. The procedure is therefore three passes, and
+        APERO has always done it this way:
+      </p>
+      <ol class="steps">
+        <li><strong>Clean without a template.</strong> A first approximation,
+          good enough to build on.</li>
+        <li><strong>Build the stellar template</strong> from the spectra cleaned
+          that way.</li>
+        <li><strong>Re-clean the raw spectra with that template</strong>, the
+          fit now running on \(s/\bar{S}\).</li>
+      </ol>
+      <div class="callout warn">
+        <strong>The tell-tale.</strong> If the exponents come out
+        <em>identical</em> between the pass without a template and the pass
+        with one, the template is not reaching the fit. On HD&nbsp;10700 the
+        median was 0.332 on both sides, which is how the bug was caught.
+      </div>
+      <p>
+        What the division buys, measured on GJ&nbsp;581 (M3V): of five exposures
+        that had been falling back to a default value for want of a measurable
+        signal, three converge to a real measurement (0.0275, 0.1486, 0.0347) as
+        soon as a template &mdash; even a crude one &mdash; is divided out.
+      </p>
+    </section>
+
+    <section class="card span-3">
+      <h2>When there is nothing to measure</h2>
+      <p>
+        On a late M dwarf the water lines are genuinely faint against the
+        stellar forest: a 5&nbsp;% water line is 2.8&nbsp;&sigma; per pixel on
+        GJ&nbsp;581 where it is 13.4&nbsp;&sigma; on HD&nbsp;10700. When the cost
+        curve is flat &mdash; less than 5&nbsp;% of span &mdash; or its minimum
+        sits on the edge of the scan, the fit refuses to report a number and
+        falls back to a default column.
+      </p>
+      <p>
+        Refusing is the right answer, and the fallback exposures are not thereby
+        ruined: the residual, scaled by SNR, comes out at 1.70 for fallback
+        exposures against 1.85 for measured ones on HD&nbsp;10700, and 1.74
+        against 1.77 on HD&nbsp;69830. A default column is a perfectly good
+        estimate when the data cannot improve on it.
+      </p>
+      <div class="callout">
+        <strong>A trap worth recording.</strong> The fallback value, 0.35, is
+        also one of the points on the scan grid, so a genuine measurement that
+        lands there is indistinguishable from a refusal. Fallbacks are therefore
+        marked by an epsilon offset of \(10^{-7}\) rather than by their value, and
+        the counts are read from the headers and not from the four-decimal log.
+      </div>
+    </section>
+
+    <section class="card span-3">
+      <h2>Making it fast</h2>
+      <p>
+        The first working version took 16.55&nbsp;s per exposure, of which
+        14.16&nbsp;s was a double Python loop propagating saturation
+        contamination outward from each blanked pixel. The same operation is a
+        pair of running maxima:
+      </p>
+      <div class="codeblock">for backwards in (False, True):
+    this_sat   = sat[::-1]   if backwards else sat
+    this_above = above[::-1] if backwards else above
+    last_sat   = np.maximum.accumulate(np.where(this_sat,   where, -1))
+    last_above = np.maximum.accumulate(np.where(this_above, where, -1))
+    here = (last_sat >= 0) & (this_sat | (last_sat > last_above))
+    contam |= here[::-1] if backwards else here</div>
+      <p>
+        With that, plus building the convolved transmission grid only over the
+        wavelength spans that actually constrain the fit (margins half a kernel
+        wide, merged, and snapped to the grid so the convolution phases match),
+        the cost went from 16.55&nbsp;s to 0.49&nbsp;s per fit.
+      </p>
+      <div class="stats-grid">
+        <div class="stat"><div class="label">Per exposure, before</div><div class="value">16.55 s</div></div>
+        <div class="stat"><div class="label">Per exposure, after</div><div class="value">0.49 s</div></div>
+        <div class="stat"><div class="label">Speed-up</div><div class="value">34&times;</div></div>
+        <div class="stat"><div class="label">A full campaign</div><div class="value">79 &rarr; 19 min</div></div>
+      </div>
+      <p class="hint">
+        No logic changed: the two versions return the same exponents.
+      </p>
+      <div class="callout">
+        <strong>A figure that is not on this page.</strong> A synthetic
+        demonstration of the template's advantage was built for this page and
+        then dropped: on a toy spectrum of Gaussian lines the two cost curves
+        come out equally sharp, and the figure would have illustrated a claim
+        it did not support. The real gain is measured on real M dwarfs, where
+        the lines are deep and saturated and the derivative criterion has
+        something to bite on, and the numbers above are that measurement.
+      </div>
+    </section>
+
+    <section class="card span-3">
+      <h2>Two fibres are two instruments</h2>
+      <p>
+        HARPS has been through two fibre configurations &mdash; HAM, the 1&Prime;
+        fibre, and EGGS, the 1.4&Prime; one &mdash; and they have different
+        instrumental profiles and different velocity zero points. Mixing them in
+        a single series puts a step function in the middle of the time series
+        that no amount of precleaning will fix.
+      </p>
+      <div class="callout warn">
+        <strong>Never cross the modes.</strong> Every comparison on this site
+        uses a single mode per star, the one with the most epochs. A related
+        trap upstream: LBL's NIRPS_HE + CADC combination loads the HA instrument
+        profile through a one-line table bug, so every NIRPS HE run before that
+        was found used the wrong profile.
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <p>
+      pca2d-preclean &middot;
+      <a href="https://github.com/eartigau/pca2d_preclean">github.com/eartigau/pca2d_preclean</a>
+      &middot; <a href="https://eartigau.github.io/">other tools</a>
+    </p>
+  </footer>
+
+  <div class="lightbox" hidden>
+    <figure class="lightbox-figure">
+      <img src="" alt="" />
+      <figcaption></figcaption>
+    </figure>
+    <button class="lightbox-close" aria-label="Close">&times;</button>
+  </div>
+  <script src="lightbox.js"></script>
+</body>
+</html>
