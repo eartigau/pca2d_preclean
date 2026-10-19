@@ -420,9 +420,12 @@ img {
 
 /* ── Responsive ─────────────────────────────────────────────────────── */
 
+/* minmax(0, ...) and not 1fr: a bare 1fr cannot shrink below its widest
+   unbreakable line, so one long line of code widened the whole column past
+   a phone's screen. The code scrolls inside its block instead. */
 @media (max-width: 980px) {
   .layout {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .span-2 {
@@ -436,7 +439,7 @@ img {
 
 @media (max-width: 720px) {
   .layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .span-2 {
@@ -509,6 +512,22 @@ img {
 .rvtable .hint {
   display: block;
   margin-top: 2px;
+}
+/* a table of names rather than numbers: nothing right-aligned, nothing mono
+   beyond the <code> in it */
+.rvtable.plain td:nth-child(n + 3) {
+  font-family: inherit;
+  text-align: left;
+  white-space: normal;
+}
+/* a table wider than a phone scrolls inside its card */
+.tablewrap {
+  overflow-x: auto;
+}
+/* a flag or a branch name broken at its hyphens reads as a long dash */
+code.nb,
+.rvtable.plain code {
+  white-space: nowrap;
 }
 @media (max-width: 720px) {
   .rvtable { font-size: 0.84rem; }
