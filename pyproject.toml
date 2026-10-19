@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pca2d-preclean"
-version = "0.3.0"
+version = "0.4.0"
 description = "Two-frame weighted PCA precleaning of echelle spectra: a stellar-frame basis and an observer-frame basis, fitted jointly, with the atmosphere divided back out."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -23,14 +23,18 @@ dependencies = [
 pca2d-preclean = "pca2d.cli:main"
 pca2d-gui = "pca2d.gui:main"
 
+# THE ALGORITHM IS IN LBL (lbl.pca2d, the pca2d-module branch of
+# https://github.com/njcuk9999/lbl), which is not on PyPI and is installed
+# first, by hand (README, "Installing it"): this package is the window, the
+# wrap file it runs, and pca2d.<module> as a name for lbl.pca2d.<module>.
 [tool.setuptools]
-packages = ["pca2d", "pca2d.figures"]
+packages = ["pca2d"]
 
 # the window's header image: it ships with the package, since the window never
 # fetches anything at run time
 [tool.setuptools.package-data]
-# and the LaTeX template the run report is written from
-pca2d = ["assets/*.png", "templates/*.tex"]
+# (the LaTeX template of the run report is LBL's now, lbl/pca2d/templates)
+pca2d = ["assets/*.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

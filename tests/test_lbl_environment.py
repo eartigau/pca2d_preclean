@@ -130,12 +130,11 @@ def test_the_runner_is_written_for_its_python(tmp_path):
     text = path.read_text()
     assert text.splitlines()[0] == "#!/envs/lbl-rapide/bin/python"
     assert "    /envs/lbl-rapide/bin/python %s" % path in text
-    # pca2d found by an environment that does not hold it, and only once LBL
-    # is imported: the repository's lbl/ folder would otherwise be `lbl`
-    root = os.path.dirname(os.path.dirname(os.path.abspath(splbl.__file__)))
-    append = text.index("sys.path.append(%r)" % root)
-    assert text.index("from lbl.recipes import lbl_wrap") < append
-    assert append < text.index("from pca2d.lbltemplate import strpca_from")
+    # pca2d is part of LBL since 2026-10-19 (lbl.pca2d): the script finds it
+    # with LBL, and no longer adds this repository to the path
+    assert text.index("from lbl.recipes import lbl_wrap") < \
+        text.index("from lbl.pca2d.lbltemplate import strpca_from")
+    assert "sys.path" not in text
 
     splbl.write_runner(str(path), runs, None, "TOI-2120", "2-3v",
                        "lbl_config.yaml")

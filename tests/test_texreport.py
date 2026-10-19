@@ -301,11 +301,10 @@ def test_a_report_that_fails_never_stops_the_run(monkeypatch):
 
 def test_the_template_ships_with_the_package():
     import tomllib
-    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    with open(os.path.join(here, "pyproject.toml"), "rb") as handle:
-        data = tomllib.load(handle)
-    assert "templates/*.tex" in data["tool"]["setuptools"]["package-data"]["pca2d"]
+    # with LBL since 2026-10-19: lbl/pca2d/templates, in LBL's MANIFEST.in
+    _ = tomllib
     assert os.path.exists(tr.TEMPLATE)
+    assert os.sep.join(["lbl", "pca2d", "templates"]) in tr.TEMPLATE
     body = open(tr.TEMPLATE).read()
     for key in ("TITLE", "SUBTITLE", "DATE", "RUNHEAD", "ABSTRACT", "BODY"):
         assert "<<%s>>" % key in body

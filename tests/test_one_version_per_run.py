@@ -14,9 +14,10 @@ from pca2d import provenance
 
 def test_every_stage_module_is_loaded_before_the_first_stage():
     code = ("import sys; from pca2d import provenance; provenance.freeze();"
-            "need = ['pca2d.lbl', 'pca2d.lbltemplate', 'pca2d.rvpages',"
-            " 'pca2d.twoframe', 'pca2d.build', 'pca2d.reconstruct',"
-            " 'pca2d.figures.bundle', 'pca2d.storage', 'pca2d.joint'];"
+            # the modules under their own names, LBL's since 2026-10-19
+            "need = ['lbl.pca2d.%s' % m for m in ('lbl', 'lbltemplate',"
+            " 'rvpages', 'twoframe', 'build', 'reconstruct', 'figures.bundle',"
+            " 'storage', 'joint')];"
             "missing = [m for m in need if m not in sys.modules];"
             "print('missing', missing);"
             "print('tk', 'tkinter' in sys.modules);"
