@@ -65,7 +65,7 @@ def test_the_corrected_dict_carries_the_counts_and_the_object_block(setup):
     from pca2d import wrapfile
     _, cfg = setup
     made = wrapfile.write(_state(cfg), None, dry=True)
-    after = _exec(made["text"])["AFTER"]
+    after = _exec(made["text"])["RPARAMS"]
     assert after["PCA2D"]["n_star"] == 1 and after["PCA2D"]["n_earth"] == 3
     assert after["PCA2D"]["figures"] is True
     # the object's block travels, less what LBL decides
@@ -75,13 +75,18 @@ def test_the_corrected_dict_carries_the_counts_and_the_object_block(setup):
     assert after["INSTRUMENT"] == "NIRPS_HE" and after["OBJECT_TEFF"] == [3300.0]
 
 
-def test_the_delivered_object_is_measured_as_it_is(setup):
+def test_one_dict_and_lbl_measures_the_delivered_object_itself(setup):
+    """No second dict for the delivered spectra since PCA2D compare=True:
+    the wrap file is the one anybody would write."""
     from pca2d import wrapfile
     _, cfg = setup
     names = _exec(wrapfile.write(_state(cfg), None, dry=True)["text"])
-    assert "PCA2D" not in names["BEFORE"]
-    assert names["BEFORE"]["OBJECT_SCIENCE"] == ["STAR"]
-    assert names["AFTER"]["OBJECT_SCIENCE"] == ["STAR"]
+    assert "BEFORE" not in names and "AFTER" not in names
+    assert names["RPARAMS"]["OBJECT_SCIENCE"] == ["STAR"]
+    assert names["RPARAMS"]["PCA2D"]["compare"] is True
+    names = _exec(wrapfile.write(_state(cfg, lbl_before=False), None,
+                                 dry=True)["text"])
+    assert names["RPARAMS"]["PCA2D"]["compare"] is False
 
 
 def test_the_script_and_the_report_are_in_lbl_s_tree(setup):
@@ -93,7 +98,7 @@ def test_the_script_and_the_report_are_in_lbl_s_tree(setup):
     assert made["script"] == os.path.join(data_dir, "run_STAR_pca2d_trial.py")
     assert made["report_dirs"] == [os.path.join(data_dir, "pca2d", "_trial",
                                                 "STAR", "1-3")]
-    assert _exec(made["text"])["AFTER"]["PCA2D"]["name"] == "trial"
+    assert _exec(made["text"])["RPARAMS"]["PCA2D"]["name"] == "trial"
     assert wrapfile.script_path(_state(cfg, run_name="trial")) == made["script"]
 
 
@@ -101,7 +106,7 @@ def test_several_objects_are_one_joint_correction(setup):
     from pca2d import wrapfile
     _, cfg = setup
     made = wrapfile.write(_state(cfg, objects=["STAR", "OTHER"]), None, dry=True)
-    after = _exec(made["text"])["AFTER"]
+    after = _exec(made["text"])["RPARAMS"]
     assert after["PCA2D"]["joint"] is True
     assert after["OBJECT_SCIENCE"] == ["STAR", "OTHER"]
     assert made["script"].endswith("run_STAR+OTHER_pca2d.py")
@@ -112,8 +117,8 @@ def test_without_the_lbl_stage_only_the_correction_is_made(setup):
     _, cfg = setup
     names = _exec(wrapfile.write(_state(cfg, stage_lbl=False), None,
                                  dry=True)["text"])
-    assert "BEFORE" not in names
-    assert not any(names["AFTER"]["RUN_LBL_%s" % s] for s in
+    assert names["RPARAMS"]["PCA2D"]["compare"] is False
+    assert not any(names["RPARAMS"]["RUN_LBL_%s" % s] for s in
                    ("TEMPLATE", "MASK", "COMPUTE", "COMPILE"))
 
 

@@ -2,7 +2,7 @@
 
 The two-frame precleaning itself lives in LBL since 2026-10-19, as the module
 lbl.pca2d, which lbl_wrap calls when its run parameters carry a PCA2D dict
-(the pca2d-module branch of https://github.com/njcuk9999/lbl). This package
+(the lbl-pca2d branch of https://github.com/njcuk9999/lbl). This package
 keeps what is not the algorithm:
 
     gui            the window: objects, settings, the run's log
@@ -33,9 +33,9 @@ OWN = frozenset({"gui", "gui_es", "gui_pt", "scan", "housekeeping", "wrapfile"})
 #: where the algorithm is
 ENGINE = "lbl.pca2d"
 #: what to say when it is not there
-MISSING = ("pca2d needs LBL with its pca2d module: the pca2d-module branch of"
+MISSING = ("pca2d needs LBL with its pca2d module: the lbl-pca2d branch of"
            " https://github.com/njcuk9999/lbl, installed in this environment"
-           " (git clone -b pca2d-module https://github.com/njcuk9999/lbl.git;"
+           " (git clone -b lbl-pca2d https://github.com/njcuk9999/lbl.git;"
            " pip install -e ./lbl). See the README, 'Installing it'.")
 
 

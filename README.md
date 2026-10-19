@@ -14,7 +14,7 @@ pca2d-preclean --object TOI-2120
 runs all of it, from the t.fits to LBL's velocities.
 
 **On this branch (`lbl-wrapper`) the algorithm lives in LBL.** It is the
-module `lbl.pca2d` of the `pca2d-module` branch of LBL, which `lbl_wrap` runs
+module `lbl.pca2d` of the `lbl-pca2d` branch of LBL, which `lbl_wrap` runs
 when its parameters carry a `PCA2D` dict:
 
 ```python
@@ -301,13 +301,13 @@ described from its headers.
 
 ## Installing it
 
-Two branches, one environment. LBL first, from its `pca2d-module` branch,
+Two branches, one environment. LBL first, from its `lbl-pca2d` branch,
 which is LBL's speed branch (`test-speed-260918-110104`) with `lbl.pca2d` and
 the `PCA2D` key added; then this package, from its `lbl-wrapper` branch, in
 the same environment:
 
 ```
-git clone -b pca2d-module https://github.com/njcuk9999/lbl.git lbl-rapide
+git clone -b lbl-pca2d https://github.com/njcuk9999/lbl.git lbl-rapide
 conda create -n lbl-rapide python=3.12
 conda activate lbl-rapide
 pip install -e ./lbl-rapide
@@ -316,9 +316,11 @@ git clone -b lbl-wrapper https://github.com/eartigau/pca2d_preclean.git
 pip install -e ./pca2d_preclean
 ```
 
-The first half alone is enough to correct spectra from an LBL wrap file
-(`lbl/doc/PCA2D.md` in LBL). The second adds the window, `pca2d-gui`, and the
-command line, `pca2d-preclean`. The window runs its wrap files with the python
+The first half alone is enough: an LBL wrap file with a `PCA2D` key corrects
+the spectra, measures both series and writes the report, river plots
+included (`lbl/doc/PCA2D.md` and `lbl/doc/example_wrap_pca2d.py` in LBL), and
+`lbl_pca2d` is the command line. The second half adds the window,
+`pca2d-gui`, and nothing else: no computation is in this package. The window runs its wrap files with the python
 of the environment `lbl.environment` names, `lbl-rapide` by default: the one
 above, so nothing else is needed.
 
@@ -326,7 +328,7 @@ Which branch is which:
 
 | repository | branch | what it is |
 |---|---|---|
-| njcuk9999/lbl | `pca2d-module` | LBL with the precleaning inside: use this one |
+| njcuk9999/lbl | `lbl-pca2d` | LBL with the precleaning inside: use this one |
 | njcuk9999/lbl | `test-speed-260918-110104` | LBL's speed branch, without pca2d |
 | eartigau/pca2d_preclean | `lbl-wrapper` | the window and the wrap file, the engine taken from LBL: use this one |
 | eartigau/pca2d_preclean | `main` | the standalone pipeline, its own copy of the engine, until the merge |
@@ -385,10 +387,13 @@ lists the objects of the data root with their median SNR and exposure time, a
 box to tick each one, runs one of them or several together, refuses two
 instruments at once, explains what every choice implies when the pointer rests
 on it, in English, French, Spanish or Portuguese, and shows the run's log as it
-comes. What it runs is an LBL wrap file, `<LBL folder>/run_<object>_pca2d.py`:
-the object as delivered, and the same object with a `PCA2D` dict holding the
-counts and the settings changed in the window; it is left there to be read,
-edited and run again by hand. What it read of
+comes. What it runs is an LBL wrap file, `<LBL folder>/run_<object>_pca2d.py`,
+one runparams dict with a `PCA2D` dict holding the counts and the settings
+changed in the window: LBL measures the object as delivered, corrects it,
+measures the corrected one, and writes one report, pca2d's then LBL's. It is
+left there to be read, edited and run again by hand, and the window is not
+needed for that: any LBL wrap file with a `PCA2D` key does the same
+(`lbl/doc/example_wrap_pca2d.py` in LBL). What it read of
 a data root is remembered under `~/.pca2d/`, so a folder opens at once the
 second time and only new files are read. `docs/gui.md`.
 

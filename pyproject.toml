@@ -23,7 +23,7 @@ dependencies = [
 pca2d-preclean = "pca2d.cli:main"
 pca2d-gui = "pca2d.gui:main"
 
-# THE ALGORITHM IS IN LBL (lbl.pca2d, the pca2d-module branch of
+# THE ALGORITHM IS IN LBL (lbl.pca2d, the lbl-pca2d branch of
 # https://github.com/njcuk9999/lbl), which is not on PyPI and is installed
 # first, by hand (README, "Installing it"): this package is the window, the
 # wrap file it runs, and pca2d.<module> as a name for lbl.pca2d.<module>.

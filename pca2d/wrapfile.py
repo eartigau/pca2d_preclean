@@ -245,21 +245,20 @@ def write(state, defaults=None, dry=False) -> dict:
     label = pca2d.get("name", "")
     code = chosen(config)
 
-    runs = []
-    if steps and state.get("lbl_before", (config.get("lbl") or {}).get(
-            "before", True)):
-        runs.append(("BEFORE", "The spectra as delivered, measured against"
-                     " the template LBL builds from them.",
-                     base_params(config, data_dir, objects, teffs, steps,
-                                 tables)))
-    after = base_params(config, data_dir, objects, teffs, steps, tables)
-    after["PCA2D"] = pca2d
-    runs.append(("AFTER", "The same objects corrected first by pca2d (%s),"
-                 " then measured against the template LBL builds from the"
-                 " corrected spectra%s." % (", ".join(
-                     corrected_name(o, label) for o in objects),
-                     "" if steps else "; no LBL step is asked, so only the"
-                     " correction is made"), after))
+    # ONE DICT, as anybody would write it: LBL measures the delivered
+    # objects itself first (PCA2D compare), corrects them, measures the
+    # corrected ones, and binds pca2d's report and its own into one PDF
+    pca2d["compare"] = bool(steps) and bool(state.get(
+        "lbl_before", (config.get("lbl") or {}).get("before", True)))
+    rparams = base_params(config, data_dir, objects, teffs, steps, tables)
+    rparams["PCA2D"] = pca2d
+    runs = [("RPARAMS", "LBL on %s: %s, corrected by pca2d into %s%s." % (
+        ", ".join(objects), "measured as delivered first" if pca2d["compare"]
+        else "not measured as delivered", ", ".join(
+            corrected_name(o, label) for o in objects),
+        ", which LBL then measures; the report is pca2d's followed by LBL's"
+        if steps else "; no LBL step is asked, so only the correction is"
+        " made"), rparams)]
 
     stem = "+".join(objects) if len(objects) > 1 else objects[0]
     script = os.path.join(data_dir, "run_%s.py" % corrected_name(stem, label))
