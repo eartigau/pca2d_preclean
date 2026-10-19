@@ -402,10 +402,12 @@
       <h2>Where it runs: inside LBL</h2>
       <p>
         The algorithm is a module of LBL, <code>lbl.pca2d</code>, on LBL's
-        <code>pca2d-module</code> branch. <code>lbl_wrap</code> runs it when
-        the run parameters carry a <code>PCA2D</code> dict, then measures the
-        corrected spectra as an object of their own. Without the key nothing
-        of it is even imported, and LBL runs exactly as before.
+        <code>lbl-pca2d</code> branch, and LBL alone runs it: no window, no
+        other package. When the run parameters of an ordinary wrap file carry a
+        <code>PCA2D</code> dict, <code>lbl_wrap</code> measures the object as
+        delivered, corrects it, measures the corrected spectra as an object of
+        their own, and writes one report. Without the key nothing of it is
+        even imported, and LBL runs exactly as before.
       </p>
       <div class="codeblock">from lbl.recipes import lbl_wrap
 
@@ -421,7 +423,19 @@ lbl_wrap.main(rparams)</div>
       <div class="codeblock">DATA_DIR/science/TOI756/            read, never written
 DATA_DIR/science/TOI756_pca2d/      the corrected spectra, same names, same format
 DATA_DIR/pca2d/TOI756/1-3/          the fit, the figures, the report
-DATA_DIR/lblrdb/lbl_TOI756_pca2d_TOI756_pca2d.rdb   the velocities</div>
+DATA_DIR/lblrdb/lbl_TOI756_pca2d_TOI756_pca2d.rdb   the velocities
+DATA_DIR/reports/TOI756_pca2d_TOI756_pca2d.pdf      the report</div>
+      <p>
+        The report is the pca2d report followed by LBL's: the star as SIMBAD
+        describes it, the delivered and corrected velocities on the exposures
+        they share with what got better and what got worse, the river plots
+        of the correction step by step in each window, the components, their
+        coefficients in time and against everything they could follow, their
+        periodograms, every setting that ran, and then LBL's series, false
+        inclusion probabilities and indicators. A commented example wrap file,
+        with what the precleaning does, is
+        <code>lbl/doc/example_wrap_pca2d.py</code> in the branch.
+      </p>
       <p>
         With LBL's telluric cleaning on, which is the path for the optical
         spectrographs, the precleaning runs after it, on
@@ -437,15 +451,15 @@ DATA_DIR/lblrdb/lbl_TOI756_pca2d_TOI756_pca2d.rdb   the velocities</div>
         product made from it, aside rather than mixing them.
       </p>
       <p>
-        The window is a front end to this. Same objects, same choices, same
-        log; what it runs is a wrap file,
-        <code>DATA_DIR/run_&lt;object&gt;_pca2d.py</code>, with the object as
-        delivered and the same object with its <code>PCA2D</code> dict, left
-        there to be read and run again by hand.
+        The window is only a front end to this. Same objects, same choices,
+        same log; what it runs is that same kind of wrap file,
+        <code>DATA_DIR/run_&lt;object&gt;_pca2d.py</code>, one dict with its
+        <code>PCA2D</code> key, left there to be read and run again by hand.
       </p>
       <div class="callout">
         <strong>Checked on SIPS J1259-4336 (NIRPS HE, 51 exposures).</strong>
-        Through the window, the wrap file and LBL, the corrected velocities
+        Through the window, the wrap file and LBL, and again from a plain wrap
+        file with no window, the corrected velocities
         equal those of the standalone pipeline to 1.6&times;10<sup>-6</sup> m/s,
         and the delivered ones are identical. The corrected flux agrees to one
         unit in the last place of a 32-bit float: LBL's environment does its
@@ -463,10 +477,10 @@ DATA_DIR/lblrdb/lbl_TOI756_pca2d_TOI756_pca2d.rdb   the velocities</div>
       <h2>Install it</h2>
       <p>
         Two branches, one environment: LBL first, from its
-        <code>pca2d-module</code> branch, then this package, from its
+        <code>lbl-pca2d</code> branch, then this package, from its
         <code>lbl-wrapper</code> branch, in the same environment.
       </p>
-      <div class="codeblock">git clone -b pca2d-module https://github.com/njcuk9999/lbl.git lbl-rapide
+      <div class="codeblock">git clone -b lbl-pca2d https://github.com/njcuk9999/lbl.git lbl-rapide
 conda create -n lbl-rapide python=3.12
 conda activate lbl-rapide
 pip install -e ./lbl-rapide
@@ -474,8 +488,10 @@ pip install -e ./lbl-rapide
 git clone -b lbl-wrapper https://github.com/eartigau/pca2d_preclean.git
 pip install -e ./pca2d_preclean</div>
       <p class="hint">
-        The first half alone is enough to precorrect from any LBL wrap file.
-        The second adds the window and the command line. LBL pins its
+        The first half alone is enough: any LBL wrap file with a
+        <code>PCA2D</code> key does everything, report included, and
+        <code>lbl_pca2d</code> is the command line. The second half adds the
+        window, and no computation. LBL pins its
         dependencies exactly (python 3.12, numpy 2.3.3, scipy 1.17.0, astropy
         7.2.0), and pip installs them with it.
       </p>
@@ -485,12 +501,12 @@ pip install -e ./pca2d_preclean</div>
           <tr><th>Branch</th><th>What it is</th></tr>
         </thead>
         <tbody>
-          <tr class="best"><td><code>pca2d-module</code><span class="hint">njcuk9999/lbl</span></td>
+          <tr class="best"><td><code>lbl-pca2d</code><span class="hint">njcuk9999/lbl</span></td>
               <td>LBL with the precleaning inside: use this one</td></tr>
           <tr><td><code>test-speed-260918-110104</code><span class="hint">njcuk9999/lbl</span></td>
               <td>LBL's speed branch, without pca2d</td></tr>
           <tr class="best"><td><code>lbl-wrapper</code><span class="hint">eartigau/pca2d_preclean</span></td>
-              <td>the window and the wrap file, the engine taken from LBL: use this one</td></tr>
+              <td>the window, which writes the wrap file: only for the window</td></tr>
           <tr><td><code>main</code><span class="hint">eartigau/pca2d_preclean</span></td>
               <td>the standalone pipeline, until the merge</td></tr>
         </tbody>
@@ -500,16 +516,21 @@ pip install -e ./pca2d_preclean</div>
 
     <section class="card">
       <h2>Run it</h2>
+      <div class="codeblock">python my_lbl_wrap.py</div>
+      <p class="hint">
+        Without the window: any LBL wrap file with
+        <code>rparams['PCA2D'] = dict(n_star=1, n_earth=3)</code>.
+      </p>
       <div class="codeblock">pca2d-gui</div>
       <p class="hint">
         The window: tick the objects, choose the counts, Run. It writes the
         wrap file and runs it with LBL.
       </p>
-      <div class="codeblock">pca2d-preclean --object TOI2120 \
+      <div class="codeblock">lbl_pca2d --object TOI2120 \
       --n-star 1 --n-earth 3</div>
       <p class="hint">
-        The command line, for runs side by side under their own names: the
-        same code, <code>lbl.pca2d</code>. <code class="nb">--n-star</code> and
+        The command line, for research runs side by side under their own
+        names: the same code, <code>lbl.pca2d</code>. <code class="nb">--n-star</code> and
         <code class="nb">--n-earth</code> are how many components each block gets;
         everything else comes from <code>config.yaml</code>, and the resolved
         settings are written beside the outputs so a run can always be read
