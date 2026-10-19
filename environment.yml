@@ -68,6 +68,8 @@ dependencies:
       # this package, in place, which is what puts pca2d-preclean on the path,
       # so `conda env create` has to be run from a clone
       - --editable .
-      # LBL is not on PyPI. main is its long-term stable branch; `working` is
-      # where its development happens if you need something newer.
-      - git+https://github.com/njcuk9999/lbl@main
+      # LBL is not on PyPI. On this branch (lbl-wrapper) the algorithm is
+      # LBL's module lbl.pca2d, which only its pca2d-module branch has; the
+      # `pca2d` package here is the window and a name for it. With this
+      # environment, lbl.environment: current runs the wrap files here.
+      - git+https://github.com/njcuk9999/lbl@pca2d-module

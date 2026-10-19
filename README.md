@@ -13,6 +13,20 @@ pca2d-preclean --object TOI-2120
 
 runs all of it, from the t.fits to LBL's velocities.
 
+**On this branch (`lbl-wrapper`) the algorithm lives in LBL.** It is the
+module `lbl.pca2d` of the `pca2d-module` branch of LBL, which `lbl_wrap` runs
+when its parameters carry a `PCA2D` dict:
+
+```python
+rparams['PCA2D'] = dict(n_star=1, n_earth=3)   # in any LBL wrap file
+```
+
+and LBL then measures the corrected object, `science/<object>_pca2d`. This
+package is the window, which writes such a wrap file and runs it, and a name:
+every `pca2d.<module>` is `lbl.pca2d.<module>`, so the command above, the
+scripts and the tests run on the one copy of the code, LBL's. `main` still
+holds the standalone pipeline until the two branches are merged.
+
 ## What it buys
 
 TOI-2120, 316 SPIRou exposures over 452 days, one star and three observer
@@ -287,26 +301,39 @@ described from its headers.
 
 ## Installing it
 
-```
-git clone https://github.com/eartigau/pca2d_preclean.git
-cd pca2d_preclean
-conda env create -f environment.yml
-conda activate pca2d-preclean
-```
-
-LBL's velocities are measured, by default, by LBL's speed branch in an
-environment of its own, `lbl-rapide`, made once, from any folder:
+Two branches, one environment. LBL first, from its `pca2d-module` branch,
+which is LBL's speed branch (`test-speed-260918-110104`) with `lbl.pca2d` and
+the `PCA2D` key added; then this package, from its `lbl-wrapper` branch, in
+the same environment:
 
 ```
-git clone -b test-speed-260918-110104 https://github.com/njcuk9999/lbl.git lbl-rapide
+git clone -b pca2d-module https://github.com/njcuk9999/lbl.git lbl-rapide
 conda create -n lbl-rapide python=3.12
 conda activate lbl-rapide
 pip install -e ./lbl-rapide
+
+git clone -b lbl-wrapper https://github.com/eartigau/pca2d_preclean.git
+pip install -e ./pca2d_preclean
 ```
 
-The run finds it by name and starts its python itself, so nothing is
-activated by hand. Without it, `--lbl-env current` (or `lbl.environment:
-current`) has the LBL of `pca2d-preclean` measure, as before 2026-09-18.
+The first half alone is enough to correct spectra from an LBL wrap file
+(`lbl/doc/PCA2D.md` in LBL). The second adds the window, `pca2d-gui`, and the
+command line, `pca2d-preclean`. The window runs its wrap files with the python
+of the environment `lbl.environment` names, `lbl-rapide` by default: the one
+above, so nothing else is needed.
+
+Which branch is which:
+
+| repository | branch | what it is |
+|---|---|---|
+| njcuk9999/lbl | `pca2d-module` | LBL with the precleaning inside: use this one |
+| njcuk9999/lbl | `test-speed-260918-110104` | LBL's speed branch, without pca2d |
+| eartigau/pca2d_preclean | `lbl-wrapper` | the window and the wrap file, the engine taken from LBL: use this one |
+| eartigau/pca2d_preclean | `main` | the standalone pipeline, its own copy of the engine, until the merge |
+
+`main` installs as before: `conda env create -f environment.yml` from a clone
+of `main` gives the `pca2d-preclean` environment, with LBL's speed branch in
+`lbl-rapide` beside it for the velocities.
 
 One alias, written once, so that a new terminal is one word from being ready:
 
@@ -357,8 +384,11 @@ pca2d-gui
 lists the objects of the data root with their median SNR and exposure time, a
 box to tick each one, runs one of them or several together, refuses two
 instruments at once, explains what every choice implies when the pointer rests
-on it, in English, French, Spanish or Portuguese, writes the command it is about to run so it can
-be copied into a terminal, and shows the run's log as it comes. What it read of
+on it, in English, French, Spanish or Portuguese, and shows the run's log as it
+comes. What it runs is an LBL wrap file, `<LBL folder>/run_<object>_pca2d.py`:
+the object as delivered, and the same object with a `PCA2D` dict holding the
+counts and the settings changed in the window; it is left there to be read,
+edited and run again by hand. What it read of
 a data root is remembered under `~/.pca2d/`, so a folder opens at once the
 second time and only new files are read. `docs/gui.md`.
 
