@@ -1960,12 +1960,16 @@ def suggested_run_name(state, digits=6):
 def command_line(state, pending, defaults=None):
     """What the command box shows: the command, or what is still missing.
 
-    `pca2d-preclean --config ... --n-star 1` with no object in it is not a
-    command anybody can paste, and showing it while nothing is ticked made a
-    window with no data root look like a run that was ready to go.
+    Since 2026-10-19 the window runs an LBL wrap script with a PCA2D dict in
+    it (pca2d.wrapfile), so the command is that script, run by LBL's python.
+    Worked out cheaply here, on every keystroke: the script itself, which
+    reads headers and asks which LBL is installed, is written at Run.
     """
-    return (" ".join(build_command(state, defaults)) if state.get("objects")
-            else pending)
+    if not state.get("objects"):
+        return pending
+    from .wrapfile import script_path
+    return "%s %s" % (str(state.get("lbl_env") or "lbl-rapide") + ":python",
+                      script_path(state, defaults))
 
 
 def installed_config():
@@ -3864,35 +3868,47 @@ class App:
                                  self.t("mixed") % (", ".join(state["objects"]),
                                                     ", ".join(sorted(instruments))))
             return
-        argv = build_command(state, self._defaults())
-        # shown as `pca2d-preclean ...`, since that is what to paste into a
-        # terminal, but RUN through whatever path actually holds it here
-        found = preclean_argv()
-        if found is None and not self._offer_install():
-            return
-        found = found or preclean_argv()
-        if found is None:
-            self._say("log_failed", self.t("no_command_still"), level="error")
-            return
-        self._say("log_command", " ".join(argv), level="value")
-        argv = found + argv[1:]
-        env = dict(os.environ, PCA2D_COLOUR="1", PYTHONUNBUFFERED="1")
-        # this window's own package, ahead of everything: the run starts in the
-        # config file's folder, and whatever copy of pca2d sits there would
-        # otherwise be the one that runs
-        env["PYTHONPATH"] = os.pathsep.join(
-            [package_home()] + ([env["PYTHONPATH"]] if env.get("PYTHONPATH")
-                                else []))
+        # THE WINDOW WRITES AN LBL WRAP FILE AND RUNS IT (2026-10-19): the
+        # correction is made inside LBL, by lbl.pca2d, which lbl_wrap calls
+        # when the run parameters carry a PCA2D dict. Same choices, same
+        # window; the work happens in LBL's tree, DATA_DIR/science/<object>_pca2d
+        from . import wrapfile
+        unticked = [s for s in ("cube", "fit", "correct")
+                    if state.get("stage_" + s) is False]
+        if unticked:
+            self._say("log_failed", "cube, fit and correct are one step inside"
+                      " LBL now and always run together; a correction already"
+                      " on disk with the same settings is not made again",
+                      level="warn")
         try:
+            made = wrapfile.write(state, self._defaults(), dry=dry)
+        except (SystemExit, Exception) as exc:              # noqa: BLE001
+            self._say("log_failed", exc, level="error")
+            return
+        if not made["python"] or not made["code"]["ok"]:
+            self._say("log_failed", "the LBL that runs the wrap file is not"
+                      " usable here: %s" % made["code"]["detail"],
+                      level="error")
+            return
+        argv = [made["python"], made["script"]]
+        self._say("log_command", " ".join(argv), level="value")
+        if dry:
+            for line in made["text"].splitlines():
+                self._write(line + "\n")
+            return
+        env = dict(made["env"] or os.environ, PCA2D_COLOUR="1",
+                   PYTHONUNBUFFERED="1")
+        try:
+            # in LBL's own tree, never in a folder holding this repository's
+            # lbl/ data folder, which `import lbl` would take for the package
             self.proc = subprocess.Popen(
                 argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                bufsize=0, env=env,
-                cwd=os.path.dirname(os.path.abspath(self.vars["config"].get()))
-                or None)
+                bufsize=0, env=env, cwd=made["data_dir"])
         except OSError as exc:
             self._say("log_failed", exc, level="error")
             self.proc = None
             return
+        self.launched_dirs = made["report_dirs"]
         # where this run will write, recorded now rather than worked out again
         # when it ends: the proposed name follows the ticks, so a run launched
         # as GL406_3b7955 finished into that folder while the window had moved
@@ -4153,7 +4169,9 @@ class App:
         the name typed beside them. The window knows all of that already, so
         it opens the file rather than the folder above it.
         """
-        path = report_pdf(self.state(), self._out_root())
+        from .wrapfile import report_pdf as wrap_report
+        path = wrap_report(getattr(self, "launched_dirs", None)) or \
+            report_pdf(self.state(), self._out_root())
         if not path or not os.path.exists(path):
             # the settings name the folder, so changing one after a run leaves
             # the window pointing at a folder nothing wrote. What was launched

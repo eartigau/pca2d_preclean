@@ -526,7 +526,8 @@ def test_the_command_box_says_what_is_missing_rather_than_half_a_command():
     assert command_line({"objects": [], "config": "c.yaml"}, hint) == hint
     assert command_line({"config": "c.yaml"}, hint) == hint
     ready = command_line({"objects": ["PROXIMA"], "config": "c.yaml"}, hint)
-    assert ready.startswith("pca2d-preclean --object PROXIMA")
+    # since 2026-10-19 the window runs an LBL wrap file (pca2d.wrapfile)
+    assert ready.endswith("run_PROXIMA_pca2d.py")
 
 
 def test_a_reduction_is_named_by_its_targets_and_a_hash_of_the_rest():
